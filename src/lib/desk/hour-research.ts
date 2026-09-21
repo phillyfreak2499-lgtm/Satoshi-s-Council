@@ -36,29 +36,49 @@ export const HOUR_CHECKPOINTS = [45, 30, 20, 15, 10, 5] as const;
 export type HourCheckpoint = (typeof HOUR_CHECKPOINTS)[number];
 
 /**
- * How near a checkpoint a tick must land to claim it. Feed cadence is seconds,
- * so a band is required; it is narrower than half the smallest gap between
- * checkpoints (5 minutes), so a tick can never be ambiguous between two.
+ * How long AFTER a checkpoint's target instant a tick may still claim it.
+ *
+ * THE RULE IS ONE-SIDED, AND THAT IS THE POINT. An earlier version allowed a
+ * ±75s band, so the first observer tick that happened to land inside it could
+ * freeze "the 30-minute checkpoint" with 31 minutes 15 seconds still on the
+ * clock — and which side of the target you got depended on nothing but process
+ * timing. A checkpoint that means a different thing each hour is not a
+ * checkpoint. So capture happens AT or AFTER the target instant, never before,
+ * and the grace only bounds how late "after" may be.
+ *
+ * It is wider than the observer's tick interval, so a running process always
+ * gets at least one tick inside the window; it is far narrower than the 5-minute
+ * gap between checkpoints, so a tick can never be ambiguous between two.
  */
-export const HOUR_CHECKPOINT_BAND_S = 75;
+export const HOUR_CHECKPOINT_GRACE_S = 45;
 
 /**
- * The checkpoint this instant belongs to, or null between checkpoints. Pure and
- * deterministic: identity depends only on seconds remaining, never on arrival
- * order, so a replay of the same hour claims the same checkpoints.
+ * The checkpoint this instant may claim, or null.
+ *
+ * Pure and deterministic: identity depends only on seconds remaining, never on
+ * arrival order or on what has already been stored, so a replay of the same hour
+ * claims the same checkpoints. `secsLeft` runs DOWN, so "at or after the target"
+ * is `secsLeft <= checkpoint · 60`, and "not too late" is
+ * `secsLeft >= checkpoint · 60 − grace`.
  */
 export function checkpointFor(secsLeft: number): HourCheckpoint | null {
   if (!Number.isFinite(secsLeft) || secsLeft < 0) return null;
-  let best: HourCheckpoint | null = null;
-  let bestGap = Number.POSITIVE_INFINITY;
   for (const c of HOUR_CHECKPOINTS) {
-    const gap = Math.abs(secsLeft - c * 60);
-    if (gap <= HOUR_CHECKPOINT_BAND_S && gap < bestGap) {
-      best = c;
-      bestGap = gap;
-    }
+    const target = c * 60;
+    if (secsLeft <= target && secsLeft >= target - HOUR_CHECKPOINT_GRACE_S) return c;
   }
-  return best;
+  return null;
+}
+
+/**
+ * Whether a checkpoint is already past its capture window on this clock — the
+ * observer's test for "missed, and never to be backfilled". A checkpoint whose
+ * window has closed is left missing rather than reconstructed from later
+ * information, because anything reconstructed would carry hindsight.
+ */
+export function checkpointMissed(checkpoint: HourCheckpoint, secsLeft: number): boolean {
+  if (!Number.isFinite(secsLeft)) return false;
+  return secsLeft < checkpoint * 60 - HOUR_CHECKPOINT_GRACE_S;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,16 +88,17 @@ export function checkpointFor(secsLeft: number): HourCheckpoint | null {
 export const HOUR_WAIT_REASONS = [
   "insufficient_edge", // a candidate existed but its after-fee edge did not clear the floor
   "uncertainty_high", // the model's own spread on p is too wide to act on
-  "stale_index", // the settlement index is missing or too old to trust
-  "stale_spot", // exchange spot is missing or too old
+  "no_settlement_index", // no CF Benchmarks settlement value at all: the model's required input
+  "stale_index", // a settlement value exists but its age is unknown or past the limit
   "incomplete_ladder", // the hour's ladder did not fully arrive
   "no_usable_ask", // no real ask on the side the model favours (never substitute a mid)
+  "liquidity_unassessable", // an ask exists but the other side does not, so the spread cannot be read
   "spread_too_wide", // the quoted spread makes the entry uneconomic
   "thin_liquidity", // no resting size where the venue reports it
   "ladder_inconsistent", // neighbouring rungs contradict each other beyond tolerance
   "conflicting_evidence", // families disagree enough that the read is not trustworthy
   "outside_checkpoint", // not at a research checkpoint
-  "model_unavailable", // volatility or expected settlement could not be estimated
+  "model_unavailable", // volatility could not be estimated
 ] as const;
 export type HourWaitReason = (typeof HOUR_WAIT_REASONS)[number];
 
@@ -105,15 +126,35 @@ export type HourRung = {
  * Every field is nullable: an absent feed is `null`, never invented.
  */
 export type HourFeatures = {
-  // SETTLEMENT / INDEX — the contract settles on the official index, not spot.
-  index: number | null;
-  index_age_s: number | null;
+  // SETTLEMENT INDEX — the ONLY input the model is allowed to call settlement.
+  //
+  // The contract settles on the CF Benchmarks value at the close, so this is the
+  // CF Benchmarks real-time index (BRTI) as Kalshi publishes it on its own
+  // `cfbenchmarks_value` channel. It is NOT an exchange print and NOT a
+  // perpetual-futures index; those live in the venue fields below and carry no
+  // settlement authority. When this is absent or its age cannot be established
+  // the model has no settlement input and WAITs.
+  brti: number | null;
+  /** Seconds since WE received that value. Null when unmeasurable — never assumed fresh. */
+  brti_age_s: number | null;
+  /** Which feed the value came from, stored verbatim for audit. */
+  brti_source: string;
+
+  // VENUE REFERENCE — measurement only, never a settlement value.
+  //
+  // `snap.index_px` on this repo is an OKX/Binance PERPETUAL index and
+  // `snap.basis_bps` is perp-vs-spot basis. They are useful context and they are
+  // stored, but naming them "the settlement index" would be false, so they are
+  // named for what they are and no code path may promote them.
+  venue_index: number | null;
+  venue_index_age_s: number | null;
+  /** Perpetual-vs-spot basis in basis points, as the frame carries it. */
+  venue_basis_bps: number | null;
+
   spot: number | null;
   spot_age_s: number | null;
-  /** index - spot, in dollars. Null when either side is unknown. */
-  basis: number | null;
-  /** Spread of recent basis observations, in dollars; small = stable. */
-  basis_spread: number | null;
+  /** BRTI − spot, in dollars. Research measurement; not an input to the fair value. */
+  brti_spot_basis: number | null;
 
   // VOLATILITY — a distribution, not a trend label.
   /** Realized volatility of log returns, expressed per hour (decimal, e.g. 0.004). */
@@ -145,7 +186,9 @@ export type HourDataQuality = {
   ok: boolean;
   ladder_complete: boolean;
   rungs: number;
-  index_fresh: boolean;
+  /** The settlement input. Only this one gates the model. */
+  brti_fresh: boolean;
+  /** Measurement only: spot is context, never the settlement value. */
   spot_fresh: boolean;
   monotonic: boolean;
   /** Count of neighbouring rungs whose YES prices rise with strike beyond tolerance. */
@@ -163,9 +206,9 @@ export const HOUR_MODEL = Object.freeze({
   max_spread_cents: 6,
   /** The model refuses to act when its own p-band is wider than this. */
   max_uncertainty: 0.18,
-  /** A settlement index older than this is stale. */
-  max_index_age_s: 120,
-  /** Exchange spot older than this is stale. */
+  /** A settlement value older than this is stale. Unknown age is never fresh. */
+  max_brti_age_s: 120,
+  /** Exchange spot older than this is stale. Measurement only; it gates nothing. */
   max_spot_age_s: 60,
   /** Neighbouring-rung YES price inversion tolerated before the ladder is called inconsistent, in cents. */
   inversion_tolerance_cents: 2,
@@ -314,16 +357,40 @@ export function monotoneImplied(rungs: readonly HourRung[]): (number | null)[] {
 // The fair-value model
 // ---------------------------------------------------------------------------
 
-/** Expected settlement value: the official index when fresh, else spot carried by a known basis. */
-export function expectedSettlement(f: HourFeatures): { value: number | null; source: "index" | "spot+basis" | "spot" | "none" } {
-  if (f.index != null && f.index > 0 && (f.index_age_s == null || f.index_age_s <= HOUR_MODEL.max_index_age_s)) {
-    return { value: f.index, source: "index" };
-  }
-  if (f.spot != null && f.spot > 0) {
-    if (f.basis != null) return { value: f.spot + f.basis, source: "spot+basis" };
-    return { value: f.spot, source: "spot" };
-  }
-  return { value: null, source: "none" };
+/**
+ * Is this reading fresh enough to act on?
+ *
+ * UNKNOWN IS NOT FRESH. An earlier version accepted `age == null` as fresh, on
+ * the reasoning that a missing clock was probably fine. It is not: a value whose
+ * age cannot be established is a value the desk cannot date, and treating it as
+ * current is exactly how a stale number becomes a confident one. Every one of
+ * these must hold — a usable value, an age that exists, is finite, is not
+ * negative, and is inside the limit.
+ */
+export function isFresh(value: number | null | undefined, ageS: number | null | undefined, maxAgeS: number): boolean {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return false;
+  if (typeof ageS !== "number" || !Number.isFinite(ageS)) return false;
+  if (ageS < 0) return false;
+  return ageS <= maxAgeS;
+}
+
+/** Which feed an expected-settlement value came from. Only one of these is a settlement value. */
+export type HourExpectedSource = "cfbenchmarks-brti" | "none";
+
+/**
+ * The expected settlement value.
+ *
+ * ONE SOURCE, AND IT IS THE CONTRACT'S OWN. KXBTCD settles on the CF Benchmarks
+ * value, so that is the only thing this returns. There is deliberately no spot
+ * fallback and no venue-index fallback: substituting an exchange print or a
+ * perpetual index would be modelling a different quantity than the one that
+ * settles the contract, and a research record built on that would not measure
+ * what it claims to measure. No fresh settlement value means no expected
+ * settlement, which means the model waits.
+ */
+export function expectedSettlement(f: HourFeatures): { value: number | null; source: HourExpectedSource } {
+  if (!isFresh(f.brti, f.brti_age_s, HOUR_MODEL.max_brti_age_s)) return { value: null, source: "none" };
+  return { value: f.brti, source: "cfbenchmarks-brti" };
 }
 
 /** Sigma of log settlement over the remaining time, from per-hour realized vol. */
@@ -375,8 +442,18 @@ export type HourRungRead = {
   best_edge: number | null;
 };
 
-const spreadOf = (bid: number | null, ask: number | null): number | null =>
-  bid != null && ask != null ? Math.max(0, ask - bid) : null;
+/**
+ * The quoted spread on one side, or null when it cannot be read.
+ *
+ * Null means UNASSESSABLE, not zero and not narrow. Both sides must be real
+ * quotes and the arithmetic must be finite; a one-sided rung has no spread, and
+ * no bid is ever manufactured to produce one.
+ */
+const spreadOf = (bid: number | null, ask: number | null): number | null => {
+  if (!finite(bid) || !finite(ask)) return null;
+  const s = ask - bid;
+  return Number.isFinite(s) ? Math.max(0, s) : null;
+};
 
 /**
  * After-fee expected cents of buying one contract at its real ask. `null` when
@@ -435,14 +512,16 @@ export function readLadder(rungs: readonly HourRung[], f: HourFeatures, secsLeft
 
 export function dataQuality(rungs: readonly HourRung[], f: HourFeatures, ladderComplete: boolean): HourDataQuality {
   const inversions = ladderInversions(rungs);
-  const indexFresh = f.index != null && (f.index_age_s == null || f.index_age_s <= HOUR_MODEL.max_index_age_s);
-  const spotFresh = f.spot != null && (f.spot_age_s == null || f.spot_age_s <= HOUR_MODEL.max_spot_age_s);
+  const brtiFresh = isFresh(f.brti, f.brti_age_s, HOUR_MODEL.max_brti_age_s);
+  const spotFresh = isFresh(f.spot, f.spot_age_s, HOUR_MODEL.max_spot_age_s);
   const monotonic = inversions <= HOUR_MODEL.max_inversions;
   return {
-    ok: ladderComplete && rungs.length > 0 && (indexFresh || spotFresh) && monotonic,
+    // A fresh spot cannot stand in for the settlement value, so it is not an
+    // alternative here the way it once was.
+    ok: ladderComplete && rungs.length > 0 && brtiFresh && monotonic,
     ladder_complete: ladderComplete,
     rungs: rungs.length,
-    index_fresh: indexFresh,
+    brti_fresh: brtiFresh,
     spot_fresh: spotFresh,
     monotonic,
     inversions,
@@ -525,18 +604,28 @@ export function hourRead(input: {
   if ((input.requireCheckpoint ?? true) && checkpoint == null) return wait("outside_checkpoint");
   if (!ladderComplete) return wait("incomplete_ladder");
   if (!quality.monotonic) return wait("ladder_inconsistent");
-  if (!quality.index_fresh && !quality.spot_fresh) return wait(f.index == null ? "stale_index" : "stale_spot");
-  if (exp.value == null || sigma == null) return wait("model_unavailable");
+  // The settlement input is required, and "we cannot date it" is not a pass.
+  if (!quality.brti_fresh) return wait(f.brti == null ? "no_settlement_index" : "stale_index");
+  if (exp.value == null) return wait("no_settlement_index");
+  if (sigma == null) return wait("model_unavailable");
   if (!reads.length) return wait("model_unavailable");
 
   // Only rungs with a real ask on the model's favoured side can be candidates.
   const usable = reads.filter((r) => r.best_side != null && r.best_edge != null);
   if (!usable.length) return wait("no_usable_ask");
 
-  const priced = usable.filter((r) => {
-    const spread = r.best_side === "YES" ? r.spread_yes : r.spread_no;
-    return spread == null || spread <= HOUR_MODEL.max_spread_cents;
+  // A candidate needs a market the desk can actually assess, and an unknown
+  // spread is not a narrow one. A rung quoted on one side only is reported as
+  // unassessable rather than waved through — and no bid is ever invented to
+  // make it assessable.
+  const spreadOn = (r: HourRungRead) => (r.best_side === "YES" ? r.spread_yes : r.spread_no);
+  const assessable = usable.filter((r) => {
+    const s = spreadOn(r);
+    return s != null && Number.isFinite(s);
   });
+  if (!assessable.length) return wait("liquidity_unassessable");
+
+  const priced = assessable.filter((r) => spreadOn(r)! <= HOUR_MODEL.max_spread_cents);
   if (!priced.length) return wait("spread_too_wide");
 
   const confident = priced.filter((r) => r.uncertainty <= HOUR_MODEL.max_uncertainty);
@@ -582,7 +671,10 @@ export function readSentence(c: HourCandidate, expected: number, secsLeft: numbe
     f.ret15 != null && f.ret30 != null && Math.sign(f.ret15) === Math.sign(f.ret30) && f.ret15 !== 0
       ? ` 15m/30m momentum agrees (${(f.ret15 * 100).toFixed(2)}% / ${(f.ret30 * 100).toFixed(2)}%).`
       : "";
-  const basis = f.basis != null ? ` Settlement basis ${usd(Math.abs(f.basis))} ${f.basis >= 0 ? "over" : "under"} spot.` : "";
+  const basis =
+    f.brti_spot_basis != null
+      ? ` The settlement index sits ${usd(Math.abs(f.brti_spot_basis))} ${f.brti_spot_basis >= 0 ? "over" : "under"} exchange spot.`
+      : "";
   return `${c.side} ${pct(c.p_model)} vs ${c.ask}¢ ask. Expected settlement is ${usd(Math.abs(gap))} ${side} the ${usd(c.strike)} strike with ${mins(secsLeft)} remaining; after the ${c.fee}¢ fee the model shows ${c.edge_cents.toFixed(1)}¢ of edge.${trend}${basis}`;
 }
 
@@ -591,16 +683,17 @@ export function waitSentence(reason: HourWaitReason, expected: number | null, se
   const why: Record<HourWaitReason, string> = {
     insufficient_edge: "a rung was cheap enough to consider but its after-fee edge did not clear the floor",
     uncertainty_high: "the volatility estimate leaves the probability too wide to act on",
-    stale_index: "the settlement index is missing or too old to trust",
-    stale_spot: "exchange spot is missing or too old to trust",
+    no_settlement_index: "no CF Benchmarks settlement value was available, and nothing else is allowed to stand in for it",
+    stale_index: "the settlement value could not be dated, or was older than this model will trust",
     incomplete_ladder: "the hour's strike ladder did not fully arrive",
     no_usable_ask: "no real ask was quoted on the side the model favours",
+    liquidity_unassessable: "only one side of that rung is quoted, so the spread cannot be read and no bid will be invented to read it",
     spread_too_wide: "the quoted spread makes the entry uneconomic",
     thin_liquidity: "no resting size was reported where the venue publishes it",
     ladder_inconsistent: "neighbouring rungs contradict each other, so the ladder is not trustworthy",
     conflicting_evidence: "the evidence families disagree enough that the read is not trustworthy",
     outside_checkpoint: "this instant is not one of the hour's research checkpoints",
-    model_unavailable: "expected settlement or volatility could not be estimated from available feeds",
+    model_unavailable: "realized volatility could not be estimated from available feeds",
   };
   const where = expected != null ? ` Expected settlement ${usd(expected)}.` : "";
   return `${head}: ${why[reason]}.${where}`;
@@ -651,12 +744,28 @@ export type HourShadowRow = {
   result: "YES" | "NO" | null;
   official_value: number | null;
   ev_cents: number | null;
+  /**
+   * When settlement processing finished this hour. THIS is what "completed"
+   * means — not `result`.
+   *
+   * A WAIT row correctly carries `result = null`, because a sit has no strike to
+   * settle against. Defining completion by `result` therefore erased every WAIT
+   * hour from the record: the sits the desk is most proud of simply vanished,
+   * and the denominator silently became "hours we called" rather than "hours we
+   * saw". `graded_at` is set on every hour the grader finishes, call or sit.
+   */
+  graded_at: string | null;
 };
 
 export type HourShadowScore = {
-  /** Hours that have settled and been graded. */
+  /**
+   * Hours that have settled and been graded — calls AND sits.
+   * Invariant, asserted by a test: `windows === waits + calls`.
+   */
   windows: number;
+  /** Graded hours the model sat out. Never a loss. */
   waits: number;
+  /** Graded hours the model named a side on. */
   calls: number;
   wins: number;
   losses: number;
@@ -676,12 +785,16 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
- * Score the shadow book. Only GRADED hours count; an ungraded or empty book
- * scores zero windows, never a zero record. WAIT hours are counted as windows
- * and as sits, never as losses.
+ * Score the shadow book.
+ *
+ * COMPLETION IS `graded_at`, NOT `result`. A graded WAIT has no result and is
+ * still a completed hour: it counts in `windows` and in `waits`, and never as a
+ * loss. Wins, losses, net, drawdown and Brier are directional-only, because a
+ * sit has no price and no side to score. An ungraded or empty book scores zero
+ * windows — which is not a zero record.
  */
 export function shadowScore(rows: readonly HourShadowRow[]): HourShadowScore {
-  const graded = rows.filter((r) => r.result === "YES" || r.result === "NO");
+  const graded = rows.filter((r) => r.graded_at != null);
   const calls = graded.filter((r) => r.decision !== "WAIT" && r.ask != null && r.ev_cents != null);
   const wins = calls.filter((r) => r.ev_cents! > 0);
   const losses = calls.filter((r) => r.ev_cents! < 0);

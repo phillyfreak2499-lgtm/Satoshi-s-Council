@@ -1131,6 +1131,53 @@ export type SettleReceipt = {
  *  window's final minute — our own 1-Hz average, Kalshi's streamed
  *  accumulating average, the last print — against Kalshi's official
  *  expiration value and result. Synchronous. */
+/**
+ * The CF Benchmarks BRTI value as the lab last received it. RAW MEASUREMENT ONLY.
+ *
+ * This is the index Kalshi's Bitcoin markets settle on, arriving on Kalshi's own
+ * `cfbenchmarks_value` channel — not an exchange print and not a perpetual
+ * index. It is exposed so a separate research surface can use the real
+ * settlement input instead of a venue proxy.
+ *
+ * WHAT THIS DELIBERATELY IS NOT. It carries no fair value, no probability, no
+ * Chair state, no seat state and no learner state — only the number, where it
+ * came from, and how old it is. A caller cannot reach any decision of this desk
+ * through it, and nothing here writes anything.
+ *
+ * AGE IS MEASURED, NEVER ASSUMED. `age_s` is seconds since WE received the tick
+ * and `source_age_s` is seconds since the vendor stamped it (null when the feed
+ * carried no source time). A reader that cannot date the value must treat it as
+ * unusable rather than current, so both are returned honestly and `null` is a
+ * real answer.
+ */
+export type LabBrtiRead = {
+  value: number;
+  /** Seconds since this process received the tick. */
+  age_s: number;
+  /** Seconds since the vendor's own stamp, or null when the tick carried none. */
+  source_age_s: number | null;
+  /** How many official per-second prints have been seen this session. */
+  prints: number;
+  /** Named for exactly what it is, and stored on every research row. */
+  source: "cfbenchmarks-brti";
+};
+
+export function labBrtiNow(nowMs = Date.now()): LabBrtiRead | null {
+  const L = lab();
+  const b = L.brti;
+  if (!(b.last > 0) || !Number.isFinite(b.last) || !(b.last_t > 0)) return null;
+  const age = (nowMs - b.last_t) / 1000;
+  if (!Number.isFinite(age) || age < 0) return null;
+  const srcAge = b.last_src_t > 0 ? (nowMs - b.last_src_t) / 1000 : null;
+  return {
+    value: b.last,
+    age_s: age,
+    source_age_s: srcAge != null && Number.isFinite(srcAge) && srcAge >= 0 ? srcAge : null,
+    prints: b.n_prints,
+    source: "cfbenchmarks-brti",
+  };
+}
+
 export function labSettleReceipt(
   ticker: string,
   closeMs: number,

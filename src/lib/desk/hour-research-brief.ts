@@ -153,11 +153,13 @@ export function evidenceBoard(
       value: expected == null ? dash : usd(expected),
       detail:
         expected == null
-          ? "Neither the settlement index nor exchange spot could be read, so there is no expected settlement value."
-          : `Source: ${expectedSource}. The contract settles on the official value, not on an exchange print.${
-              f.basis == null ? "" : ` Basis ${usd(Math.abs(f.basis))} ${f.basis >= 0 ? "over" : "under"} spot.`
+          ? "No CF Benchmarks settlement value could be read and dated, so there is no expected settlement value. An exchange print and a perpetual index are different quantities and are never substituted for it."
+          : `Source: ${expectedSource}. This is the value the contract settles on, not an exchange print and not a perpetual index.${
+              f.brti_spot_basis == null
+                ? ""
+                : ` It sits ${usd(Math.abs(f.brti_spot_basis))} ${f.brti_spot_basis >= 0 ? "over" : "under"} exchange spot.`
             }`,
-      ok: expected != null && (quality.index_fresh || quality.spot_fresh),
+      ok: quality.brti_fresh,
     },
     {
       family: "Distance to strike",
@@ -195,7 +197,7 @@ export function evidenceBoard(
       family: "Market-implied distribution",
       value: `${quality.rungs} rungs`,
       detail: quality.ladder_complete
-        ? `The whole ladder arrived. ${quality.inversions} neighbouring ${
+        ? `The whole ladder arrived and every priced rung is scored and stored. ${quality.inversions} neighbouring ${
             quality.inversions === 1 ? "rung contradicts" : "rungs contradict"
           } the rest beyond tolerance; above ${HOUR_MODEL.max_inversions} the ladder is called inconsistent and the model waits.`
         : "The ladder did not fully arrive, so the market's own distribution is incomplete and nothing is scored against it.",
@@ -380,13 +382,24 @@ export type HourLiveRead = {
   checkpoint: number | null;
 };
 
-/** The raw market snapshot the hero prints, with its own freshness. */
+/**
+ * The raw market snapshot the hero prints, with its own freshness.
+ *
+ * `brti` is the CF Benchmarks settlement value and is the only one of these the
+ * model may act on. `venue_index` is a perpetual-futures index kept as context;
+ * it is deliberately carried WITHOUT settlement authority so the page can show
+ * it while never calling it the settlement index.
+ */
 export type HourSnapshotView = {
-  index: number | null;
-  index_age_s: number | null;
+  brti: number | null;
+  brti_age_s: number | null;
+  brti_source: string;
+  /** Venue/perp reference. Context only — never the settlement value. */
+  venue_index: number | null;
   spot: number | null;
   spot_age_s: number | null;
-  basis: number | null;
+  /** BRTI minus exchange spot, in dollars. */
+  brti_spot_basis: number | null;
   sigma_hour: number | null;
 };
 
@@ -456,11 +469,13 @@ export function buildHourResearchBrief(input: {
       : null,
     snapshot: input.features
       ? {
-          index: input.features.index,
-          index_age_s: input.features.index_age_s,
+          brti: input.features.brti,
+          brti_age_s: input.features.brti_age_s,
+          brti_source: input.features.brti_source,
+          venue_index: input.features.venue_index,
           spot: input.features.spot,
           spot_age_s: input.features.spot_age_s,
-          basis: input.features.basis,
+          brti_spot_basis: input.features.brti_spot_basis,
           sigma_hour: input.features.sigma_hour,
         }
       : null,
@@ -483,7 +498,9 @@ export function buildHourResearchBrief(input: {
     calibration: calibrationBuckets(input.graded ?? []),
     by_checkpoint: checkpointScores(input.graded ?? []),
     recent: shadow
-      .filter((r) => r.result === "YES" || r.result === "NO")
+      // Completed hours, calls and sits alike. A graded WAIT belongs on the
+      // tape; filtering on `result` would erase every sit from the record.
+      .filter((r) => r.graded_at != null)
       .slice(0, 12)
       .map((r) => ({
         close_time: r.close_time,

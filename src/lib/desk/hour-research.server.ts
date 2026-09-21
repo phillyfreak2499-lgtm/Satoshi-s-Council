@@ -31,19 +31,28 @@ import {
   type HourRead,
   type HourRung,
 } from "./hour-research.ts";
+import { HOUR_SHADOW_UPSERT, hourPredictionsInsert } from "./hour-research-sql.ts";
 import { parseHourTicker, quoteCents, type HourMarketRow } from "./hour.ts";
 import { eventLadder } from "./hour-closer.server";
 import { hourEventTicker, isSettled, officialValue } from "./hour-closer";
 
 const HOUR_MS = 60 * 60 * 1000;
-/** The observer wakes often enough that no 75s checkpoint band is missed. */
+/**
+ * The observer's cadence. It must be shorter than HOUR_CHECKPOINT_GRACE_S so a
+ * running process always gets at least one tick inside a checkpoint's capture
+ * window; a rail asserts that relationship holds.
+ */
 const TICK_MS = 20_000;
 const FIRST_DELAY_MS = 25_000;
 /** How far back the grader looks for hours that have settled. */
 const GRADE_LOOKBACK_MS = 6 * HOUR_MS;
 const GRADE_EVERY_MS = 10 * 60_000;
-/** Rungs stored per checkpoint, centred on expected settlement: the usable band. */
-const STORE_RUNGS = 41;
+/**
+ * A safety bound on rows per checkpoint, not a modelling choice. Every priced
+ * rung is stored; this only stops a pathological ladder from writing unbounded
+ * rows, and a truncation is recorded on the shadow row rather than hidden.
+ */
+const STORE_RUNGS_MAX = 250;
 
 type Observer = {
   timer: ReturnType<typeof setInterval> | null;
@@ -135,21 +144,30 @@ function retOverBars(candles: readonly RawCandle[] | undefined, bars: number): n
  * Freeze the hourly feature snapshot from RAW market data only. Nothing here
  * reads a Chair lean, a seat vote, a learner weight or a 15-minute grade.
  */
-export function featuresFromRaw(snap: RawSnap | null): HourFeatures {
+export function featuresFromRaw(snap: RawSnap | null, brti: BrtiRead | null = null): HourFeatures {
   const spot = numOrNull(snap?.spot);
-  const index = numOrNull(snap?.index_px);
-  const basisBps = numOrNull(snap?.basis_bps);
-  // basis_bps is the index-vs-spot difference in basis points of spot.
-  const basis = basisBps != null && spot != null ? (basisBps / 10_000) * spot : index != null && spot != null ? index - spot : null;
+  const venueIndex = numOrNull(snap?.index_px);
+  const brtiValue = brti && Number.isFinite(brti.value) && brti.value > 0 ? brti.value : null;
   return {
-    index: index != null && index > 0 ? index : null,
-    // The shared frame carries no separate index clock; spot's age is the
-    // freshest honest bound on it, and null when even that is unknown.
-    index_age_s: index != null && index > 0 ? numOrNull(snap?.spot_age_s) : null,
+    // THE SETTLEMENT INPUT, FROM THE SETTLEMENT FEED. The age is the one WE
+    // measured; when there is no value there is no age either, so a missing
+    // reading can never look current.
+    brti: brtiValue,
+    brti_age_s: brtiValue != null ? numOrNull(brti?.age_s) : null,
+    brti_source: brtiValue != null ? (brti?.source ?? "") : "",
+
+    // VENUE CONTEXT, NEVER SETTLEMENT. `snap.index_px` is an OKX/Binance
+    // PERPETUAL index and `snap.basis_bps` is perp-vs-spot basis. They are
+    // stored because they are useful, and they are structurally unable to become
+    // the expected settlement value: `expectedSettlement` reads only `brti`.
+    venue_index: venueIndex != null && venueIndex > 0 ? venueIndex : null,
+    venue_index_age_s: venueIndex != null && venueIndex > 0 ? numOrNull(snap?.spot_age_s) : null,
+    venue_basis_bps: numOrNull(snap?.basis_bps),
+
     spot,
     spot_age_s: numOrNull(snap?.spot_age_s),
-    basis,
-    basis_spread: null,
+    brti_spot_basis: brtiValue != null && spot != null ? brtiValue - spot : null,
+
     sigma_hour: sigmaHourFromCandles(snap?.candles_1m),
     vol_source: "realized-1m-log",
     ret5: numOrNull(snap?.ret5),
@@ -161,6 +179,33 @@ export function featuresFromRaw(snap: RawSnap | null): HourFeatures {
     range_pos: numOrNull(snap?.range_pos),
   };
 }
+
+/** The shape this module needs from the lab's BRTI read. Structural on purpose. */
+export type BrtiRead = { value: number; age_s: number; source: string };
+
+/**
+ * The CF Benchmarks settlement value, from the lab's websocket state.
+ *
+ * Dynamic on purpose, exactly as the frame read is: nothing here statically
+ * imports the lab, and the only thing taken from it is raw measurement — a
+ * number, its age and its source. No fair value, no probability, no Chair, no
+ * seat, no learner. When the lab is dark this is null and the model WAITs rather
+ * than substituting an exchange print or a perpetual index for the thing the
+ * contract actually settles on.
+ */
+export async function brtiSnapshot(): Promise<BrtiRead | null> {
+  try {
+    const { labBrtiNow } = await import("./lab.server");
+    const b = labBrtiNow();
+    if (!b) return null;
+    return { value: b.value, age_s: b.age_s, source: b.source };
+  } catch {
+    return null;
+  }
+}
+
+/** The same settlement read, for the public brief. One feed, one model. */
+export const brtiForBrief = brtiSnapshot;
 
 /**
  * RAW market fields from the shared frame. Deliberately narrow: this picks
@@ -202,13 +247,64 @@ async function rawSnapshot(): Promise<RawSnap | null> {
 // Recording one checkpoint
 // ---------------------------------------------------------------------------
 
-/** The band of rungs stored for calibration: those nearest expected settlement. */
-export function storedBand(rungs: readonly HourRung[], expected: number | null, limit = STORE_RUNGS): HourRung[] {
-  if (expected == null || rungs.length <= limit) return [...rungs];
-  const sorted = [...rungs].sort((a, b) => Math.abs(a.strike - expected) - Math.abs(b.strike - expected));
-  return sorted.slice(0, limit).sort((a, b) => a.strike - b.strike);
+/**
+ * A rung worth storing: one the feed actually priced on at least one side.
+ *
+ * EVERY PRICED RUNG IS STORED, which is what the calibration surface was always
+ * supposed to be. An earlier version kept only the 41 rungs nearest expected
+ * settlement while the PR claimed it kept them all — so the tails, which are
+ * exactly where a probability model is most likely to be badly calibrated, were
+ * silently missing from the record.
+ *
+ * A rung with NO quote on either side is dropped rather than stored, because it
+ * carries no market information to calibrate against; `ladder_rungs` versus
+ * `stored_rungs` on the shadow row makes that difference visible on every hour.
+ * `STORE_RUNGS_MAX` is a safety bound against a pathological feed, not a
+ * modelling choice, and a truncation is recorded rather than hidden.
+ */
+export function pricedRungs(rungs: readonly HourRung[]): HourRung[] {
+  return rungs.filter((r) => r.yes_bid != null || r.yes_ask != null || r.no_bid != null || r.no_ask != null);
 }
 
+/** Rungs actually written for one checkpoint, nearest expected settlement first when truncation is forced. */
+export function rungsToStore(
+  rungs: readonly HourRung[],
+  expected: number | null,
+  selected: string | null,
+  limit = STORE_RUNGS_MAX,
+): HourRung[] {
+  const priced = pricedRungs(rungs);
+  if (priced.length <= limit) return priced;
+  // Only reachable on a pathological ladder. Keep the band around expected
+  // settlement plus the model's own choice, and say so on the row.
+  const anchor = expected ?? priced[Math.floor(priced.length / 2)]!.strike;
+  const near = [...priced].sort((a, b) => Math.abs(a.strike - anchor) - Math.abs(b.strike - anchor)).slice(0, limit);
+  if (selected && !near.some((r) => r.ticker === selected)) {
+    const pick = priced.find((r) => r.ticker === selected);
+    if (pick) near[near.length - 1] = pick;
+  }
+  return near.sort((a, b) => a.strike - b.strike);
+}
+
+/**
+ * Freeze one checkpoint.
+ *
+ * TWO WRITES, BOTH IDEMPOTENT AND BOTH FORWARD-ONLY.
+ *
+ * The per-rung table takes every priced rung in ONE statement — the old version
+ * issued a round trip per rung, which is why it could only afford a 41-rung
+ * band. `on conflict do nothing` means a repeated tick inside the same capture
+ * window writes nothing, so a restart cannot double-count.
+ *
+ * The shadow row is ONE ROW PER HOUR and is replaced WHOLE or not at all. The
+ * old WAIT upsert moved `checkpoint`, `as_of`, `secs_left` and `explanation`
+ * forward while leaving `expected_settlement`, the index and spot fields, sigma,
+ * the ladder counts and the features JSON from the PREVIOUS checkpoint — so a
+ * row could claim the 10-minute clock over the 30-minute snapshot. Every frozen
+ * field now moves together, guarded by `excluded.checkpoint < ...checkpoint`:
+ * checkpoints count DOWN, so that admits only a strictly later instant and makes
+ * a duplicate or out-of-order tick a no-op.
+ */
 async function recordCheckpoint(
   eventTicker: string,
   closeMs: number,
@@ -223,88 +319,67 @@ async function recordCheckpoint(
   const sha = buildSha();
   const closeIso = new Date(closeMs).toISOString();
   const asOfIso = new Date(asOfMs).toISOString();
-  const byTicker = new Map(rungs.map((r) => [r.ticker, r]));
-  const band = new Set(storedBand(rungs, read.expected_settlement).map((r) => r.ticker));
   const selected = read.candidate?.ticker ?? null;
 
-  for (const r of read.rungs) {
-    if (!band.has(r.ticker) && r.ticker !== selected) continue;
-    const rung = byTicker.get(r.ticker);
-    await db`
-      insert into desk_hour_predictions (
-        event_ticker, close_time, checkpoint, ticker, strike, as_of, secs_left,
-        p_model, uncertainty, z, dollars_to_strike, p_market, p_baseline_dist,
-        yes_ask, no_ask, spread_yes, spread_no, edge_yes, edge_no, best_side, best_edge,
-        is_selected, model_version, build_sha
-      ) values (
-        ${eventTicker}, ${closeIso}::timestamptz, ${checkpoint}, ${r.ticker}, ${r.strike}, ${asOfIso}::timestamptz, ${secsLeft},
-        ${r.p_yes}, ${r.uncertainty}, ${r.z}, ${r.dollars_to_strike}, ${r.market_p_yes},
-        ${rung ? distanceBaselineP(features.spot, r.strike, secsLeft) : null},
-        ${r.yes_ask}, ${r.no_ask}, ${r.spread_yes}, ${r.spread_no}, ${r.edge_yes}, ${r.edge_no},
-        ${r.best_side}, ${r.best_edge}, ${r.ticker === selected}, ${HOUR_RESEARCH_VERSION}, ${sha}
-      )
-      on conflict (close_time, checkpoint, ticker) do nothing
-    `;
+  const store = rungsToStore(rungs, read.expected_settlement, selected);
+  const keep = new Set(store.map((r) => r.ticker));
+  const scored = read.rungs.filter((r) => keep.has(r.ticker));
+
+  if (scored.length) {
+    const params: unknown[] = [];
+    for (const r of scored) {
+      params.push(
+        eventTicker, closeIso, checkpoint, r.ticker, r.strike, asOfIso, secsLeft,
+        r.p_yes, r.uncertainty, r.z, r.dollars_to_strike, r.market_p_yes,
+        distanceBaselineP(features.spot, r.strike, secsLeft),
+        r.yes_ask, r.no_ask, r.spread_yes, r.spread_no, r.edge_yes, r.edge_no,
+        r.best_side, r.best_edge, r.ticker === selected, HOUR_RESEARCH_VERSION, sha,
+      );
+    }
+    await db.query(hourPredictionsInsert(scored.length), params);
   }
 
-  // The shadow book: one row per hour. The FIRST checkpoint that yields a
-  // candidate locks the hour; a WAIT row is kept until (and only until) one
-  // does. A row that already carries a call is never rewritten.
   const c = read.candidate;
-  const featureJson = JSON.stringify({ ...features, quality: read.quality, expected_source: read.expected_source });
-  if (c) {
-    await db`
-      insert into desk_hour_shadow (
-        close_time, event_ticker, checkpoint, decision, wait_reason,
-        ticker, strike, side, ask, fee, p_model, p_market, edge_cents, uncertainty,
-        as_of, secs_left, expected_settlement, expected_source, sigma_horizon,
-        index_value, spot, basis, sigma_hour, ladder_rungs, ladder_complete, ladder_inversions,
-        features, explanation, model_version, authority, build_sha
-      ) values (
-        ${closeIso}::timestamptz, ${eventTicker}, ${checkpoint}, ${c.side}, null,
-        ${c.ticker}, ${c.strike}, ${c.side}, ${c.ask}, ${c.fee}, ${c.p_model}, ${c.market_p_yes}, ${c.edge_cents}, ${c.uncertainty},
-        ${asOfIso}::timestamptz, ${secsLeft}, ${read.expected_settlement}, ${read.expected_source}, ${read.sigma_horizon},
-        ${features.index}, ${features.spot}, ${features.basis}, ${features.sigma_hour},
-        ${read.quality.rungs}, ${read.quality.ladder_complete}, ${read.quality.inversions},
-        ${featureJson}::jsonb, ${read.explanation}, ${HOUR_RESEARCH_VERSION}, ${HOUR_RESEARCH_AUTHORITY}, ${sha}
-      )
-      on conflict (close_time) do update set
-        checkpoint = excluded.checkpoint, decision = excluded.decision, wait_reason = null,
-        ticker = excluded.ticker, strike = excluded.strike, side = excluded.side, ask = excluded.ask,
-        fee = excluded.fee, p_model = excluded.p_model, p_market = excluded.p_market,
-        edge_cents = excluded.edge_cents, uncertainty = excluded.uncertainty,
-        as_of = excluded.as_of, secs_left = excluded.secs_left,
-        expected_settlement = excluded.expected_settlement, expected_source = excluded.expected_source,
-        sigma_horizon = excluded.sigma_horizon, index_value = excluded.index_value, spot = excluded.spot,
-        basis = excluded.basis, sigma_hour = excluded.sigma_hour, ladder_rungs = excluded.ladder_rungs,
-        ladder_complete = excluded.ladder_complete, ladder_inversions = excluded.ladder_inversions,
-        features = excluded.features, explanation = excluded.explanation, build_sha = excluded.build_sha
-      where desk_hour_shadow.decision = 'WAIT' and desk_hour_shadow.graded_at is null
-    `;
-    state().shadowRows += 1;
-  } else {
-    await db`
-      insert into desk_hour_shadow (
-        close_time, event_ticker, checkpoint, decision, wait_reason,
-        as_of, secs_left, expected_settlement, expected_source, sigma_horizon,
-        index_value, spot, basis, sigma_hour, ladder_rungs, ladder_complete, ladder_inversions,
-        features, explanation, model_version, authority, build_sha
-      ) values (
-        ${closeIso}::timestamptz, ${eventTicker}, ${checkpoint}, 'WAIT', ${read.wait_reason},
-        ${asOfIso}::timestamptz, ${secsLeft}, ${read.expected_settlement}, ${read.expected_source}, ${read.sigma_horizon},
-        ${features.index}, ${features.spot}, ${features.basis}, ${features.sigma_hour},
-        ${read.quality.rungs}, ${read.quality.ladder_complete}, ${read.quality.inversions},
-        ${featureJson}::jsonb, ${read.explanation}, ${HOUR_RESEARCH_VERSION}, ${HOUR_RESEARCH_AUTHORITY}, ${sha}
-      )
-      on conflict (close_time) do update set
-        checkpoint = excluded.checkpoint, wait_reason = excluded.wait_reason,
-        as_of = excluded.as_of, secs_left = excluded.secs_left, explanation = excluded.explanation
-      where desk_hour_shadow.decision = 'WAIT' and desk_hour_shadow.graded_at is null
-    `;
-  }
+  const featureJson = JSON.stringify({
+    ...features,
+    quality: read.quality,
+    expected_source: read.expected_source,
+    stored_rungs: scored.length,
+    priced_rungs: pricedRungs(rungs).length,
+    ladder_rungs: rungs.length,
+  });
+
+  // Every frozen field of the shadow row, written together. The two branches
+  // differ only in the candidate columns; the snapshot half is identical, so a
+  // WAIT and a call can never disagree about what the desk could see.
+  const values = [
+    closeIso, eventTicker, checkpoint,
+    c ? c.side : "WAIT", c ? null : read.wait_reason,
+    c?.ticker ?? null, c?.strike ?? null, c?.side ?? null, c?.ask ?? null, c?.fee ?? null,
+    c?.p_model ?? null, c?.market_p_yes ?? null, c?.edge_cents ?? null, c?.uncertainty ?? null,
+    asOfIso, secsLeft, read.expected_settlement, read.expected_source, read.sigma_horizon,
+    features.brti, features.spot, features.brti_spot_basis, features.sigma_hour,
+    read.quality.rungs, read.quality.ladder_complete, read.quality.inversions, scored.length,
+    featureJson, read.explanation, HOUR_RESEARCH_VERSION, HOUR_RESEARCH_AUTHORITY, sha,
+  ];
+  await db.query(HOUR_SHADOW_UPSERT, values);
+  if (c) state().shadowRows += 1;
 }
 
-/** One observer pass: record a checkpoint for the hour now in progress, if due. */
+/**
+ * One observer pass: record a checkpoint for the hour now in progress, if due.
+ *
+ * CAPTURE IS AT OR AFTER THE TARGET, NEVER BEFORE. `checkpointFor` admits only
+ * `target ≥ secsLeft ≥ target − grace`, so a 30-minute checkpoint always means
+ * "thirty minutes left, or a few seconds less" — the same thing every hour,
+ * whatever the process happened to be doing.
+ *
+ * A RESTART CHANGES NOTHING ABOUT THE RULE. The in-process `seen` set is only a
+ * fetch-saving optimisation; after a restart it is empty and the DB's own
+ * conflict clauses decide. A checkpoint whose window has closed is simply
+ * missing — never backfilled, because anything reconstructed later would carry
+ * information the model did not have at the target instant.
+ */
 export async function hourResearchOnce(now = Date.now()): Promise<HourRead | null> {
   const st = state();
   if (st.busy) return null;
@@ -319,9 +394,9 @@ export async function hourResearchOnce(now = Date.now()): Promise<HourRead | nul
     if (st.seen.has(key)) return null;
 
     const eventTicker = hourEventTicker(closeMs);
-    const [ladder, snap] = await Promise.all([eventLadder(eventTicker), rawSnapshot()]);
+    const [ladder, snap, brti] = await Promise.all([eventLadder(eventTicker), rawSnapshot(), brtiSnapshot()]);
     const rungs = ladderRungs(ladder.markets as readonly HourMarketRow[], closeMs, parseHourTicker, quoteCents);
-    const features = featuresFromRaw(snap);
+    const features = featuresFromRaw(snap, brti);
     const read = hourRead({
       clock: { event_ticker: eventTicker, close_ms: closeMs, as_of_ms: now, secs_left: secsLeft },
       rungs,

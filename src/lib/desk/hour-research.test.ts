@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   HOUR_CHECKPOINTS,
-  HOUR_CHECKPOINT_BAND_S,
+  HOUR_CHECKPOINT_GRACE_S,
+  checkpointMissed,
+  isFresh,
   HOUR_MODEL,
   HOUR_RESEARCH_AUTHORITY,
   HOUR_WAIT_REASONS,
@@ -65,12 +67,15 @@ const rung = (strike: number, over: Partial<HourRung> = {}): HourRung => ({
 });
 
 const FEATURES: HourFeatures = {
-  index: 100_000,
-  index_age_s: 5,
+  brti: 100_000,
+  brti_age_s: 5,
+  brti_source: "cfbenchmarks-brti",
+  venue_index: 99_995,
+  venue_index_age_s: 3,
+  venue_basis_bps: 5,
   spot: 99_990,
   spot_age_s: 3,
-  basis: 10,
-  basis_spread: null,
+  brti_spot_basis: 10,
   sigma_hour: 0.004,
   vol_source: "realized-1m-log",
   ret5: 0.001,
@@ -99,24 +104,65 @@ const clock = (secsLeft: number) => ({
 
 // ---------------------------------------------------------------------------
 
-test("checkpoints are deterministic instants, never ambiguous between two", () => {
+test("a checkpoint is captured AT or AFTER its target, never before", () => {
   for (const cp of HOUR_CHECKPOINTS) {
-    assert.equal(checkpointFor(cp * 60), cp);
-    assert.equal(checkpointFor(cp * 60 + HOUR_CHECKPOINT_BAND_S - 1), cp);
-    assert.equal(checkpointFor(cp * 60 - HOUR_CHECKPOINT_BAND_S + 1), cp);
+    const target = cp * 60;
+    assert.equal(checkpointFor(target), cp, "the target instant itself claims it");
+    assert.equal(checkpointFor(target - 1), cp, "one second after the target");
+    assert.equal(checkpointFor(target - HOUR_CHECKPOINT_GRACE_S), cp, "the last instant of the grace window");
+    assert.equal(checkpointFor(target + 1), null, "one second EARLY claims nothing");
+    assert.equal(checkpointFor(target + 30), null, "and neither does half a minute early");
+    assert.equal(checkpointFor(target - HOUR_CHECKPOINT_GRACE_S - 1), null, "past the grace it is missed, not captured");
   }
-  // The band is narrower than half the smallest gap, so nothing sits in two.
-  assert.ok(HOUR_CHECKPOINT_BAND_S * 2 < 5 * 60);
+  assert.ok(HOUR_CHECKPOINT_GRACE_S < 5 * 60, "narrower than the gap between checkpoints");
   assert.equal(checkpointFor(40 * 60), null, "between checkpoints is null, not a nearest guess");
   assert.equal(checkpointFor(Number.NaN), null);
   assert.equal(checkpointFor(-1), null);
-  // A whole hour, second by second, claims each checkpoint at most once per band.
+  // A whole hour, second by second: every checkpoint has a window, every window
+  // is the same length, and no second belongs to two of them.
   const claimed = new Map<number, number>();
   for (let s = 0; s <= 3600; s++) {
     const cp = checkpointFor(s);
     if (cp != null) claimed.set(cp, (claimed.get(cp) ?? 0) + 1);
   }
   assert.deepEqual([...claimed.keys()].sort((a, b) => b - a), [...HOUR_CHECKPOINTS]);
+  for (const [, n] of claimed) assert.equal(n, HOUR_CHECKPOINT_GRACE_S + 1, "every window is the same length");
+});
+
+test("a checkpoint whose window has closed is missed, never backfilled", () => {
+  const target = 30 * 60;
+  assert.equal(checkpointMissed(30, target + 5), false, "not yet reached");
+  assert.equal(checkpointMissed(30, target), false, "at the target");
+  assert.equal(checkpointMissed(30, target - HOUR_CHECKPOINT_GRACE_S), false, "still inside the grace");
+  assert.equal(checkpointMissed(30, target - HOUR_CHECKPOINT_GRACE_S - 1), true, "past it");
+  // And the claiming function agrees: a missed checkpoint can never be claimed.
+  assert.equal(checkpointFor(target - HOUR_CHECKPOINT_GRACE_S - 1), null);
+});
+
+test("the observer's cadence guarantees a tick inside every capture window", () => {
+  // A process ticking every 20s, started at an arbitrary phase, must still land
+  // inside each checkpoint's window — otherwise checkpoints would be lost to
+  // nothing but timing, which is the failure this rule exists to remove.
+  const TICK_S = 20;
+  for (let phase = 0; phase < TICK_S; phase++) {
+    const hit = new Set<number>();
+    for (let s = 3600 - phase; s >= 0; s -= TICK_S) {
+      const cp = checkpointFor(s);
+      if (cp != null) hit.add(cp);
+    }
+    assert.equal(hit.size, HOUR_CHECKPOINTS.length, `phase ${phase} must capture every checkpoint`);
+  }
+  assert.ok(TICK_S < HOUR_CHECKPOINT_GRACE_S, "the grace must exceed the tick interval");
+});
+
+test("a restart inside the grace still captures; a restart after it does not", () => {
+  const target = 15 * 60;
+  // A process that comes back 10 seconds after the target is still in time.
+  assert.equal(checkpointFor(target - 10), 15);
+  // One that comes back a minute after the target is not, and nothing
+  // reconstructs what the model "would have known" at the target.
+  assert.equal(checkpointFor(target - 60), null);
+  assert.equal(checkpointMissed(15, target - 60), true);
 });
 
 test("the fee is the repository's existing paper convention, cent for cent", () => {
@@ -180,8 +226,8 @@ test("the implied curve respects strike ordering, and a crossed ladder is refuse
 test("missing or stale data becomes a structured WAIT, never a fabricated number", () => {
   const rungs = healthyLadder();
   const cases: Array<[Partial<HourFeatures>, string]> = [
-    [{ index: null, spot: null }, "stale_spot"],
-    [{ index: null, index_age_s: null, spot: 99_990, spot_age_s: 9_999 }, "stale_spot"],
+    [{ brti: null, brti_age_s: null }, "no_settlement_index"],
+    [{ brti_age_s: 9_999 }, "stale_index"],
     [{ sigma_hour: null }, "model_unavailable"],
   ];
   for (const [over, reason] of cases) {
@@ -199,7 +245,7 @@ test("missing or stale data becomes a structured WAIT, never a fabricated number
   const blind = hourRead({
     clock: clock(1800),
     rungs,
-    features: { ...FEATURES, index: null, spot: null, basis: null },
+    features: { ...FEATURES, brti: null, brti_age_s: null },
     ladderComplete: true,
   });
   assert.equal(blind.expected_settlement, null);
@@ -255,6 +301,7 @@ test("scoring the whole ladder never turns one hour into dozens of independent f
       result: "YES",
       official_value: 99_500,
       ev_cents: 100 - 40 - takerFee(40),
+      graded_at: "2026-09-18T19:01:00.000Z",
     },
     {
       close_time: "2026-09-18T20:00:00.000Z",
@@ -273,6 +320,7 @@ test("scoring the whole ladder never turns one hour into dozens of independent f
       result: "NO",
       official_value: 98_000,
       ev_cents: null,
+      graded_at: "2026-09-18T20:01:00.000Z",
     },
   ];
   const s = shadowScore(rows);
@@ -284,7 +332,7 @@ test("scoring the whole ladder never turns one hour into dozens of independent f
   assert.ok(s.brier_model != null && s.brier_market != null);
   assert.ok(s.brier_model! < s.brier_market!, "Brier is scored on the side actually taken");
   // An ungraded book scores zero windows, not a zero record.
-  const ungraded = shadowScore(rows.map((r) => ({ ...r, result: null })));
+  const ungraded = shadowScore(rows.map((r) => ({ ...r, result: null, graded_at: null })));
   assert.equal(ungraded.windows, 0);
   assert.equal(ungraded.win_rate, null);
   assert.equal(shadowScore([]).windows, 0);
@@ -309,11 +357,23 @@ test("a frozen snapshot can only ever produce the same read — no clock, no fee
   assert.equal(a.authority, "none");
 });
 
-test("expected settlement prefers the official index, and says which source it used", () => {
-  assert.deepEqual(expectedSettlement(FEATURES), { value: 100_000, source: "index" });
-  assert.deepEqual(expectedSettlement({ ...FEATURES, index_age_s: 9_999 }), { value: 100_000, source: "spot+basis" });
-  assert.deepEqual(expectedSettlement({ ...FEATURES, index: null, basis: null }), { value: 99_990, source: "spot" });
-  assert.deepEqual(expectedSettlement({ ...FEATURES, index: null, spot: null }), { value: null, source: "none" });
+test("the settlement value is the CF Benchmarks value or nothing — a venue index can never stand in", () => {
+  assert.deepEqual(expectedSettlement(FEATURES), { value: 100_000, source: "cfbenchmarks-brti" });
+
+  // The venue/perp index and exchange spot are BOTH present and fresh here, and
+  // neither may be promoted: this is the regression that stops a perpetual index
+  // silently becoming "the settlement index" again.
+  const noBrti: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source: "", venue_index: 100_500, venue_index_age_s: 1, spot: 99_990, spot_age_s: 1 };
+  assert.deepEqual(expectedSettlement(noBrti), { value: null, source: "none" });
+  const read = hourRead({ clock: clock(1800), rungs: healthyLadder(), features: noBrti, ladderComplete: true });
+  assert.equal(read.decision, "WAIT");
+  assert.equal(read.wait_reason, "no_settlement_index");
+  assert.equal(read.expected_settlement, null, "no expected settlement is built from a proxy");
+  assert.notEqual(read.expected_settlement, noBrti.venue_index);
+  assert.notEqual(read.expected_settlement, noBrti.spot);
+
+  // A stale settlement value is not a usable one either.
+  assert.deepEqual(expectedSettlement({ ...FEATURES, brti_age_s: 9_999 }), { value: null, source: "none" });
   assert.equal(horizonSigma(0.004, 3600), 0.004);
   assert.equal(horizonSigma(null, 3600), null);
   assert.equal(horizonSigma(0.004, 0), null);
@@ -368,7 +428,7 @@ test("the evidence board reports six families and says which could not be read",
   const cards = evidenceBoard(FEATURES, read.quality, read.expected_settlement, read.expected_source, read.sigma_horizon, 900, 100_000);
   assert.equal(cards.length, 6);
   assert.ok(cards.every((c) => c.ok), "a healthy snapshot reads as usable");
-  const blind: HourFeatures = { ...FEATURES, index: null, spot: null, basis: null, sigma_hour: null, ret5: null, ret15: null, ret30: null, ret60: null, ret4h: null, ret24h: null };
+  const blind: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source: "", venue_index: null, venue_index_age_s: null, venue_basis_bps: null, spot: null, spot_age_s: null, brti_spot_basis: null, sigma_hour: null, ret5: null, ret15: null, ret30: null, ret60: null, ret4h: null, ret24h: null };
   const blindRead = hourRead({ clock: clock(900), rungs: healthyLadder(), features: blind, ladderComplete: true });
   const blindCards = evidenceBoard(blind, blindRead.quality, null, "none", null, 900, null);
   assert.ok(blindCards.filter((c) => !c.ok).length >= 4, "missing feeds are reported as unusable");
@@ -439,4 +499,168 @@ test("the brief prints authority none, keeps the live rule false, and marks unre
   assert.deepEqual(dark.evidence, []);
   assert.equal(dark.hour, null);
   assert.equal(dark.snapshot, null);
+});
+
+// ---------------------------------------------------------------------------
+// Freshness: unknown is never fresh
+// ---------------------------------------------------------------------------
+
+test("an age that is missing, not a number, or negative is never fresh", () => {
+  assert.equal(isFresh(100_000, 5, 120), true);
+  assert.equal(isFresh(100_000, 0, 120), true, "a brand new reading is fresh");
+  assert.equal(isFresh(100_000, 120, 120), true, "the limit itself is inside");
+  assert.equal(isFresh(100_000, 121, 120), false);
+  assert.equal(isFresh(100_000, null, 120), false, "unknown age is not fresh");
+  assert.equal(isFresh(100_000, undefined, 120), false);
+  assert.equal(isFresh(100_000, Number.NaN, 120), false);
+  assert.equal(isFresh(100_000, Number.POSITIVE_INFINITY, 120), false);
+  assert.equal(isFresh(100_000, -1, 120), false, "a negative age is a broken clock, not a fresh one");
+  assert.equal(isFresh(null, 5, 120), false, "no value, no freshness");
+  assert.equal(isFresh(0, 5, 120), false);
+  assert.equal(isFresh(Number.NaN, 5, 120), false);
+});
+
+test("every unusable settlement clock produces a WAIT rather than a candidate", () => {
+  // The ladder below is mispriced enough that a healthy frame WOULD produce a
+  // candidate, so each of these WAITs is caused by the clock and nothing else.
+  const rungs = [99_000, 99_200, 99_400].map((k) => rung(k, { yes_bid: 8, yes_ask: 10, no_bid: 88, no_ask: 90 }));
+  const sane = hourRead({ clock: clock(600), rungs, features: FEATURES, ladderComplete: true });
+  assert.notEqual(sane.decision, "WAIT", "the control frame does call");
+
+  const cases: Array<[string, Partial<HourFeatures>, string]> = [
+    ["settlement value present, age null", { brti_age_s: null }, "stale_index"],
+    ["settlement value present, age NaN", { brti_age_s: Number.NaN }, "stale_index"],
+    ["settlement value present, age negative", { brti_age_s: -5 }, "stale_index"],
+    ["settlement value present, age stale", { brti_age_s: 600 }, "stale_index"],
+    ["no settlement value at all", { brti: null, brti_age_s: null }, "no_settlement_index"],
+    ["spot present, age null", { spot: 99_990, spot_age_s: null, brti: null, brti_age_s: null }, "no_settlement_index"],
+    ["spot present, age stale", { spot: 99_990, spot_age_s: 9_999, brti: null, brti_age_s: null }, "no_settlement_index"],
+  ];
+  for (const [name, over, reason] of cases) {
+    const read = hourRead({ clock: clock(600), rungs, features: { ...FEATURES, ...over }, ladderComplete: true });
+    assert.equal(read.decision, "WAIT", `${name} must WAIT`);
+    assert.equal(read.wait_reason, reason, name);
+    assert.equal(read.candidate, null, `${name} carries no candidate`);
+    assert.equal(read.expected_settlement, null, `${name} invents no settlement value`);
+  }
+
+  // A spot whose own clock is broken never gates the model either way: spot is
+  // context, and the settlement value is the only input that decides.
+  const spotBroken = hourRead({
+    clock: clock(600),
+    rungs,
+    features: { ...FEATURES, spot: 99_990, spot_age_s: Number.NaN },
+    ladderComplete: true,
+  });
+  assert.notEqual(spotBroken.decision, "WAIT", "a broken spot clock does not block a fresh settlement value");
+  assert.equal(spotBroken.quality.spot_fresh, false, "but it is still reported as unfresh");
+  assert.equal(spotBroken.quality.brti_fresh, true);
+});
+
+// ---------------------------------------------------------------------------
+// Liquidity: an unknown spread is not a narrow one
+// ---------------------------------------------------------------------------
+
+test("a candidate needs a two-sided market; an unknown spread never passes", () => {
+  const mispriced = { yes_bid: 8, yes_ask: 10, no_bid: 88, no_ask: 90 };
+  const at = (over: Partial<HourRung>) =>
+    hourRead({
+      clock: clock(600),
+      rungs: [99_000, 99_200].map((k) => rung(k, { ...mispriced, ...over })),
+      features: FEATURES,
+      ladderComplete: true,
+    });
+
+  const healthy = at({});
+  assert.notEqual(healthy.decision, "WAIT", "a healthy two-sided spread qualifies");
+  assert.equal(healthy.candidate!.side, "YES");
+
+  // Ask present, bid missing: the spread cannot be read, and no bid is invented.
+  const noBid = at({ yes_bid: null });
+  assert.equal(noBid.decision, "WAIT");
+  assert.equal(noBid.wait_reason, "liquidity_unassessable");
+  assert.equal(noBid.rungs[0]!.yes_ask, 10, "the ask is still recorded");
+  assert.equal(noBid.rungs[0]!.spread_yes, null, "and the spread is null, not zero");
+
+  // Bid present, ask missing: there is nothing to buy at all.
+  const noAsk = at({ yes_ask: null, no_ask: null });
+  assert.equal(noAsk.decision, "WAIT");
+  assert.equal(noAsk.wait_reason, "no_usable_ask");
+
+  // A non-finite quote cannot produce a finite spread.
+  const nan = at({ yes_bid: Number.NaN });
+  assert.equal(nan.rungs[0]!.spread_yes, null, "NaN in, null out — never a number");
+  assert.equal(nan.decision, "WAIT");
+  assert.equal(nan.wait_reason, "liquidity_unassessable");
+
+  // A real but uneconomic spread is a different, more specific answer.
+  const wide = at({ yes_bid: 1 });
+  assert.equal(wide.rungs[0]!.spread_yes, 9);
+  assert.equal(wide.decision, "WAIT");
+  assert.equal(wide.wait_reason, "spread_too_wide");
+  assert.ok(HOUR_MODEL.max_spread_cents < 9);
+});
+
+// ---------------------------------------------------------------------------
+// The record: a sit is a completed hour, never a loss
+// ---------------------------------------------------------------------------
+
+test("graded WAITs count as completed hours, and windows always equals waits plus calls", () => {
+  const base = {
+    wait_reason: null as string | null,
+    p_market: 0.4,
+    explanation: "",
+    official_value: 99_500,
+  };
+  const win: HourShadowRow = {
+    ...base, close_time: "2026-09-18T19:00:00.000Z", checkpoint: 30, decision: "YES",
+    ticker: "A", strike: 99_000, side: "YES", ask: 40, fee: takerFee(40), p_model: 0.7,
+    edge_cents: 25, result: "YES", ev_cents: 100 - 40 - takerFee(40),
+    graded_at: "2026-09-18T19:01:00.000Z",
+  };
+  const loss: HourShadowRow = {
+    ...base, close_time: "2026-09-18T20:00:00.000Z", checkpoint: 15, decision: "NO",
+    ticker: "B", strike: 99_000, side: "NO", ask: 45, fee: takerFee(45), p_model: 0.66,
+    edge_cents: 12, result: "YES", ev_cents: 0 - 45 - takerFee(45),
+    graded_at: "2026-09-18T20:01:00.000Z",
+  };
+  const sit: HourShadowRow = {
+    ...base, close_time: "2026-09-18T21:00:00.000Z", checkpoint: 5, decision: "WAIT",
+    wait_reason: "insufficient_edge", ticker: null, strike: null, side: null, ask: null, fee: null,
+    p_model: null, p_market: null, edge_cents: null,
+    // A sit has no strike to settle against, so it correctly has no result…
+    result: null, ev_cents: null,
+    // …and is still a finished hour.
+    graded_at: "2026-09-18T21:01:00.000Z",
+  };
+  const pending: HourShadowRow = {
+    ...base, close_time: "2026-09-18T22:00:00.000Z", checkpoint: 10, decision: "YES",
+    ticker: "C", strike: 99_000, side: "YES", ask: 50, fee: takerFee(50), p_model: 0.6,
+    edge_cents: 8, result: null, official_value: null, ev_cents: null, graded_at: null,
+  };
+
+  const s = shadowScore([win, loss, sit, pending]);
+  assert.equal(s.windows, 3, "three hours finished; the ungraded one is not a window yet");
+  assert.equal(s.calls, 2, "two of them were calls");
+  assert.equal(s.waits, 1, "and one was a sit");
+  assert.equal(s.windows, s.waits + s.calls, "the invariant the record is read through");
+  assert.equal(s.wins, 1);
+  assert.equal(s.losses, 1, "the WAIT is NOT among them");
+  assert.equal(s.win_rate, 50, "win rate is over calls only, not over hours");
+  assert.ok(s.brier_model != null, "Brier scores the directional calls");
+
+  // The sit alone: a completed hour, a sit, and nothing else.
+  const only = shadowScore([sit]);
+  assert.equal(only.windows, 1);
+  assert.equal(only.waits, 1);
+  assert.equal(only.calls, 0);
+  assert.equal(only.losses, 0, "a sit is never a loss");
+  assert.equal(only.wins, 0);
+  assert.equal(only.win_rate, null, "no calls, so no win rate to print");
+  assert.equal(only.net_cents, 0);
+  assert.equal(only.brier_model, null);
+
+  // Nothing graded at all is zero windows, which is not a zero record.
+  assert.equal(shadowScore([pending]).windows, 0);
+  assert.equal(shadowScore([]).windows, 0);
 });

@@ -27,7 +27,7 @@ import {
 import { parseHourTicker, quoteCents, type HourMarketRow } from "./hour.ts";
 import { eventLadder } from "./hour-closer.server";
 import { hourEventTicker } from "./hour-closer";
-import { featuresFromRaw } from "./hour-research.server";
+import { brtiForBrief, featuresFromRaw } from "./hour-research.server";
 
 const HOUR_MS = 60 * 60 * 1000;
 const CACHE_MS = 20_000;
@@ -161,7 +161,7 @@ async function shadowRows(): Promise<HourShadowRow[] | null> {
     const db = await sql();
     const rows = await db<Record<string, unknown>>`
       select close_time, checkpoint, decision, wait_reason, ticker, strike, side, ask, fee,
-             p_model, p_market, edge_cents, explanation, result, official_value, ev_cents
+             p_model, p_market, edge_cents, explanation, result, official_value, ev_cents, graded_at
       from desk_hour_shadow
       where close_time > now() - (${RECORD_HOURS}::int * interval '1 hour')
       order by close_time desc
@@ -183,6 +183,9 @@ async function shadowRows(): Promise<HourShadowRow[] | null> {
       result: r.result === "YES" || r.result === "NO" ? r.result : null,
       official_value: num(r.official_value),
       ev_cents: num(r.ev_cents),
+      // Completion, not outcome: a graded WAIT has no result and is still a
+      // finished hour.
+      graded_at: r.graded_at == null ? null : iso(r.graded_at as Date | string),
     }));
   } catch {
     return null;
@@ -224,10 +227,13 @@ async function liveRead(now: number): Promise<{
     const closeMs = Math.ceil(now / HOUR_MS) * HOUR_MS;
     const secsLeft = (closeMs - now) / 1000;
     const eventTicker = hourEventTicker(closeMs);
-    const [ladder, snap] = await Promise.all([eventLadder(eventTicker), rawSnap()]);
+    // The same settlement feed the observer records from: a preview that read a
+    // different input than the frozen checkpoints would be showing the reader a
+    // different model than the one on the record.
+    const [ladder, snap, brti] = await Promise.all([eventLadder(eventTicker), rawSnap(), brtiForBrief()]);
     const rungs = ladderRungs(ladder.markets as readonly HourMarketRow[], closeMs, parseHourTicker, quoteCents);
     if (!rungs.length) return null;
-    const features = featuresFromRaw(snap);
+    const features = featuresFromRaw(snap, brti);
     const read = hourRead({
       clock: { event_ticker: eventTicker, close_ms: closeMs, as_of_ms: now, secs_left: secsLeft },
       rungs,

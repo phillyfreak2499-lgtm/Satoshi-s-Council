@@ -63,7 +63,9 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
   const left = ticking === "—" && data.hour ? clockMs(Math.max(0, closeMs - Date.parse(data.at))) : ticking;
   const focus = data.ladder.find((r) => r.selected) ?? data.ladder.find((r) => r.anchor) ?? null;
   const snap = data.snapshot;
-  const reference = snap?.index ?? snap?.spot ?? null;
+  // The settlement value, or nothing. Exchange spot is shown beside it as
+  // context but is never promoted into the settlement slot.
+  const reference = snap?.brti ?? null;
   const gap = focus && reference != null ? reference - focus.strike : null;
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-label="The hour">
@@ -85,10 +87,13 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
           </p>
           <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-sm border border-border bg-canvas p-3">
-              <div className="font-mono text-micro uppercase tracking-widest text-subtle">Index / spot</div>
+              <div className="font-mono text-micro uppercase tracking-widest text-subtle">Settlement index</div>
               <div className="mt-1 font-mono text-data tabular text-fg">{reference == null ? "—" : usd(reference)}</div>
+              {reference == null ? (
+                <div className="font-mono text-micro text-warn">no CF Benchmarks value; the model waits rather than use a venue index</div>
+              ) : null}
               <div className="mt-1">
-                <Fresh label={snap?.index != null ? "index" : "spot"} age={snap?.index != null ? snap.index_age_s : snap?.spot_age_s ?? null} ok={data.read?.quality.index_fresh || data.read?.quality.spot_fresh || false} />
+                <Fresh label={snap?.brti_source || "settlement index"} age={snap?.brti_age_s ?? null} ok={data.read?.quality.brti_fresh ?? false} />
               </div>
             </div>
             <div className="rounded-sm border border-border bg-canvas p-3">
@@ -99,7 +104,7 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
             <div className="rounded-sm border border-border bg-canvas p-3">
               <div className="font-mono text-micro uppercase tracking-widest text-subtle">Distance to strike</div>
               <div className="mt-1 font-mono text-data tabular text-fg">{gap == null ? "—" : `${gap >= 0 ? "+" : "−"}${usd(Math.abs(gap))}`}</div>
-              <div className="mt-1 font-mono text-micro text-muted">{snap?.basis == null ? "basis unknown" : `basis ${usd(Math.abs(snap.basis))} ${snap.basis >= 0 ? "over" : "under"} spot`}</div>
+              <div className="mt-1 font-mono text-micro text-muted">{snap?.brti_spot_basis == null ? "index-vs-spot unknown" : `index ${usd(Math.abs(snap.brti_spot_basis))} ${snap.brti_spot_basis >= 0 ? "over" : "under"} spot`}</div>
             </div>
             <div className="rounded-sm border border-border bg-canvas p-3">
               <div className="font-mono text-micro uppercase tracking-widest text-subtle">Asks on that rung</div>

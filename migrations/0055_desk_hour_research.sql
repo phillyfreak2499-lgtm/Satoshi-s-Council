@@ -15,7 +15,18 @@
 -- the read without any future state. Grading later APPENDS outcome columns and
 -- never rewrites a frozen input.
 
--- Every priced rung at every research checkpoint: the calibration surface.
+-- The model's ONE settlement input is the CF Benchmarks value (BRTI) the desk
+-- receives on Kalshi's own cfbenchmarks_value channel, with the age we measured.
+-- An exchange print and a perpetual-futures index are NOT that value: they are
+-- stored as venue context inside `features` and carry no settlement authority.
+-- When no fresh settlement value exists the model records a WAIT instead of
+-- substituting a proxy.
+
+-- Every PRICED rung at every research checkpoint: the calibration surface. A
+-- rung the feed quoted on neither side carries no market information to
+-- calibrate against and is not stored; `desk_hour_shadow.stored_rungs` beside
+-- `ladder_rungs` says exactly how many of each hour's rungs were kept, so the
+-- record can always state what it does and does not hold.
 create table if not exists desk_hour_predictions (
   event_ticker      text not null,
   close_time        timestamptz not null,
@@ -78,6 +89,17 @@ create index if not exists desk_hour_predictions_grade_idx on desk_hour_predicti
 -- candidate locks the hour; if no checkpoint ever qualifies, the hour is stored
 -- as a WAIT with its structured reason. The unique primary key on close_time is
 -- the structural guarantee of "one candidate per hour".
+--
+-- A ROW IS ONE INTERNALLY CONSISTENT SNAPSHOT. While the hour is still a WAIT a
+-- later checkpoint replaces the whole row — clock AND every frozen feature
+-- together — so no row can ever claim one checkpoint's timestamp over an earlier
+-- checkpoint's inputs. The writer guards that upsert with
+-- `excluded.checkpoint < checkpoint` (checkpoints count down), which admits only
+-- a strictly later instant and makes a duplicate tick a no-op.
+--
+-- COMPLETION IS `graded_at`, NOT `result`. A WAIT hour has no strike to settle
+-- against, so its `result` stays null; it is still a completed hour and still a
+-- sit, and the score reads `graded_at` to say so.
 create table if not exists desk_hour_shadow (
   close_time        timestamptz primary key,
   event_ticker      text not null,
@@ -103,13 +125,19 @@ create table if not exists desk_hour_shadow (
   expected_settlement double precision,
   expected_source   text not null default '',
   sigma_horizon     double precision,
-  index_value       double precision,
+  -- The CF Benchmarks settlement value this decision was built on. Named for the
+  -- feed it came from so no later reader can mistake a venue index for it.
+  brti_value        double precision,
   spot              double precision,
-  basis             double precision,
+  -- BRTI minus exchange spot, in dollars. Measurement only.
+  brti_spot_basis   double precision,
   sigma_hour        double precision,
+  -- Rungs the ladder carried, versus rungs actually persisted for calibration.
+  -- Keeping both means the record can always say what it does and does not hold.
   ladder_rungs      integer,
   ladder_complete   boolean,
   ladder_inversions integer,
+  stored_rungs      integer,
   -- The full frozen feature snapshot, for reproduction and audit.
   features          jsonb,
   explanation       text not null default '',

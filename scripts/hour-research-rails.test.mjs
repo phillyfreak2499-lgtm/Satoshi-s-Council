@@ -17,8 +17,10 @@ const read = (rel) => readFileSync(join(process.cwd(), rel), "utf8");
 const codeOf = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const READ_MODEL_PURE = "src/lib/desk/hour-research.ts";
 const HOUR_RESEARCH_FILES = [
   "src/lib/desk/hour-research.ts",
+  "src/lib/desk/hour-research-sql.ts",
   "src/lib/desk/hour-research.server.ts",
   "src/lib/desk/hour-research-brief.ts",
   "src/lib/desk/hour-research-brief.server.ts",
@@ -114,12 +116,17 @@ test("every gate in the read returns a structured WAIT, and a WAIT never carries
   const pure = read("src/lib/desk/hour-research.ts");
   assert.match(pure, /export const HOUR_WAIT_REASONS = \[/);
   for (const reason of [
-    "insufficient_edge", "uncertainty_high", "incomplete_ladder",
-    "no_usable_ask", "spread_too_wide", "ladder_inconsistent", "outside_checkpoint", "model_unavailable",
+    "insufficient_edge", "uncertainty_high", "incomplete_ladder", "no_usable_ask",
+    "liquidity_unassessable", "spread_too_wide", "ladder_inconsistent", "outside_checkpoint",
+    "model_unavailable", "no_settlement_index",
   ]) {
     assert.match(pure, new RegExp(esc(`return wait("${reason}")`)), `the read must be able to return ${reason}`);
   }
-  assert.match(pure, /return wait\(f\.index == null \? "stale_index" : "stale_spot"\);/, "a stale feed names which feed it was");
+  assert.match(
+    pure,
+    /return wait\(f\.brti == null \? "no_settlement_index" : "stale_index"\);/,
+    "an unusable settlement input says whether it was absent or undateable",
+  );
   assert.match(pure, /decision: "WAIT",\s*candidate: null,/, "a WAIT carries no candidate");
   assert.match(pure, /if \(ask == null \|\| !\(ask > 0\) \|\| !\(ask < 100\)\) return null;/, "a missing ask is null, never a midpoint");
   // The storage shape enforces the same thing in SQL.
@@ -133,10 +140,28 @@ test("one hour can yield at most one shadow candidate, enforced by the primary k
   const sql = read("migrations/0055_desk_hour_research.sql");
   assert.match(sql, /create table if not exists desk_hour_shadow \(\s*\n\s*close_time\s+timestamptz primary key,/, "close_time is the primary key: one row per hour");
   assert.match(sql, /primary key \(close_time, checkpoint, ticker\)/, "the per-rung table keys every rung of every checkpoint");
+  const stmts = read("src/lib/desk/hour-research-sql.ts");
+  assert.match(stmts, /on conflict \(close_time\) do update set/, "the hour's row is upserted, never duplicated");
+  assert.match(stmts, /where desk_hour_shadow\.decision = 'WAIT'/, "a directional candidate locks the hour");
+  assert.match(stmts, /and desk_hour_shadow\.graded_at is null/, "and a settled hour is never rewritten");
+  assert.match(
+    stmts,
+    /and excluded\.checkpoint < desk_hour_shadow\.checkpoint/,
+    "only a strictly later checkpoint may replace a WAIT, so a duplicate or out-of-order tick is a no-op",
+  );
+  assert.match(stmts, /on conflict \(close_time, checkpoint, ticker\) do nothing/, "a rerun of a checkpoint writes nothing");
+});
+
+test("every priced rung is stored, and the record says what it holds", () => {
   const server = codeOf("src/lib/desk/hour-research.server.ts");
-  assert.match(server, /on conflict \(close_time\) do update set/, "the hour's row is upserted, never duplicated");
-  assert.match(server, /where desk_hour_shadow\.decision = 'WAIT' and desk_hour_shadow\.graded_at is null/, "the first candidate locks the hour; a call row is never rewritten");
-  assert.match(server, /on conflict \(close_time, checkpoint, ticker\) do nothing/, "a rerun of a checkpoint writes nothing");
+  assert.match(server, /export function pricedRungs\(/, "a rung counts as priced when the feed quoted a side");
+  assert.match(server, /r\.yes_bid != null \|\| r\.yes_ask != null \|\| r\.no_bid != null \|\| r\.no_ask != null/);
+  assert.match(server, /const STORE_RUNGS_MAX = \d+;/, "the only bound is a safety bound");
+  assert.match(server, /stored_rungs/, "and how many were actually written is recorded");
+  assert.match(read("migrations/0055_desk_hour_research.sql"), /stored_rungs\s+integer/);
+  // One statement for the whole ladder, so storing all of it is affordable.
+  assert.match(server, /await db\.query\(hourPredictionsInsert\(scored\.length\), params\);/);
+  assert.doesNotMatch(server, /for \(const r of read\.rungs\)[\s\S]{0,200}await db`/, "no per-rung round trip");
 });
 
 test("the whole ladder is scored for calibration but only the selected rung is marked as the hour's call", () => {
@@ -165,8 +190,9 @@ test("a frozen checkpoint is decision-time only: the pure model has no clock, no
   // The observer freezes the snapshot before scoring and stores it verbatim.
   const server = codeOf("src/lib/desk/hour-research.server.ts");
   assert.match(server, /features,\s*ladderComplete: ladder\.complete,/, "the read is taken from the frozen snapshot");
-  assert.match(server, /\$\{featureJson\}::jsonb/, "the whole frozen snapshot is stored for reproduction");
-  assert.match(server, /as_of, secs_left/, "the decision-time clock is frozen on the row");
+  assert.match(server, /const featureJson = JSON\.stringify\(\{/, "the whole frozen snapshot is stored for reproduction");
+  assert.match(read("src/lib/desk/hour-research-sql.ts"), /\$28::jsonb/, "and lands in the jsonb column");
+  assert.match(read("src/lib/desk/hour-research-sql.ts"), /"as_of", "secs_left"/, "the decision-time clock is frozen on the row");
   // Grading appends outcomes; it never rewrites a frozen input.
   const setClauses = server.match(/update desk_hour_(predictions|shadow) set[\s\S]*?where/g) ?? [];
   assert.equal(setClauses.length, 2, "exactly two grading updates");
@@ -284,5 +310,115 @@ test("the model is versioned and every stored row carries the version and the bu
   }
   const server = codeOf("src/lib/desk/hour-research.server.ts");
   assert.match(server, /RENDER_GIT_COMMIT/, "the build sha comes from the deploy, not from a guess");
-  assert.match(server, /\$\{HOUR_RESEARCH_VERSION\}/);
+  // Bound as parameters now that the statements live in their own module.
+  assert.match(server, /HOUR_RESEARCH_VERSION, sha,/, "every stored rung carries the version and the build");
+  assert.match(server, /HOUR_RESEARCH_VERSION, HOUR_RESEARCH_AUTHORITY, sha,/, "and so does the shadow row");
+  const stmts = read("src/lib/desk/hour-research-sql.ts");
+  for (const col of ["model_version", "build_sha"]) {
+    assert.ok(stmts.includes(`"${col}"`), `the shadow statement binds ${col}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The settlement input cannot silently become the venue perp index
+// ---------------------------------------------------------------------------
+
+test("the settlement value is the CF Benchmarks feed, and a venue index can never be promoted into it", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  // ONE source, and it is named for the feed it comes from.
+  assert.match(pure, /export type HourExpectedSource = "cfbenchmarks-brti" \| "none";/);
+  assert.match(pure, /if \(!isFresh\(f\.brti, f\.brti_age_s, HOUR_MODEL\.max_brti_age_s\)\) return \{ value: null, source: "none" \};/);
+  assert.match(pure, /return \{ value: f\.brti, source: "cfbenchmarks-brti" \};/);
+  // The whole body of expectedSettlement must not mention any other candidate:
+  // no spot fallback, no venue index, no basis carry.
+  // Comments are stripped from `pure`, so bound the slice by the NEXT export
+  // rather than by a doc-comment marker that no longer exists.
+  const from = pure.indexOf("export function expectedSettlement");
+  const body = pure.slice(from, pure.indexOf("export function", from + 10));
+  assert.ok(body.includes("cfbenchmarks-brti") && body.length < 500, "the slice really is just that function");
+  for (const banned of ["venue_index", "f.spot", "venue_basis", "spot+basis"]) {
+    assert.ok(!body.includes(banned), `expectedSettlement must not read ${banned}`);
+  }
+  // The venue fields exist, and are named for what they actually are.
+  assert.match(pure, /venue_index: number \| null;/);
+  assert.match(pure, /venue_basis_bps: number \| null;/);
+  assert.match(read(READ_MODEL_PURE), /PERPETUAL index/, "the source of the venue value is stated where a reader will see it");
+  // No field anywhere claims a bare "index" that could be mistaken for settlement.
+  assert.doesNotMatch(pure, /^\s*index:\s/m, "there is no ambiguous `index` field left");
+  assert.doesNotMatch(pure, /^\s*index_age_s:\s/m);
+});
+
+test("the observer takes the settlement value from the settlement feed, and only raw measurement from it", () => {
+  const server = codeOf("src/lib/desk/hour-research.server.ts");
+  assert.match(server, /const \{ labBrtiNow \} = await import\("\.\/lab\.server"\);/, "dynamic, like the frame read");
+  assert.doesNotMatch(server, /^import .*lab\.server/m, "never a static import");
+  // Only the raw triple is taken. Nothing else from the lab may cross this line.
+  assert.match(server, /return \{ value: b\.value, age_s: b\.age_s, source: b\.source \};/);
+  for (const banned of ["labFairNow", "labFairState", "settleFair", "labSummary", "noteDeskState", "vel2Now", "whale2Now", "tape2Now"]) {
+    assert.doesNotMatch(server, new RegExp(esc(banned)), `the hourly observer must not read ${banned}`);
+  }
+  // The accessor itself is raw measurement and writes nothing.
+  const lab = read("src/lib/desk/lab.server.ts");
+  const acc = lab.slice(lab.indexOf("export function labBrtiNow"), lab.indexOf("export function labSettleReceipt"));
+  assert.match(acc, /source: "cfbenchmarks-brti"/);
+  for (const banned of ["insert into", "update ", "delete from", "p_up", "fair", "chair", "seat"]) {
+    assert.ok(!acc.toLowerCase().includes(banned.toLowerCase()), `labBrtiNow must not touch ${banned}`);
+  }
+  // The venue index is stored, and is structurally unable to become settlement.
+  assert.match(server, /venue_index: venueIndex/);
+  assert.match(server, /brti: brtiValue,/);
+  assert.doesNotMatch(server, /brti: .*index_px/, "index_px can never be bound to the settlement field");
+});
+
+test("unknown freshness is never treated as fresh", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /export function isFresh\(/);
+  // Each of the five conditions, in source, so a future edit cannot drop one.
+  assert.match(pure, /typeof value !== "number" \|\| !Number\.isFinite\(value\) \|\| value <= 0/);
+  assert.match(pure, /typeof ageS !== "number" \|\| !Number\.isFinite\(ageS\)/);
+  assert.match(pure, /if \(ageS < 0\) return false;/);
+  assert.match(pure, /return ageS <= maxAgeS;/);
+  // Freshness is only ever decided through that one predicate.
+  assert.match(pure, /const brtiFresh = isFresh\(f\.brti, f\.brti_age_s, HOUR_MODEL\.max_brti_age_s\);/);
+  assert.match(pure, /const spotFresh = isFresh\(f\.spot, f\.spot_age_s, HOUR_MODEL\.max_spot_age_s\);/);
+  assert.doesNotMatch(pure, /age_s == null \|\|/, "a null age must never short-circuit to fresh");
+  // And only the settlement input gates the model.
+  assert.match(pure, /if \(!quality\.brti_fresh\) return wait\(/);
+});
+
+test("an unknown spread cannot pass the liquidity gate, and no bid is ever invented", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /if \(!finite\(bid\) \|\| !finite\(ask\)\) return null;/, "a one-sided rung has no spread");
+  assert.match(pure, /return Number\.isFinite\(s\) \? Math\.max\(0, s\) : null;/);
+  assert.match(pure, /return s != null && Number\.isFinite\(s\);/, "a candidate needs a readable spread");
+  assert.match(pure, /if \(!assessable\.length\) return wait\("liquidity_unassessable"\);/);
+  assert.doesNotMatch(pure, /spread == null \|\| spread <=/, "the old permissive test is gone");
+  assert.doesNotMatch(pure, /spread_yes = .*mid|bid = .*mid/, "no bid is manufactured to create a spread");
+});
+
+test("a checkpoint is claimed at or after its target, never early, and never backfilled", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /export const HOUR_CHECKPOINT_GRACE_S = \d+;/);
+  assert.match(pure, /if \(secsLeft <= target && secsLeft >= target - HOUR_CHECKPOINT_GRACE_S\) return c;/, "one-sided window");
+  assert.match(pure, /export function checkpointMissed\(/);
+  assert.doesNotMatch(pure, /Math\.abs\(secsLeft - c \* 60\)/, "the symmetric band is gone");
+  assert.doesNotMatch(pure, /HOUR_CHECKPOINT_BAND_S/);
+  // The observer's cadence has to fit inside the grace, or a checkpoint could be
+  // lost to nothing but timing.
+  const server = read("src/lib/desk/hour-research.server.ts");
+  const tick = Number(/const TICK_MS = ([\d_]+);/.exec(server)?.[1]?.replace(/_/g, ""));
+  const grace = Number(/HOUR_CHECKPOINT_GRACE_S = (\d+);/.exec(read(READ_MODEL_PURE))?.[1]);
+  assert.ok(Number.isFinite(tick) && Number.isFinite(grace), "both constants are readable");
+  assert.ok(tick / 1000 < grace, `the ${tick / 1000}s tick must fit inside the ${grace}s grace`);
+});
+
+test("a graded WAIT is a completed hour, and windows always equals waits plus calls", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /const graded = rows\.filter\(\(r\) => r\.graded_at != null\);/, "completion is graded_at, not result");
+  assert.doesNotMatch(pure, /const graded = rows\.filter\(\(r\) => r\.result === "YES"/, "the old outcome-based filter is gone");
+  assert.match(pure, /waits: graded\.length - calls\.length,/, "so windows === waits + calls by construction");
+  assert.match(pure, /graded_at: string \| null;/, "the row type carries it");
+  // The page's own tape counts completed hours the same way.
+  assert.match(codeOf("src/lib/desk/hour-research-brief.ts"), /\.filter\(\(r\) => r\.graded_at != null\)/);
+  assert.match(codeOf("src/lib/desk/hour-research-brief.server.ts"), /graded_at: r\.graded_at == null \? null :/);
 });
