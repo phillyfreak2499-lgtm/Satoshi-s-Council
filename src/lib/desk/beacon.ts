@@ -12,7 +12,11 @@ export type BeaconEvent =
   | "share"
   | "settle_alert"
   | "pit_tour_start"
-  | "pit_tour_done";
+  | "pit_tour_done"
+  /** UI-only: the Pro Floor's Core/Full desk switch. Carries no trading intent. */
+  | "floor_density_toggle"
+  /** UI-only: the Pro Floor's full gate checklist was opened. */
+  | "floor_gates_expand";
 
 export function beacon(event: BeaconEvent, oncePerSession = false): void {
   try {

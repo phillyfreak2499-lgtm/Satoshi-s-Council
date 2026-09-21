@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { type CallLogRow, type ChairResult, type Lean, type SeatId, type SeatRow, type Settings, type Snapshot } from "@/lib/desk/types";
+import { type CallLogRow, type ChairResult, type Lean, type SeatId, type SeatRow, type Settings, type Snapshot, type Vote } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
 import { Field, LeanChip, MarketChip, Mono, Pane, StatusChip } from "./bits";
 import { V2_GATE_CALLS, V2_GATE_SAMPLES, V2_MIN_SAMPLES, v2Gates } from "@/lib/desk/chair-v2";
@@ -25,6 +25,8 @@ import type { FloorDensity } from "./prefs";
 import { CouncilFloorRoom } from "./CouncilFloorRoom";
 import { ChairSignalGauge } from "./ChairSignalGauge";
 import { chairSignalOf, signalDescription } from "@/lib/desk/chair-signal";
+import { ProOverview } from "./ProFloor/ProOverview";
+import { beacon } from "@/lib/desk/beacon";
 
 /**
  * The ask for a side, from the one function the book marks with. This used to be
@@ -631,6 +633,7 @@ function SeatsList({ rows, learner }: { rows: SeatRow[]; learner: import("@/lib/
 export function SatoshiTab({
   snap,
   chair,
+  votes,
   settings,
   callLog,
   onJump,
@@ -643,6 +646,12 @@ export function SatoshiTab({
 }: {
   snap: Snapshot;
   chair: ChairResult;
+  /**
+   * The raw seat reads. `chair.rows` covers only the 18 seats the Chair
+   * aggregates, so the three pit-crew seats — and every seat's pre-filter
+   * `raw_lean`/`raw_conf` — exist only here.
+   */
+  votes: Vote[];
   settings: Settings;
   callLog: CallLogRow[];
   onJump: (seat: SeatId) => void;
@@ -685,9 +694,24 @@ export function SatoshiTab({
     <div className="gutter mx-auto flex w-full max-w-[var(--max)] flex-col gap-4 py-4">
       {density === "full" ? <OvernightRibbon brief={brief} tz={settings.tz} /> : null}
 
-      <CouncilFloorRoom lean={chair.lean} density={density}>
-        <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} density={density} />
-      </CouncilFloorRoom>
+      {/* The cockpit. It observes the frame and decides nothing: every number
+          comes from the same helpers the chair stage below already uses. */}
+      <ProOverview
+        snap={snap}
+        chair={chair}
+        votes={votes}
+        callLog={callLog}
+        knobs={learner.knobs}
+        plain={plainLine(chair, snap, book)}
+        density={density}
+        onJump={onJump}
+        onGatesExpand={() => beacon("floor_gates_expand")}
+        headline={
+          <CouncilFloorRoom lean={chair.lean} density={density}>
+            <ChairBoard snap={snap} chair={chair} tz={settings.tz} callLog={callLog} density={density} />
+          </CouncilFloorRoom>
+        }
+      />
       {density === "full" && strip ? <div>{strip}</div> : null}
 
       <details className="company-decision-notes"><summary>Decision notes and voting context</summary><WhyBlock why={why} chair={chair} /></details>
@@ -696,10 +720,12 @@ export function SatoshiTab({
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2.5" aria-label="Floor density">
         <div>
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            {density === "quiet" ? "Quiet Floor" : "Full Floor"}
+            {density === "quiet" ? "Core view" : "Full desk"}
           </div>
           <p className="mt-0.5 font-sans text-ui text-muted">
-            Quiet keeps the call, reason, clock and live Bitcoin-vs-strike view. Full adds evidence, record, council and diagnostics.
+            Core keeps the decision strip, the call and its reason, the score against its bar, market versus model, the
+            five evidence families, the blockers and data health. Full desk adds the whole Council tape, every gate, the
+            deeper economics, the record and diagnostics. Both show the same numbers.
           </p>
         </div>
         <div role="group" aria-label="Choose Floor density" className="flex gap-1">
@@ -708,10 +734,13 @@ export function SatoshiTab({
               key={choice}
               type="button"
               aria-pressed={density === choice}
-              onClick={() => onDensityChange(choice)}
-              className={cn("btn btn-sm", density === choice ? "btn-secondary text-fg" : "text-muted hover:text-fg")}
+              onClick={() => {
+                onDensityChange(choice);
+                beacon("floor_density_toggle");
+              }}
+              className={cn("btn btn-sm min-h-11", density === choice ? "btn-secondary text-fg" : "text-muted hover:text-fg")}
             >
-              {choice === "quiet" ? "Quiet" : "Full desk"}
+              {choice === "quiet" ? "Core view" : "Full desk"}
             </button>
           ))}
         </div>
