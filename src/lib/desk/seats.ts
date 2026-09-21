@@ -50,6 +50,17 @@ export const STRUCTURE_FAMILY: SeatId[] = ["WICK", "DRIFT", "STREAK"];
 export const TAPE_FAMILY: SeatId[] = ["PULSE", "TAPE", "WHALE", "VEL"];
 export const DERIVS_FAMILY: SeatId[] = ["CARRY", "CHAIN", "CASCADE"];
 
+/** The three pit-crew seats the Chair never aggregates (WARDEN feed veto and
+ *  ORBIT aggressiveness still apply directly, not through a vote). Read-only
+ *  telemetry classifies against this; the Chair keeps its own CHAIR_NON_VOTERS
+ *  set and the telemetry rails assert the two never drift. */
+export const CHAIR_NON_VOTER_IDS: readonly SeatId[] = ["WARDEN", "ORBIT", "WIRE"];
+
+/** Seats retired from paper-call votes (force-WAIT in the whisper filter). The
+ *  reasons live in crew.ts RETIRED_SEATS; this is the id set telemetry classifies
+ *  against, and the telemetry rails assert it matches crew.ts exactly. */
+export const RETIRED_SEAT_IDS: readonly SeatId[] = ["ODDS", "CHEAP", "FADE"];
+
 /** Same 1m candle stream — not independent votes. */
 export const CANDLE_FAMILY: SeatId[] = ["WICK", "DRIFT", "EXHAUST", "PULSE", "WHALE", "VOLT"];
 /** Kalshi quotes / contract — not independent votes. */
