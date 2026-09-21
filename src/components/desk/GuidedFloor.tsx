@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { ChairResult, CallLogRow, Snapshot } from "@/lib/desk/types";
+import type { BooksWindow } from "@/lib/desk/books";
 import { bookState } from "@/lib/desk/book-floor";
+import { plainLine } from "@/lib/desk/chair-words";
+import { whatHappened, whatWouldChange, MULTI_BLOCKER_LINE } from "@/lib/desk/guided-continuity";
 import { useCountdownText } from "@/lib/desk/hooks";
+import { beacon } from "@/lib/desk/beacon";
 import { cn } from "@/lib/utils";
 
 const portraits = {
@@ -128,6 +132,141 @@ export function guidedRead(chair: ChairResult, snap: Snapshot, callLog: CallLogR
   };
 }
 
+/**
+ * "What would change the decision?" — the question a beginner asks next.
+ *
+ * Every line comes from `whatWouldChange`, which reads the Chair's own gate
+ * state. This component chooses no conditions and sets no thresholds; it only
+ * lays out what it is handed.
+ */
+function WhatWouldChange({ chair, snap, callLog }: { chair: ChairResult; snap: Snapshot; callLog: CallLogRow[] }) {
+  const plain = plainLine(chair, snap, bookState(snap, chair.lean, callLog));
+  const w = whatWouldChange(chair, plain);
+  const waiting = w.stance === "WAIT";
+  return (
+    <section
+      aria-labelledby="guided-change"
+      className="rounded-md border border-border bg-surface p-5 sm:p-6"
+    >
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">The next question</p>
+      <h2 id="guided-change" className="mt-2 font-sans text-title font-medium text-fg">
+        What would change the decision?
+      </h2>
+
+      {w.supports.length ? (
+        <>
+          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">
+            What supports this read
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {w.supports.map((t) => (
+              <li key={t} className="flex gap-2 font-sans text-body leading-relaxed text-fg">
+                <span aria-hidden="true" className="text-up">·</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {w.conditions.length ? (
+        <>
+          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">
+            {waiting ? "What still needs to improve" : "What is still not met"}
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {w.conditions.map((t) => (
+              <li key={t} className="flex gap-2 font-sans text-body leading-relaxed text-fg">
+                <span aria-hidden="true" className="text-wait">·</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {w.multiple ? (
+        <p className="mt-3 max-w-[62ch] font-sans text-body leading-relaxed text-wait">
+          {MULTI_BLOCKER_LINE}
+        </p>
+      ) : null}
+
+      {w.invalidate ? (
+        <>
+          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">
+            What would end this read
+          </p>
+          <p className="mt-2 max-w-[60ch] font-sans text-body leading-relaxed text-fg">{w.invalidate}</p>
+        </>
+      ) : null}
+
+      <p className="mt-4 max-w-[62ch] font-sans text-ui leading-relaxed text-muted">{w.closing}</p>
+    </section>
+  );
+}
+
+/**
+ * "What happened?" — the settled window just before this one.
+ *
+ * This is the handoff that makes the site continuous: live window, result,
+ * lesson, next window. Everything is read off the graded record; nothing is
+ * re-graded here and no hindsight is added.
+ */
+function WhatHappened({ last }: { last: BooksWindow | null | undefined }) {
+  const h = whatHappened(last);
+  if (!h) return null;
+  return (
+    <section
+      aria-labelledby="guided-happened"
+      className="rounded-md border border-border bg-surface p-5 sm:p-6"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <p className="font-mono text-micro uppercase tracking-widest text-subtle">
+            The window before this one
+          </p>
+          <h2 id="guided-happened" className="mt-2 font-sans text-title font-medium text-fg">
+            What happened?
+          </h2>
+        </div>
+        <p className="font-mono text-micro text-subtle">{h.when}</p>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-sm border border-border bg-surface-2 p-3">
+          <dt className="font-mono text-micro text-muted">Paper position</dt>
+          <dd className="mt-1 font-mono text-ui text-fg">{h.position}</dd>
+        </div>
+        <div className="rounded-sm border border-border bg-surface-2 p-3">
+          <dt className="font-mono text-micro text-muted">Official result</dt>
+          <dd className={cn("mt-1 font-mono text-ui", h.official === "UP" ? "text-up" : "text-down")}>
+            {h.official}
+          </dd>
+        </div>
+        <div className="rounded-sm border border-border bg-surface-2 p-3">
+          <dt className="font-mono text-micro text-muted">Paper result</dt>
+          <dd className="mt-1 font-mono text-ui text-fg">
+            {h.net ?? (h.booked ? "not graded yet" : "no position")}
+          </dd>
+        </div>
+      </dl>
+
+      <p className="mt-4 max-w-[68ch] font-sans text-body leading-relaxed text-fg">{h.lesson}</p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <a
+          href={h.href}
+          onClick={() => beacon("window_replay_open")}
+          className="inline-flex min-h-11 items-center rounded-sm border border-border px-4 font-mono text-ui text-fg hover:bg-surface-2"
+        >
+          See this window step by step →
+        </a>
+        <span className="font-mono text-micro text-subtle">The next window is already running above</span>
+      </div>
+    </section>
+  );
+}
+
 function Portrait({
   name,
   src,
@@ -156,12 +295,15 @@ export function GuidedFloor({
   callLog,
   demo,
   onPro,
+  last,
 }: {
   snap: Snapshot;
   chair: ChairResult;
   callLog: CallLogRow[];
   demo: boolean;
   onPro: () => void;
+  /** The last graded window, for the end-of-window handoff. Absent is a missing card. */
+  last?: BooksWindow | null;
 }) {
   const [step, setStep] = useState(0);
   const read = guidedRead(chair, snap, callLog);
@@ -236,7 +378,10 @@ export function GuidedFloor({
           <p className="mt-4 font-mono text-micro text-muted">{read.note}</p>
           <button
             type="button"
-            onClick={onPro}
+            onClick={() => {
+              beacon("guided_to_pro");
+              onPro();
+            }}
             className="mt-5 min-h-11 rounded-sm border border-border-strong px-4 font-mono text-ui text-fg hover:bg-surface-2"
           >
             See the full Pro Floor →
@@ -286,6 +431,10 @@ export function GuidedFloor({
         </section>
       </div>
 
+      <WhatWouldChange chair={chair} snap={snap} callLog={callLog} />
+
+      <WhatHappened last={last} />
+
       <section
         aria-labelledby="guided-lesson"
         className="rounded-md border border-border bg-surface p-5 sm:p-6"
@@ -314,6 +463,7 @@ export function GuidedFloor({
               </button>
               <a
                 href="/training/wick"
+                onClick={() => beacon("guided_to_wick")}
                 className="inline-flex min-h-11 items-center rounded-sm border border-border px-4 font-mono text-ui text-fg hover:bg-surface-2"
               >
                 Learn with WICK →

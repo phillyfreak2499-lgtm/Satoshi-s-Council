@@ -21,5 +21,5 @@ function Home() {
   // Existing bookmarks continue to open their original room.
   const legacyRoom = ["tab", "seat", "view"].some(key => query.has(key));
   const { frame, last } = Route.useLoaderData();
-  return <InitialDeskFrame.Provider value={frame}>{legacyRoom ? <DeskApp /> : <CouncilHome last={last} />}</InitialDeskFrame.Provider>;
+  return <InitialDeskFrame.Provider value={frame}>{legacyRoom ? <DeskApp last={last} /> : <CouncilHome last={last} />}</InitialDeskFrame.Provider>;
 }

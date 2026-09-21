@@ -7,6 +7,7 @@ import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { SEAT_IDS, type SeatId, type TabId } from "@/lib/desk/types";
+import type { BooksWindow } from "@/lib/desk/books";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
@@ -228,7 +229,7 @@ function MoreMenu({
   );
 }
 
-export function DeskApp() {
+export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
   const frame = useDesk();
   const initialSearch = useRouterState({ select: state => state.location.searchStr });
   const [tab, setTab] = useState<TabId>(() => {
@@ -354,6 +355,15 @@ export function DeskApp() {
     }
     urlReady.current = true;
   }, []);
+  // Which floor a reader actually ended up on, once per session per floor. It
+  // runs after the address and the saved preference have both been applied, so
+  // it counts the floor that was really shown rather than the first guess.
+  useEffect(() => {
+    if (!urlReady.current) return;
+    if (tab !== "satoshi") return;
+    beacon(floorMode === "guided" ? "floor_guided_open" : "floor_pro_open", true);
+  }, [floorMode, tab]);
+
   useEffect(() => {
     if (!urlReady.current) return;
     try {
@@ -513,6 +523,7 @@ export function DeskApp() {
             chair={frame.chair}
             callLog={frame.call_log}
             demo={frame.settings.source === "demo"}
+            last={last}
             onPro={() => setFloorMode("pro")}
           />
         )}
