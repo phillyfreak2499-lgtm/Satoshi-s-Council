@@ -252,7 +252,7 @@ DEMO MODE is required and is the default.
 Demo generates a coherent 15-minute window: strike near spot, 1m candles that walk, a YES/NO book that is sometimes leftover-positive and sometimes chalk, slow funding/OI/F&G, a countdown that settles at 0:00 then opens the next window and chips the finish into STREAK + the learner.
 Demo numbers pass through the SAME bot formulas, Chair math, and skill grader as Live.
 Label the top strip DEMO in amber.
-Demo and Live share one learner in localStorage so Demo is a drill environment.
+Demo and Live are SPLIT: they do not share Wilson / Brier / EV / seat weights. Demo may reuse the same bot formulas and UI, but demo ticks must not write into the live learner store. Demo is a drill environment on its own state.
 
 ════════════════════════════════════
 BOT FORMULAS (implement these; do not improvise AI vibes)

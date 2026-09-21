@@ -361,11 +361,35 @@ export type LedgerCite = {
   n: number;
 };
 
+/** MEASUREMENT ONLY — each additive step that built the Chair confluence bar, as a
+ *  separate numeric field so research never has to parse a human-readable string. */
+export type BarBreakdown = {
+  base: number;
+  quiet: number;
+  weekend: number;
+  phase: number;
+  law_miss1: number;
+  calib_tax: number;
+  sit_mass: number;
+  knn: number;
+  pre_clamp: number;
+  final: number;
+};
+
 export type ChairResult = {
   lean: Lean;
   confidence: number;
   score: number;
   bar: number;
+  /** MEASUREMENT ONLY — numeric reconstruction of every additive component of `bar`.
+   *  Read-only research trace; changes no decision. clamp(pre_clamp,0.24,0.72) === bar. */
+  bar_breakdown: BarBreakdown;
+  /** MEASUREMENT ONLY — |score| × aggressiveness, the value compared against `bar`. */
+  vs_bar: number;
+  /** MEASUREMENT ONLY — Σ effective weight of directional (non-WAIT) aggregated seats. */
+  dir_mass: number;
+  /** MEASUREMENT ONLY — Σ sit-weighted mass over aggregated seats (denominator of sit_mass). */
+  sit_total_mass: number;
   aggressiveness: number;
   time_factor: number;
   diversity: number;
@@ -375,6 +399,8 @@ export type ChairResult = {
   invert_cap: string;
   tax: string;
   tax_applied: boolean;
+  /** Always-printable calibration-tax line for the huddle report to quote. Never a guessed hit rate: it reads the real conf-bin n and hit%. */
+  calib_tax_line: string;
   law_dimmer: string;
   full_conf_raw: number;
   calc: string;
@@ -424,6 +450,9 @@ export type SeatRow = {
   conf: number;
   skill_used: string;
   base_w: number;
+  /** MEASUREMENT ONLY — the effective weight this seat presented to the Chair
+   *  (base × listen × health × license × fade). Research trace; unused by decisions. */
+  weight: number;
   listen: number;
   health: FeedHealth;
   signed: number;
@@ -529,6 +558,8 @@ export type Learner = {
   learn_phase: LearnPhase;
   settle_tape: string[];
   huddle_log: string[];
+  /** The most recent chair's calibration-tax line, persisted so a huddle can quote a printed number instead of MISSING. */
+  last_calib_tax_line?: string;
   window_memory: WindowMemory;
   law_wrongs: number;
   lockdown_until: number;

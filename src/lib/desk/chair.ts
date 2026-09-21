@@ -327,14 +327,26 @@ export function runChair(
   const bin = learner.conf_bins[key] ?? { n: 0, hits: 0 };
   let tax = "none";
   let taxApplied = false;
-  if (bin.n >= 12) {
+  // A single always-printable line so the huddle report can quote a real number
+  // instead of MISSING. Every branch cites the bin's own n and (once warm) its
+  // measured hit% — a hit rate is never invented, only printed when it exists.
+  let calibTaxLine: string;
+  if (bin.n < 12) {
+    calibTaxLine = `tax none · bin ${key} n=${bin.n} (need 12)`;
+  } else {
     const hit = bin.hits / bin.n;
-    if (hit < 0.55) {
+    const pct = (hit * 100).toFixed(0);
+    if (hit >= 0.55) {
+      calibTaxLine = `tax none · bin ${key} hit ${pct}% n=${bin.n}`;
+    } else {
       bar += 0.04;
-      tax = `${key} bin hit ${(hit * 100).toFixed(0)}% on n=${bin.n} → cap conf + bar +0.04`;
+      tax = `${key} bin hit ${pct}% on n=${bin.n} → cap conf + bar +0.04`;
       taxApplied = true;
+      calibTaxLine = `tax ON · bin ${key} hit ${pct}% n=${bin.n} → bar +0.04 · conf capped`;
     }
   }
+  // Persist for the huddle, which sees only the learner (not this ChairResult).
+  learner.last_calib_tax_line = calibTaxLine;
 
   bar += 0.2 * sitMass;
   const knn = knnRead(learner.window_memory.tapes, snap);
@@ -347,6 +359,34 @@ export function runChair(
     if (bump > 0.02) knnNote = `${knn.note} · cousins fade this side +${bump.toFixed(2)} bar`;
   }
   bar = clamp(bar, 0.24, 0.72);
+
+  // MEASUREMENT ONLY — a read-only numeric reconstruction of how `bar` above was
+  // built, for telemetry/research. It re-reads the SAME in-scope values the
+  // accumulation used and changes no decision value; a test asserts
+  // clamp(pre_clamp) === bar. Nothing here feeds back into the read.
+  const barBase = settings.adaptive_bar ? 0.3 : (settings.bar_override ?? 0.3);
+  const knnBarDelta = knn.n >= 6 ? 0.16 * Math.max(0, against - 0.5) * 2 : 0;
+  const barBreakdown = {
+    base: barBase,
+    quiet: quiet ? 0.08 : 0,
+    weekend: weekend ? 0.04 : 0,
+    phase: learner.learn_phase === "EXPLORE" ? -0.04 : learner.learn_phase === "EXPLOIT" ? 0.04 : 0,
+    law_miss1: !lockdown && learner.law_wrongs === 1 ? 0.06 : 0,
+    calib_tax: taxApplied ? 0.04 : 0,
+    sit_mass: 0.2 * sitMass,
+    knn: knnBarDelta,
+    pre_clamp: 0,
+    final: bar,
+  };
+  barBreakdown.pre_clamp =
+    barBreakdown.base +
+    barBreakdown.quiet +
+    barBreakdown.weekend +
+    barBreakdown.phase +
+    barBreakdown.law_miss1 +
+    barBreakdown.calib_tax +
+    barBreakdown.sit_mass +
+    barBreakdown.knn;
 
   const alreadyIn = learner.window_memory.entry_lean && learner.window_memory.entry_lean !== "WAIT";
 
@@ -566,6 +606,7 @@ export function runChair(
         conf: a.vote.confidence,
         skill_used: a.vote.skill_used,
         base_w: a.base,
+        weight: a.w,
         listen: a.listen,
         health: a.vote.health as FeedHealth,
         signed: a.signed,
@@ -666,6 +707,10 @@ export function runChair(
     confidence: Math.round(conf),
     score: rawScore,
     bar,
+    bar_breakdown: barBreakdown,
+    vs_bar: vsBar,
+    dir_mass: sumWDir,
+    sit_total_mass: sumWSit,
     aggressiveness: agg,
     pit_tags,
     time_factor: timeFactor,
@@ -676,6 +721,7 @@ export function runChair(
     invert_cap: invertCap,
     tax,
     tax_applied: taxApplied,
+    calib_tax_line: calibTaxLine,
     law_dimmer: lawDimmer,
     full_conf_raw: full,
     calc,

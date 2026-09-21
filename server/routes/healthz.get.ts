@@ -41,6 +41,11 @@ export default function healthz() {
   void import("../../src/lib/desk/hour-closer.server")
     .then((m) => m.ensureHourCloser())
     .catch(() => {});
+  // Hour Research: shadow-only hourly checkpoints. Its own tables, its own
+  // timer, authority none, and no path into the 15-minute floor.
+  void import("../../src/lib/desk/hour-research.server")
+    .then((m) => m.ensureHourResearchObserver())
+    .catch(() => {});
   return new Response("ok", {
     status: 200,
     headers: {

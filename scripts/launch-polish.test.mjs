@@ -34,8 +34,11 @@ test("the Floor opens quietly and remembers a deliberate Full desk choice", () =
   assert.match(app, /setFloorDensityState\(readFloorDensity\(\)\)/);
   assert.match(app, /density=\{floorDensity\}/);
   assert.match(app, /onDensityChange=\{setFloorDensity\}/);
-  assert.match(floor, /Quiet keeps the call, reason, clock and live Bitcoin-vs-strike view/);
-  assert.match(floor, /Full adds evidence, record, council and diagnostics/);
+  // The two views carry the same numbers; Full desk only adds detail. The copy
+  // names what each one holds, so it moves when the cockpit's sections move.
+  assert.match(floor, /Core keeps the decision strip, the call and its reason/);
+  assert.match(floor, /Full desk adds the whole Council tape, every gate/);
+  assert.match(floor, /Both show the same numbers/);
   assert.match(floor, /density === "full" \? <OvernightRibbon/);
   assert.match(floor, /density === "full" && strip/);
   assert.match(floor, /onDensityChange\(choice\)/);
