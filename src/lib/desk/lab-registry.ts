@@ -312,6 +312,18 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     visible_at: "research diagnostics",
   },
   {
+    id: "ask-lead-swap",
+    label: "Higher-ask swaps",
+    type: "measurement",
+    authority: "none",
+    purpose: "Count how often the higher Kalshi ask changes sides and when on the clock it happens.",
+    cadence: "sampled through each 15m window",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "Lab",
+  },
+  {
     id: "hourly-book",
     label: "Hourly book",
     type: "separate",
