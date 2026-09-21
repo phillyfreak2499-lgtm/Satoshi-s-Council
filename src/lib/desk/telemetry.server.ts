@@ -20,8 +20,15 @@ import { getSql } from "@/lib/db";
 import {
   buildChairEvalRow,
   buildSeatReadRows,
+  DEFAULT_SAMPLE_POLICY,
+  emptyCounters,
+  flushBatch,
+  shouldSample,
   type ChairEvalRow,
+  type SamplePolicy,
+  type SampleState,
   type SeatReadRow,
+  type TelemetryCounters,
 } from "./telemetry.ts";
 import type { ChairResult, Learner, Snapshot, Vote } from "./types";
 
@@ -38,28 +45,28 @@ const numEnv = (name: string, dflt: number): number => {
   return Number.isFinite(n) && n > 0 ? n : dflt;
 };
 
-// Sampling / batching knobs (env-overridable, conservative defaults).
-const MIN_INTERVAL_MS = () => numEnv("SEAT_TELEMETRY_MIN_INTERVAL_MS", 8_000);
-const PER_WINDOW_CAP = () => numEnv("SEAT_TELEMETRY_WINDOW_CAP", 80);
+// Sampling policy (env-overridable; defaults from the pure DEFAULT_SAMPLE_POLICY,
+// sized so a full 15-minute window is covered end to end without the cap being
+// the normal reason sampling stops).
+function policy(): SamplePolicy {
+  return {
+    minIntervalMs: numEnv("SEAT_TELEMETRY_MIN_INTERVAL_MS", DEFAULT_SAMPLE_POLICY.minIntervalMs),
+    windowCap: numEnv("SEAT_TELEMETRY_WINDOW_CAP", DEFAULT_SAMPLE_POLICY.windowCap),
+  };
+}
 const FLUSH_MS = 5_000;
 const MAX_BUFFER_ROWS = 20_000;
 const INSERT_BATCH = 200;
 const RETENTION_DAYS = () => numEnv("SEAT_TELEMETRY_RETENTION_DAYS", 45);
 const PRUNE_EVERY_FLUSHES = 240; // ~20 min at 5s cadence
 
-type Sampled = { last: number; count: number };
-
 type Observer = {
   seatBuf: SeatReadRow[];
   chairBuf: ChairEvalRow[];
-  sampled: Map<string, Sampled>;
+  sampled: Map<string, SampleState>;
   timer: ReturnType<typeof setInterval> | null;
   flushing: boolean;
-  flushes: number;
-  wrote: number;
-  dropped: number;
-  lastError: string | null;
-  lastFlush: number | null;
+  counters: TelemetryCounters;
 };
 
 const g = globalThis as typeof globalThis & { __seatTelemetry__?: Observer };
@@ -70,11 +77,7 @@ const state = (): Observer =>
     sampled: new Map(),
     timer: null,
     flushing: false,
-    flushes: 0,
-    wrote: 0,
-    dropped: 0,
-    lastError: null,
-    lastFlush: null,
+    counters: emptyCounters(),
   });
 
 function buildSha(): string {
@@ -102,12 +105,9 @@ export function noteSeatTelemetry(
     const s = state();
     const key = `${snap.ticker}|${snap.close_time}`;
     const now = snap.as_of;
-    const samp = s.sampled.get(key) ?? { last: Number.NEGATIVE_INFINITY, count: 0 };
-    if (samp.count >= PER_WINDOW_CAP()) return;
-    if (now - samp.last < MIN_INTERVAL_MS()) return;
-    samp.last = now;
-    samp.count += 1;
-    s.sampled.set(key, samp);
+    const decision = shouldSample(s.sampled.get(key), now, policy());
+    if (!decision.take) return;
+    s.sampled.set(key, decision.state);
     if (s.sampled.size > 256) {
       // keep only recent windows so the sampler map cannot grow unbounded
       const cutoff = now - 60 * 60_000;
@@ -118,17 +118,17 @@ export function noteSeatTelemetry(
     for (const r of buildSeatReadRows(snap, votes, raw, learner)) s.seatBuf.push(r);
 
     if (s.seatBuf.length > MAX_BUFFER_ROWS) {
-      s.dropped += s.seatBuf.length - MAX_BUFFER_ROWS;
+      s.counters.bufferOverflowRows += s.seatBuf.length - MAX_BUFFER_ROWS;
       s.seatBuf.splice(0, s.seatBuf.length - MAX_BUFFER_ROWS);
     }
     if (s.chairBuf.length > MAX_BUFFER_ROWS) {
-      s.dropped += s.chairBuf.length - MAX_BUFFER_ROWS;
+      s.counters.bufferOverflowRows += s.chairBuf.length - MAX_BUFFER_ROWS;
       s.chairBuf.splice(0, s.chairBuf.length - MAX_BUFFER_ROWS);
     }
     ensureFlusher();
   } catch (e) {
     try {
-      state().lastError = e instanceof Error ? e.message : String(e);
+      state().counters.lastError = e instanceof Error ? e.message : String(e);
     } catch {
       /* never throw into the tick */
     }
@@ -151,19 +151,28 @@ async function flush(): Promise<void> {
   s.flushing = true;
   try {
     const sha = buildSha();
+    // Dequeue first: fail-open means these rows are already out of the buffer, so
+    // a DB failure never applies retry pressure to the desk. flushBatch counts
+    // exactly what persists and what is lost, per side (seat vs chair), so a
+    // partial write (one insert succeeds, the other fails) is never miscounted as
+    // total loss and DB-loss never disappears silently.
     const seat = s.seatBuf.splice(0, INSERT_BATCH);
     const chair = s.chairBuf.splice(0, INSERT_BATCH);
-    if (seat.length) await insertSeatRows(seat, sha);
-    if (chair.length) await insertChairRows(chair, sha);
-    s.wrote += seat.length + chair.length;
-    s.lastFlush = Date.now();
-    s.lastError = null;
-    s.flushes += 1;
-    if (s.flushes % PRUNE_EVERY_FLUSHES === 0) await prune();
-  } catch (e) {
-    // Fail open: drop this batch (already spliced out) and record why. Never retry
-    // in a tight loop; the next interval tick tries fresh rows.
-    s.lastError = e instanceof Error ? e.message : String(e);
+    await flushBatch(
+      seat,
+      chair,
+      (rows) => insertSeatRows(rows, sha),
+      (rows) => insertChairRows(rows, sha),
+      s.counters,
+      Date.now(),
+    );
+    if (s.counters.flushes % PRUNE_EVERY_FLUSHES === 0) {
+      try {
+        await prune();
+      } catch (e) {
+        s.counters.lastError = e instanceof Error ? e.message : String(e);
+      }
+    }
   } finally {
     s.flushing = false;
   }
@@ -245,18 +254,27 @@ async function prune(): Promise<void> {
   await db.query(`delete from desk_chair_evals where as_of < now() - ($1 || ' days')::interval`, [String(days)]);
 }
 
-/** Read-only health for an ops endpoint. Never used by any decision path. */
+/**
+ * Read-only health for an ops endpoint. Never used by any decision path. Every
+ * kind of lost row is a distinct counter: buffer-overflow drops, failed seat-row
+ * DB batches and failed Chair-row DB batches are never merged into one ambiguous
+ * number, so research can tell whether telemetry coverage was actually complete.
+ */
 export function seatTelemetryHealth() {
   const s = state();
+  const c = s.counters;
   return {
     enabled: enabled(),
     buffered_seat: s.seatBuf.length,
     buffered_chair: s.chairBuf.length,
-    wrote: s.wrote,
-    dropped: s.dropped,
-    flushes: s.flushes,
-    last_flush: s.lastFlush,
-    last_error: s.lastError,
+    wrote: c.wrote,
+    buffer_overflow_rows: c.bufferOverflowRows,
+    failed_seat_write_rows: c.failedSeatRows,
+    failed_chair_write_rows: c.failedChairRows,
+    write_failures: c.writeFailures,
+    flushes: c.flushes,
+    last_flush: c.lastFlush,
+    last_error: c.lastError,
   };
 }
 

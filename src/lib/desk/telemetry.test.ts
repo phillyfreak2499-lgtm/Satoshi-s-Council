@@ -5,9 +5,17 @@ import {
   buildSeatReadRows,
   chairWaitReason,
   classifySuppression,
+  DEFAULT_SAMPLE_POLICY,
   effectiveSpeakBar,
+  emptyCounters,
+  flushBatch,
   isEligibleVoter,
+  shouldSample,
   SUPPRESSION_REASONS,
+  WINDOW_MS,
+  type ChairEvalRow,
+  type SampleState,
+  type SeatReadRow,
 } from "./telemetry.ts";
 import type { ChairResult, Gate, Learner, SeatRow, Snapshot, Vote } from "./types.ts";
 
@@ -264,4 +272,127 @@ test("8. suppression reason set is closed and every classification is a member",
     vote({ seat: "TAPE", health: "DOWN" }),
   ];
   for (const v of samples) assert.ok(set.has(classifySuppression(v, learner(), AS_OF)), `reason for ${v.seat}`);
+});
+
+// ---------------------------------------------------------------------------
+// FIX 1 — sampling covers a full 15-minute window without hitting the cap
+// ---------------------------------------------------------------------------
+
+test("9. default sampling covers a whole 15-min window: ceil(window/interval) <= cap", () => {
+  const { minIntervalMs, windowCap } = DEFAULT_SAMPLE_POLICY;
+  // The relationship, not just the constants: a full window's natural sample
+  // count must fit under the cap, so the cap is never the normal stop.
+  assert.ok(Math.ceil(WINDOW_MS / minIntervalMs) <= windowCap,
+    `ceil(${WINDOW_MS}/${minIntervalMs})=${Math.ceil(WINDOW_MS / minIntervalMs)} must be <= cap ${windowCap}`);
+});
+
+test("10. simulated 15-min window samples through 4-min regime + toward hard-late, cap untouched", () => {
+  const policy = DEFAULT_SAMPLE_POLICY;
+  const t0 = 1_000_000_000_000;
+  const close = t0 + WINDOW_MS;
+  let st: SampleState = { last: Number.NEGATIVE_INFINITY, count: 0 };
+  const sampledSecsLeft: number[] = [];
+  // Real desk tick cadence is ~2s; drive the whole window.
+  for (let now = t0; now <= close; now += 2_000) {
+    const d = shouldSample(st, now, policy);
+    if (d.take) sampledSecsLeft.push((close - now) / 1000);
+    st = d.state;
+  }
+  const count = st.count;
+  // Cap is never the reason sampling stopped.
+  assert.ok(count < policy.windowCap, `count ${count} must be < cap ${policy.windowCap}`);
+  // Full coverage: ~90 samples at 10s spacing over 900s.
+  assert.ok(count >= 88 && count <= 92, `expected ~90 samples, got ${count}`);
+  // Reaches through the 4-minute (240s) timeFactor transition ...
+  assert.ok(sampledSecsLeft.some((s) => s < 240), "samples must reach past the 4-min transition");
+  // ... and down toward the hard-late (2.2-min = 132s) portion.
+  assert.ok(sampledSecsLeft.some((s) => s <= 132), "samples must reach the hard-late portion");
+  // And the very last sample is deep into the window (near the close).
+  assert.ok(Math.min(...sampledSecsLeft) < 20, "sampling continues to near the close");
+});
+
+test("10b. env-style tighter interval still fits the window under a proportional cap", () => {
+  // Prove the interval/duration/cap relationship holds for an override too.
+  const policy = { minIntervalMs: 12_000, windowCap: 80 };
+  assert.ok(Math.ceil(WINDOW_MS / policy.minIntervalMs) <= policy.windowCap);
+});
+
+// ---------------------------------------------------------------------------
+// FIX 2 — DB-write loss is measured, not silently dropped
+// ---------------------------------------------------------------------------
+
+const seatRows = (n: number): SeatReadRow[] => Array.from({ length: n }, () => ({}) as SeatReadRow);
+const chairRows = (n: number): ChairEvalRow[] => Array.from({ length: n }, () => ({}) as ChairEvalRow);
+const ok = () => Promise.resolve();
+const fail = (msg: string) => () => Promise.reject(new Error(msg));
+
+test("F2.1 successful flush counts written rows and clears the error", async () => {
+  const c = emptyCounters();
+  await flushBatch(seatRows(18), chairRows(1), ok, ok, c, 123);
+  assert.equal(c.wrote, 19);
+  assert.equal(c.writeFailures, 0);
+  assert.equal(c.failedSeatRows, 0);
+  assert.equal(c.failedChairRows, 0);
+  assert.equal(c.lastFlush, 123);
+  assert.equal(c.lastError, null);
+  assert.equal(c.flushes, 1);
+});
+
+test("F2.2 failed seat insert records exact seat rows lost; chair still persists", async () => {
+  const c = emptyCounters();
+  await flushBatch(seatRows(18), chairRows(1), fail("seat db down"), ok, c, 200);
+  assert.equal(c.failedSeatRows, 18);
+  assert.equal(c.wrote, 1); // the chair row still persisted
+  assert.equal(c.failedChairRows, 0);
+  assert.equal(c.writeFailures, 1);
+  assert.match(String(c.lastError), /seat db down/);
+  assert.equal(c.lastFlush, 200); // a partial write is a flush that persisted something
+});
+
+test("F2.3 failed chair insert records exact chair rows lost; seats still persist", async () => {
+  const c = emptyCounters();
+  await flushBatch(seatRows(18), chairRows(3), ok, fail("chair db down"), c, 300);
+  assert.equal(c.failedChairRows, 3);
+  assert.equal(c.wrote, 18); // seat rows persisted
+  assert.equal(c.failedSeatRows, 0);
+  assert.equal(c.writeFailures, 1);
+  assert.match(String(c.lastError), /chair db down/);
+});
+
+test("F2.3b both inserts fail: nothing written, both losses counted, no last_flush", async () => {
+  const c = emptyCounters();
+  await flushBatch(seatRows(5), chairRows(2), fail("seat"), fail("chair"), c, 400);
+  assert.equal(c.wrote, 0);
+  assert.equal(c.failedSeatRows, 5);
+  assert.equal(c.failedChairRows, 2);
+  assert.equal(c.writeFailures, 2);
+  assert.equal(c.lastFlush, null); // nothing persisted this flush
+});
+
+test("F2.4 buffer-overflow rows are a separate counter, untouched by flush accounting", async () => {
+  const c = emptyCounters();
+  c.bufferOverflowRows = 7; // set by the writer on overflow, independent of DB loss
+  await flushBatch(seatRows(2), chairRows(1), fail("db"), ok, c, 500);
+  assert.equal(c.bufferOverflowRows, 7); // not merged into failed_* counters
+  assert.equal(c.failedSeatRows, 2);
+  // the four loss/write kinds are all distinct fields
+  const keys = Object.keys(emptyCounters());
+  for (const k of ["wrote", "bufferOverflowRows", "failedSeatRows", "failedChairRows", "writeFailures"]) {
+    assert.ok(keys.includes(k), `counter must expose ${k}`);
+  }
+});
+
+test("F2.5 a DB failure never escapes flushBatch (fail-open)", async () => {
+  const c = emptyCounters();
+  await assert.doesNotReject(() => flushBatch(seatRows(3), chairRows(1), fail("boom"), fail("boom"), c, 600));
+});
+
+test("F2.6 flushBatch does not mutate the row batches it is given", async () => {
+  const seat = seatRows(4);
+  const chair = chairRows(2);
+  const seatBefore = structuredClone(seat);
+  const chairBefore = structuredClone(chair);
+  await flushBatch(seat, chair, fail("x"), ok, emptyCounters(), 700);
+  assert.deepEqual(seat, seatBefore);
+  assert.deepEqual(chair, chairBefore);
 });

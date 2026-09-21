@@ -49,6 +49,43 @@ function isDir(l: Lean | undefined | null): l is "UP" | "DOWN" {
   return l === "UP" || l === "DOWN";
 }
 
+// ---------------------------------------------------------------------------
+// Sampling policy (pure, so the interval/cap relationship is unit-testable)
+// ---------------------------------------------------------------------------
+
+/** A Bitcoin research window is 15 minutes. */
+export const WINDOW_MS = 15 * 60_000;
+
+export type SamplePolicy = { minIntervalMs: number; windowCap: number };
+
+/**
+ * Defaults chosen so a full 15-minute window is covered end to end without the
+ * cap ever being the reason sampling stops: at a 10s minimum interval a window
+ * yields ceil(900s / 10s) = 90 samples, comfortably under the 96 cap. The cap is
+ * an emergency bound (e.g. a stuck clock), not the normal stop. Both are
+ * env-overridable in telemetry.server.ts.
+ */
+export const DEFAULT_SAMPLE_POLICY: SamplePolicy = { minIntervalMs: 10_000, windowCap: 96 };
+
+export type SampleState = { last: number; count: number };
+
+/**
+ * Decide whether to record a sample this tick. Pure: given the prior per-window
+ * state and the current tick time, returns whether to take the sample and the
+ * next state. Sampling stops only on the min-interval spacing until the cap,
+ * which a full window should not reach.
+ */
+export function shouldSample(
+  prev: SampleState | undefined,
+  nowMs: number,
+  policy: SamplePolicy,
+): { take: boolean; state: SampleState } {
+  const s = prev ?? { last: Number.NEGATIVE_INFINITY, count: 0 };
+  if (s.count >= policy.windowCap) return { take: false, state: s };
+  if (nowMs - s.last < policy.minIntervalMs) return { take: false, state: s };
+  return { take: true, state: { last: nowMs, count: s.count + 1 } };
+}
+
 /** Effective per-seat speak bar: the hard 52 plus COACH's per-seat offset. */
 export function effectiveSpeakBar(learner: Learner, seat: string): { bar: number; offset: number } {
   const offset = learner.knobs?.[seat]?.speak_offset ?? 0;
@@ -286,4 +323,96 @@ export function buildChairEvalRow(
     wait_reason: chairWaitReason(final),
     gates: raw.gates,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Flush accounting (pure + injectable, so DB-loss counting is unit-testable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Separate, unambiguous counters for the writer. Buffer-overflow drops and
+ * DB-batch losses are tracked apart so later research can tell coverage gaps
+ * caused by memory pressure from gaps caused by a database outage, and can tell
+ * seat-row loss from Chair-row loss.
+ */
+export type TelemetryCounters = {
+  /** rows successfully persisted */
+  wrote: number;
+  /** rows discarded from the in-memory buffer before any insert (memory bound) */
+  bufferOverflowRows: number;
+  /** seat rows removed from the buffer whose insert then failed (lost) */
+  failedSeatRows: number;
+  /** Chair rows removed from the buffer whose insert then failed (lost) */
+  failedChairRows: number;
+  /** count of individual insert batches that failed */
+  writeFailures: number;
+  /** total flush attempts */
+  flushes: number;
+  /** time of the last flush in which at least one batch persisted */
+  lastFlush: number | null;
+  /** most recent write error, or null after a fully clean flush */
+  lastError: string | null;
+};
+
+export function emptyCounters(): TelemetryCounters {
+  return {
+    wrote: 0,
+    bufferOverflowRows: 0,
+    failedSeatRows: 0,
+    failedChairRows: 0,
+    writeFailures: 0,
+    flushes: 0,
+    lastFlush: null,
+    lastError: null,
+  };
+}
+
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Persist one flush's already-dequeued batches, counting exactly what was
+ * written and what was lost. The seat and Chair inserts are attempted
+ * independently: if one succeeds and the other fails, the successful rows are
+ * counted as written and only the failed side's rows are counted as lost — a
+ * partial write is never reported as a total loss, and never retried (fail-open;
+ * no retry pressure on the desk). This function never throws: a rejected insert
+ * is caught, counted, and swallowed, so a DB outage cannot escape into the tick.
+ */
+export async function flushBatch(
+  seat: SeatReadRow[],
+  chair: ChairEvalRow[],
+  insertSeat: (rows: SeatReadRow[]) => Promise<void>,
+  insertChair: (rows: ChairEvalRow[]) => Promise<void>,
+  counters: TelemetryCounters,
+  nowMs: number,
+): Promise<void> {
+  let wroteAny = false;
+  let failedAny = false;
+  if (seat.length) {
+    try {
+      await insertSeat(seat);
+      counters.wrote += seat.length;
+      wroteAny = true;
+    } catch (e) {
+      counters.failedSeatRows += seat.length;
+      counters.writeFailures += 1;
+      counters.lastError = errMsg(e);
+      failedAny = true;
+    }
+  }
+  if (chair.length) {
+    try {
+      await insertChair(chair);
+      counters.wrote += chair.length;
+      wroteAny = true;
+    } catch (e) {
+      counters.failedChairRows += chair.length;
+      counters.writeFailures += 1;
+      counters.lastError = errMsg(e);
+      failedAny = true;
+    }
+  }
+  counters.flushes += 1;
+  if (wroteAny) counters.lastFlush = nowMs;
+  if (wroteAny && !failedAny) counters.lastError = null;
 }
