@@ -26,6 +26,12 @@
 .company-text-link { display: inline-flex; align-items: center; gap: 15px; min-height: 44px; color: var(--company-ink); font-size: 14px; text-decoration: none; }
 .company-text-link:hover { color: var(--company-gold); }
 .company-hero-note { margin-top: 25px; color: #929b9f; font-size: 12px; }
+/* The two doors into the live floor. Both buttons keep their full width on a
+   phone so neither label wraps to two lines or clips at the gutter. */
+.company-hero-inner .company-actions { gap: 12px; }
+.company-hero-doors { display: flex; flex-direction: column; gap: 6px; margin-top: 18px; max-width: 58ch; font-size: 13px; line-height: 1.7; color: #b9bec0; }
+.company-hero-doors strong { color: #e6eaec; font-weight: 500; }
+.company-hero-doors-note { color: #929b9f; font-size: 12px; }
 .company-live { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 32px; align-items: center; padding: 34px 0; border-bottom: 1px solid var(--company-rule); }
 .company-live-decision { min-width: 0; }
 .company-live-call { margin: 12px 0 6px; font-size: 40px; font-weight: 450; letter-spacing: -.04em; line-height: 1.2; color: var(--company-gold); }
@@ -154,6 +160,10 @@
   .company-hero-art::after { background: linear-gradient(180deg, #0b1015 0%, #0b1015b3 18%, transparent 100%), linear-gradient(90deg, #0b1015a6, transparent 100%); }
   .company-hero-lede { font-size: 15px; line-height: 1.8; max-width: 35ch; }
   .company-actions { gap: 6px 20px; margin-top: 24px; }
+  .company-hero-inner .company-actions { gap: 10px; }
+  .company-hero-inner .company-actions .company-button { flex: 1 1 100%; justify-content: center; }
+  .company-hero-doors { font-size: 12px; gap: 5px; margin-top: 14px; max-width: none; }
+  .company-hero-doors-note { font-size: 11px; }
   .company-hero-note { font-size: 11px; margin-top: 15px; }
   .company-live { grid-template-columns: 1fr; padding-block: 28px; gap: 22px; }
   .company-live-context { padding: 0; border: 0; }
