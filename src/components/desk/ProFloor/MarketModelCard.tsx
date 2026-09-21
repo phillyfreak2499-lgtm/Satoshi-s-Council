@@ -119,8 +119,20 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
                   <CentsCell f={model.edge} signed />
                 </span>
               }
-              sub={model.edge.cents == null ? model.edge.unavailable_why : "fair less the real ask less the fee"}
+              sub={model.edge.cents == null ? model.edge.unavailable_why : "fair less the real quoted ask less the fee"}
             />
+            {model.executable ? null : (
+              <Row
+                label="model vs mid"
+                value={
+                  <>
+                    <CentsCell f={model.diagnostic_edge} signed />
+                    {model.diagnostic_edge.cents == null ? null : <KindTag kind="derived" />}
+                  </>
+                }
+                sub="a modelling observation against the desk's own midpoint — not an edge anyone could take"
+              />
+            )}
             <Row
               label="breakeven"
               value={
@@ -130,7 +142,11 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
                   `${model.breakeven_pct.toFixed(0)}%`
                 )
               }
-              sub="the win rate this price needs to stand still"
+              sub={
+                model.breakeven_pct == null
+                  ? "a breakeven rate needs a price someone is quoting"
+                  : "the win rate this price needs to stand still"
+              }
             />
             {full ? (
               <Row
@@ -158,14 +174,24 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
         <StatBox
           label="paper floor"
           value={`${model.floor_cents}¢`}
-          sub={model.bookable ? "this ask clears it" : "a read under it does not fill"}
-          tone={model.bookable ? "text-up" : "text-wait"}
+          sub={
+            model.bookable == null
+              ? "no quoted ask, so the floor cannot be tested"
+              : model.bookable
+                ? "this ask clears it"
+                : "a read under it does not fill"
+          }
+          tone={model.bookable == null ? "text-subtle" : model.bookable ? "text-up" : "text-wait"}
         />
         <StatBox
-          label="settlement index"
-          value={market.index == null ? "—" : `$${Math.round(market.index).toLocaleString("en-US")}`}
-          sub={market.basis_bps == null ? "basis unavailable" : `${market.basis_bps >= 0 ? "+" : ""}${market.basis_bps.toFixed(0)} bps vs spot`}
-          title="The contract settles on the index, not on the exchange print."
+          label="venue index"
+          value={market.venue_index == null ? "—" : `$${Math.round(market.venue_index).toLocaleString("en-US")}`}
+          sub={
+            market.venue_basis_bps == null
+              ? "perp basis unavailable"
+              : `${market.venue_basis_bps >= 0 ? "+" : ""}${market.venue_basis_bps.toFixed(0)} bps perp vs spot`
+          }
+          title="A perpetual-futures index from OKX/Binance, carried as context. The contract settles on the CF Benchmarks value, which is a different feed and is not shown here."
         />
         <StatBox
           label="spot age"
@@ -174,9 +200,9 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
         />
         <StatBox
           label="in the way"
-          value={model.blocked_why ? "yes" : "nothing"}
-          sub={model.blocked_why ?? "the book would pay this ask"}
-          tone={model.blocked_why ? "text-wait" : "text-up"}
+          value={!model.executable ? "—" : model.blocked_why ? "yes" : "nothing"}
+          sub={!model.executable ? "nothing executable to assess" : (model.blocked_why ?? "the book would pay this ask")}
+          tone={!model.executable ? "text-subtle" : model.blocked_why ? "text-wait" : "text-up"}
         />
       </div>
     </Panel>

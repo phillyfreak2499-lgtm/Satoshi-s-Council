@@ -42,7 +42,13 @@ function statusText(s: SeatFact): string {
   if (s.voice === "suppressed") {
     return s.suppression ? SUPPRESSION_LABEL[s.suppression] : "suppressed";
   }
-  if (s.voice === "speaking") return `speaking${s.status && s.status !== "LIVE" ? ` · ${s.status.toLowerCase()}` : ""}`;
+  if (s.voice === "speaking") {
+    // A STALE feed does not silence a seat; it only scales its confidence. Such
+    // a seat really is speaking, and the warning rides along with the vote
+    // rather than replacing it.
+    const stale = s.health_warning ? " · STALE feed" : "";
+    return `speaking${stale}${s.status && s.status !== "LIVE" ? ` · ${s.status.toLowerCase()}` : ""}`;
+  }
   if (s.suppression) return SUPPRESSION_LABEL[s.suppression];
   return VOICE_LABEL[s.voice];
 }

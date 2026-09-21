@@ -88,12 +88,20 @@ export type MarketPosition = {
   /** Which side of the line spot sits on. "AT LINE" only on an exact match. */
   relation: "ABOVE" | "BELOW" | "AT LINE" | "UNKNOWN";
   /**
-   * The settlement index, which is what the contract actually settles on — not
-   * the exchange print above it. Null when the frame has none.
+   * A VENUE index, not the settlement index.
+   *
+   * `snap.index_px` on this repo comes from OKX/Binance perpetual
+   * infrastructure (`server-feeds.ts` → `deriv.index` / `binancePerp().index`).
+   * The contract settles on the CF Benchmarks value, which is a different
+   * number from a different feed. Calling this "the settlement index" on screen
+   * would be false, so it is named for what it is and the page says so.
    */
-  index: number | null;
-  /** Index-vs-spot difference in basis points, as the frame carries it. */
-  basis_bps: number | null;
+  venue_index: number | null;
+  /**
+   * PERPETUAL-vs-spot basis in basis points, as `snap.basis_bps` carries it.
+   * Not settlement-index-vs-spot basis.
+   */
+  venue_basis_bps: number | null;
   ticker: string;
   close_time: number;
   secs_left: number | null;
@@ -109,7 +117,7 @@ export function marketPosition(snap: Snapshot): MarketPosition {
   const spot = rawSpot != null && rawSpot > 0 ? rawSpot : null;
   const strike = rawStrike != null && rawStrike > 0 ? rawStrike : null;
   const distance = spot != null && strike != null ? spot - strike : null;
-  const index = num(snap.index_px);
+  const venue = num(snap.index_px);
   return {
     spot,
     spot_source: snap.spot_source ?? "",
@@ -117,8 +125,8 @@ export function marketPosition(snap: Snapshot): MarketPosition {
     strike,
     distance,
     relation: distance == null ? "UNKNOWN" : distance > 0 ? "ABOVE" : distance < 0 ? "BELOW" : "AT LINE",
-    index: index != null && index > 0 ? index : null,
-    basis_bps: num(snap.basis_bps),
+    venue_index: venue != null && venue > 0 ? venue : null,
+    venue_basis_bps: num(snap.basis_bps),
     ticker: snap.ticker ?? "",
     close_time: snap.close_time,
     secs_left: num(snap.secs_left),
@@ -219,13 +227,34 @@ export type ModelFacts = {
    */
   priced_ask: CentsFact;
   priced_ask_is_fallback: boolean;
+  /**
+   * True only when a REAL quoted ask exists on the side being read.
+   *
+   * Everything below that describes market economics — the edge, the breakeven
+   * rate, the book's floor verdict — is presented only when this holds. An edge
+   * measured against the desk's own midpoint is not an edge anyone could take,
+   * and printing "fair less the real ask less the fee" beside "ask unavailable"
+   * says two contradictory things at once.
+   */
+  executable: boolean;
+  /**
+   * The model-versus-mid difference, kept when the quoted ask is missing.
+   *
+   * Explicitly a DERIVED diagnostic, never actionable economics: it says where
+   * the model sits relative to the desk's own midpoint, which is a modelling
+   * observation, not a price anyone is offering.
+   */
+  diagnostic_edge: CentsFact;
   fee: CentsFact;
   /** fair − ask − fee on the side being priced. */
   edge: CentsFact;
-  /** (ask + fee) as a percentage: the win rate this price needs to stand still. */
+  /** (ask + fee) as a percentage: the win rate this price needs to stand still. Null unless executable. */
   breakeven_pct: number | null;
-  /** The book's own floor test on that side, and what stands in the way. */
-  bookable: boolean;
+  /**
+   * The book's own floor test on that side. NULL when there is no quoted ask:
+   * a floor verdict about a midpoint is a verdict about nothing.
+   */
+  bookable: boolean | null;
   floor_cents: number;
   blocked_why: string | null;
   /** The raw economics box, carried whole so nothing is recomputed downstream. */
@@ -240,6 +269,10 @@ export function modelFacts(snap: Snapshot, chair: ChairResult): ModelFacts {
   const quoted = side == null ? null : num(side === "UP" ? snap.yes_ask : snap.no_ask);
   const fallback =
     side != null && realCents(eco.ask) && !(realCents(quoted) && Math.abs(quoted - eco.ask) < 0.05);
+  // Market economics require a market price. Without a quoted ask on the side
+  // being read there is nothing executable to describe, whatever the desk's
+  // midpoint fallback happens to be worth.
+  const executable = side != null && realCents(quoted) && !fallback;
   return {
     fair_yes: cents(
       "model fair YES",
@@ -268,6 +301,14 @@ export function modelFacts(snap: Snapshot, chair: ChairResult): ModelFacts {
       unavailable_why: side == null ? "no side is being priced while the Chair is waiting" : realCents(eco.ask) ? "" : "no usable price on that side",
     },
     priced_ask_is_fallback: fallback,
+    executable,
+    diagnostic_edge: {
+      label: "model vs mid",
+      cents: executable || side == null || !realCents(eco.ask) ? null : eco.edge,
+      kind: "derived",
+      note: "where the model sits against the desk's own midpoint — a modelling observation, not an edge anyone could take",
+      unavailable_why: executable ? "a real ask exists, so the edge above is the market one" : side == null ? "no side is being priced" : "no usable value on that side",
+    },
     fee: {
       label: "fee",
       cents: side == null ? null : eco.fee,
@@ -277,18 +318,18 @@ export function modelFacts(snap: Snapshot, chair: ChairResult): ModelFacts {
     },
     edge: {
       label: "edge after fee",
-      cents: side == null || !realCents(eco.ask) ? null : eco.edge,
+      cents: executable ? eco.edge : null,
       kind: "difference",
-      note: "model fair minus the real ask minus the fee, on the side the Chair is reading",
-      unavailable_why:
-        side == null
+      note: "model fair minus the real quoted ask minus the fee, on the side the Chair is reading",
+      unavailable_why: !executable
+        ? side == null
           ? "an edge needs a side; the Chair is waiting"
-          : !realCents(eco.ask)
-            ? "no real ask on that side, so there is nothing to measure an edge against"
-            : "",
+          : "no real ask on that side, so there is nothing executable to measure an edge against"
+        : "",
     },
-    breakeven_pct: side == null || !realCents(eco.ask) ? null : eco.breakeven,
-    bookable: eco.bookable,
+    breakeven_pct: executable ? eco.breakeven : null,
+    // A floor verdict about a midpoint is a verdict about nothing.
+    bookable: executable ? eco.bookable : null,
     floor_cents: eco.floor,
     blocked_why: eco.why,
     economics: eco,
@@ -522,6 +563,15 @@ export type SeatFact = {
   final_conf_transformed: boolean;
   voice: SeatVoice;
   suppression: SuppressionReason | null;
+  /**
+   * The feed under this seat is STALE, but it spoke anyway.
+   *
+   * `applyHealth` only silences a DOWN feed. A STALE one keeps its direction and
+   * has its confidence multiplied by 0.6, so it can still clear the speaking bar
+   * and reach the Chair. Such a seat IS a speaker and must be counted as one —
+   * with its warning shown, not with its vote quietly removed.
+   */
+  health_warning: boolean;
   /** The per-seat speaking bar (52 plus COACH's offset), when the frame carries the knob. */
   speak_bar: number | null;
   /** True when this seat is one of the 18 the Chair aggregates. */
@@ -553,14 +603,31 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   const family = meta.tab;
   const knob = knobs?.[seat];
   const speakBar = knob ? SPEAK_CONF + (num(knob.speak_offset) ?? 0) : SPEAK_CONF;
-  const rawLean = vote?.raw_lean ?? null;
-  const rawConf = num(vote?.raw_conf);
   const finalLean: Lean = vote?.lean ?? row?.lean ?? "WAIT";
+  const finalConf = num(row?.conf ?? vote?.confidence);
   const forced = vote?.forced_sit === true || row?.forced_sit === true;
+  /**
+   * The seat's own read.
+   *
+   * The pipeline's own convention is `raw_lean ?? lean` — chair-v2, the openai
+   * shadow and council-authority all read it that way — because an ordinary
+   * speaker's final vote IS its raw read. Reading only the explicit field left
+   * every unsuppressed speaker showing "—" for RAW READ, as though it had never
+   * seen anything.
+   *
+   * The fallback applies ONLY when the vote was not transformed. On a forced sit
+   * `lean` was rewritten to WAIT and `confidence` to `max(70, raw)`, so falling
+   * back to those would report the transform as the seat's own reading — the
+   * exact conflation this column exists to prevent.
+   */
+  const rawLean = vote?.raw_lean ?? (forced ? null : finalLean);
+  const rawConf = num(vote?.raw_conf) ?? (forced ? null : finalConf);
   const health: FeedHealth = vote?.health ?? row?.health ?? "DOWN";
   const status = row?.status ?? null;
   const rawDirectional = rawLean === "UP" || rawLean === "DOWN";
   const benched = knob != null && num(knob.benched_until) != null && knob.benched_until > asOf;
+
+  const speaksNow = finalLean === "UP" || finalLean === "DOWN";
 
   let voice: SeatVoice;
   let suppression: SuppressionReason | null = null;
@@ -570,9 +637,15 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   } else if (RETIRED.has(seat)) {
     voice = "retired";
     suppression = rawDirectional ? "retired" : null;
+  } else if (speaksNow) {
+    // THE FINAL VOTE DECIDES FIRST. A STALE feed does not silence a seat — it
+    // only scales its confidence — so a STALE seat that still speaks reached the
+    // Chair and is a speaker. Classifying it "unhealthy" here removed a real
+    // vote from the family counts while the Chair was still hearing it.
+    voice = "speaking";
   } else if (health === "DOWN" || health === "STALE") {
     voice = "unhealthy";
-    suppression = rawDirectional && finalLean === "WAIT" ? "feed" : null;
+    suppression = rawDirectional ? "feed" : null;
   } else if (status === "MUTED" || status === "VETO") {
     voice = "muted";
     suppression = rawDirectional && finalLean === "WAIT" ? "muted" : null;
@@ -584,8 +657,6 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     // Every earlier branch of the filter is excluded above, so the confidence bar
     // is the only one left — but only claim it when the numbers actually show it.
     suppression = rawConf != null && rawConf < speakBar ? "below-speak-bar" : null;
-  } else if (finalLean === "UP" || finalLean === "DOWN") {
-    voice = "speaking";
   } else {
     voice = "waiting";
   }
@@ -598,10 +669,11 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     raw_lean: rawLean,
     raw_conf: rawConf,
     final_lean: finalLean,
-    final_conf: num(row?.conf ?? vote?.confidence),
+    final_conf: finalConf,
     final_conf_transformed: forced,
     voice,
     suppression,
+    health_warning: health === "STALE",
     speak_bar: knob || vote ? speakBar : null,
     aggregated: row != null,
     health,
@@ -638,8 +710,10 @@ export type FamilyFacts = {
   /** Directional raw reads from this family that never reached the Chair. */
   suppressed_up: number;
   suppressed_down: number;
-  /** Seats silenced by their own feed. */
+  /** Seats their own feed actually silenced. */
   unhealthy: number;
+  /** Seats that spoke anyway on a STALE feed — counted as speakers, flagged as warnings. */
+  stale_speakers: number;
   /** True when this family has speakers on both sides at once. */
   split: boolean;
 };
@@ -676,6 +750,7 @@ export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
       suppressed_up: seats.filter((s) => s.voice !== "speaking" && s.raw_lean === "UP").length,
       suppressed_down: seats.filter((s) => s.voice !== "speaking" && s.raw_lean === "DOWN").length,
       unhealthy: seats.filter((s) => s.voice === "unhealthy").length,
+      stale_speakers: seats.filter((s) => s.voice === "speaking" && s.health_warning).length,
       split: up > 0 && down > 0,
     };
   });
@@ -779,13 +854,37 @@ export type HealthFacts = {
   spot_age_s: number | null;
   /** Operational tags from the pit crew, as the Chair published them. */
   pit_tags: string[];
-  /** True when every feed the desk depends on reads LIVE and the sequence is clean. */
+  /**
+   * True only when EVERY condition this card displays is clear.
+   *
+   * It used to check spot, Kalshi and the sequence while the same card showed
+   * derivatives as a desk feed and the index-vs-spot warnings underneath — so it
+   * could read ALL CLEAR with DERIVS DOWN and the basis flagged wide. A badge
+   * that contradicts the rows beneath it is worse than no badge.
+   */
   all_clear: boolean;
+  /**
+   * Exactly what is not clear, in the card's own words. Empty when `all_clear`.
+   * The badge is never vague: if it is not clear, this says why.
+   */
+  blockers: string[];
 };
 
 export function healthFacts(snap: Snapshot, chair: ChairResult): HealthFacts {
   const fresh = freshness(snap);
   const h = snap.health;
+  // One list, built from the same conditions the card renders, so the badge and
+  // the rows can never disagree.
+  const blockers: string[] = [];
+  const feed = (label: string, state: FeedHealth | undefined) => {
+    if (state !== "LIVE") blockers.push(`${label} ${state ?? "DOWN"}`);
+  };
+  feed("spot", h?.spot);
+  feed("kalshi", h?.kalshi);
+  feed("derivs", h?.derivs);
+  if (fresh.gap !== "ok") blockers.push(`sequence ${fresh.gap}`);
+  if (h?.spot_divergent === true) blockers.push("spot sources diverge");
+  if (h?.basis_wide === true) blockers.push("basis wide");
   return {
     fresh,
     spot: h?.spot ?? "DOWN",
@@ -796,7 +895,8 @@ export function healthFacts(snap: Snapshot, chair: ChairResult): HealthFacts {
     basis_wide: h?.basis_wide === true,
     spot_age_s: realAge(snap.spot_age_s),
     pit_tags: Array.isArray(chair.pit_tags) ? chair.pit_tags : [],
-    all_clear: h?.spot === "LIVE" && h?.kalshi === "LIVE" && fresh.gap === "ok",
+    all_clear: blockers.length === 0,
+    blockers,
   };
 }
 

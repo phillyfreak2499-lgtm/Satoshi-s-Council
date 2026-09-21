@@ -140,9 +140,15 @@ export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
 
         <Cell
           label="Time"
+          // A count here, the full list on the data-health card: a strip cell is
+          // too narrow to name five blockers without truncating one of them.
           sub={
-            <span className={health.all_clear ? "text-subtle" : "text-wait"}>
-              {health.all_clear ? "feeds live" : `feeds: spot ${health.spot} · book ${health.kalshi}`}
+            <span className={health.all_clear ? "text-subtle" : "text-wait"} title={health.blockers.join(" · ")}>
+              {health.all_clear
+                ? "feeds live"
+                : health.blockers.length === 1
+                  ? health.blockers[0]
+                  : `${health.blockers.length} feed checks not clear`}
             </span>
           }
         >

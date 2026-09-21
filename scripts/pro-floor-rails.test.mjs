@@ -321,3 +321,90 @@ test("only UI-only beacons were added, and none of them tracks trading intent", 
   const tab = read("src/components/desk/SatoshiTab.tsx");
   assert.match(tab, /beacon\("floor_density_toggle"\)/);
 });
+
+// ---------------------------------------------------------------------------
+// Review round 2: the five semantics the UI could previously misstate
+// ---------------------------------------------------------------------------
+
+test("no venue or perpetual value is ever labelled the settlement index", () => {
+  const model = codeOf(READ_MODEL);
+  assert.match(model, /venue_index: number \| null;/);
+  assert.match(model, /venue_basis_bps: number \| null;/);
+  assert.doesNotMatch(model, /^\s*index: number \| null;/m, "no ambiguous `index` field survives");
+  assert.doesNotMatch(model, /^\s*basis_bps:/m);
+  assert.match(read(READ_MODEL), /PERPETUAL-vs-spot basis/, "the source is stated where the next editor reads it");
+  for (const rel of COMPONENTS) {
+    const src = read(rel);
+    // Denying the claim is the point; only an AFFIRMATIVE one is forbidden.
+    assert.doesNotMatch(src, /label="settlement index"/i, `${rel} must not label a value the settlement index`);
+    assert.doesNotMatch(src, /settles on (this|the) index/i, `${rel} must not say the contract settles on it`);
+    assert.doesNotMatch(src, /(?<!not )the settlement index(?!\.)/i, `${rel} must not assert a settlement index`);
+  }
+  const card = read("src/components/desk/ProFloor/MarketModelCard.tsx");
+  assert.match(card, /label="venue index"/);
+  assert.match(card, /perp vs spot/);
+  assert.match(card, /A perpetual-futures index from OKX\/Binance/, "and says which feed it is");
+});
+
+test("executable economics are suppressed whenever the priced ask is a midpoint fallback", () => {
+  const model = codeOf(READ_MODEL);
+  assert.match(model, /const executable = side != null && realCents\(quoted\) && !fallback;/);
+  assert.match(model, /cents: executable \? eco\.edge : null,/, "no edge without a quoted ask");
+  assert.match(model, /breakeven_pct: executable \? eco\.breakeven : null,/);
+  assert.match(model, /bookable: executable \? eco\.bookable : null,/, "and no floor verdict about a midpoint");
+  assert.match(model, /bookable: boolean \| null;/, "so the type admits `cannot be assessed`");
+  // The number survives only as a clearly derived diagnostic.
+  assert.match(model, /diagnostic_edge: CentsFact;/);
+  assert.match(model, /label: "model vs mid"/);
+  assert.match(read(READ_MODEL), /not an edge anyone could take/);
+  // The contradictory wording is gone.
+  const card = read("src/components/desk/ProFloor/MarketModelCard.tsx");
+  assert.doesNotMatch(card, /fair less the real ask less the fee/, "the old claim is replaced");
+  assert.match(card, /fair less the real quoted ask less the fee/);
+  assert.match(card, /\{model\.executable \? null : \(/, "the diagnostic row only appears when nothing is executable");
+  assert.match(card, /model\.bookable == null/, "the floor cell handles the unassessable case");
+});
+
+test("a STALE feed does not silence a seat: the final vote is classified first", () => {
+  const model = codeOf(READ_MODEL);
+  assert.match(model, /const speaksNow = finalLean === "UP" \|\| finalLean === "DOWN";/);
+  // The speaking branch must come BEFORE the health branch, or a STALE speaker
+  // is removed from the counts while the Chair is still hearing it.
+  const speaks = model.indexOf("} else if (speaksNow) {");
+  const unhealthy = model.indexOf('health === "DOWN" || health === "STALE"');
+  assert.ok(speaks > 0 && unhealthy > 0, "both branches exist");
+  assert.ok(speaks < unhealthy, "the final vote decides before the feed state does");
+  assert.match(model, /health_warning: health === "STALE",/);
+  assert.match(model, /stale_speakers: seats\.filter\(\(s\) => s\.voice === "speaking" && s\.health_warning\)\.length,/);
+  assert.match(read(READ_MODEL), /only scales its confidence/, "the reason is recorded in source");
+  // And the warning is visible beside the vote rather than replacing it.
+  assert.match(read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx"), /STALE feed/);
+  assert.match(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /health_warning/);
+});
+
+test("a raw read falls back to the final vote only when the vote was not transformed", () => {
+  const model = codeOf(READ_MODEL);
+  assert.match(model, /const rawLean = vote\?\.raw_lean \?\? \(forced \? null : finalLean\);/);
+  assert.match(model, /const rawConf = num\(vote\?\.raw_conf\) \?\? \(forced \? null : finalConf\);/);
+  // The repo-wide convention this matches, and the reason the fallback stops at
+  // a forced sit, are both stated in source.
+  assert.match(read(READ_MODEL), /raw_lean \?\? lean/);
+  assert.match(read(READ_MODEL), /ONLY when the vote was not transformed/);
+});
+
+test("all clear covers every feed and check the card displays", () => {
+  const model = codeOf(READ_MODEL);
+  assert.match(model, /feed\("spot", h\?\.spot\);/);
+  assert.match(model, /feed\("kalshi", h\?\.kalshi\);/);
+  assert.match(model, /feed\("derivs", h\?\.derivs\);/, "derivatives count, because the card shows them");
+  assert.match(model, /if \(fresh\.gap !== "ok"\) blockers\.push/);
+  assert.match(model, /spot_divergent === true\) blockers\.push/);
+  assert.match(model, /basis_wide === true\) blockers\.push/);
+  assert.match(model, /all_clear: blockers\.length === 0,/, "the badge is the list, so they cannot disagree");
+  assert.match(model, /blockers: string\[\];/);
+  assert.doesNotMatch(model, /all_clear: h\?\.spot === "LIVE" && h\?\.kalshi === "LIVE"/, "the narrow check is gone");
+  // The card names what is not clear rather than saying something vague.
+  const card = read("src/components/desk/ProFloor/DataHealthCard.tsx");
+  assert.match(card, /\$\{h\.blockers\.length\} not clear/);
+  assert.match(card, /Not clear: \{h\.blockers\.join\(" · "\)\}/);
+});

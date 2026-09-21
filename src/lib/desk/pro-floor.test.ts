@@ -734,3 +734,205 @@ test("quotes and the model are read straight off the snapshot the engine built",
   assert.equal(m.edge.cents, snap.edge_up);
   assert.equal(m.economics.ask, 61, "the economics box is carried whole");
 });
+
+// ---------------------------------------------------------------------------
+// Review round 2: five semantics the UI could previously misstate
+// ---------------------------------------------------------------------------
+
+test("the venue index is never presented as the settlement index", () => {
+  // `snap.index_px` on this repo is an OKX/Binance PERPETUAL index and
+  // `basis_bps` is perp-vs-spot basis. The contract settles on the CF
+  // Benchmarks value, which this frame does not carry at all.
+  const m = marketPosition(snapshot({ index_px: 85_950, basis_bps: -1.5 }));
+  assert.equal(m.venue_index, 85_950);
+  assert.equal(m.venue_basis_bps, -1.5);
+  // The old field names are gone, so nothing can read one as the other.
+  assert.equal("index" in m, false);
+  assert.equal("basis_bps" in m, false);
+  assert.equal("settlement_index" in m, false);
+
+  const dark = marketPosition(snapshot({ index_px: 0 }));
+  assert.equal(dark.venue_index, null, "a zero index is not a venue index either");
+});
+
+test("executable economics require a quoted ask; a midpoint fallback yields only a diagnostic", () => {
+  // `markSide` substitutes the mid when the side has no quoted ask, so the
+  // economics can be priced off a number nobody is offering. Presenting an edge,
+  // a breakeven rate or a floor verdict from that would claim actionable market
+  // economics that do not exist.
+  const fallback = build({ snap: { yes_ask: 0, yes_mid: 60 }, chair: { lean: "UP" } });
+  assert.equal(fallback.quotes.yes_ask.cents, null, "there is no quoted YES ask");
+  assert.equal(fallback.model.priced_ask.cents, 60, "the desk still priced against its mid");
+  assert.equal(fallback.model.priced_ask_is_fallback, true);
+  assert.equal(fallback.model.executable, false, "so nothing executable may be claimed");
+
+  assert.equal(fallback.model.edge.cents, null, "no executable edge");
+  assert.match(fallback.model.edge.unavailable_why, /nothing executable/);
+  assert.equal(fallback.model.breakeven_pct, null, "no breakeven rate");
+  assert.equal(fallback.model.bookable, null, "and no floor verdict about a midpoint");
+
+  // The number survives, clearly labelled as a modelling observation.
+  assert.equal(fallback.model.diagnostic_edge.cents, 3.3);
+  assert.equal(fallback.model.diagnostic_edge.kind, "derived");
+  assert.match(fallback.model.diagnostic_edge.note, /not an edge anyone could take/);
+
+  // With a real quoted ask everything is executable and the diagnostic stands down.
+  const real = build({ chair: { lean: "UP" } });
+  assert.equal(real.model.executable, true);
+  assert.equal(real.model.edge.cents, 3.3);
+  assert.match(real.model.edge.note, /real quoted ask/);
+  assert.equal(real.model.breakeven_pct, 62.7);
+  assert.equal(real.model.bookable, false, "61¢ is under the 80¢ paper floor");
+  assert.equal(real.model.diagnostic_edge.cents, null, "no diagnostic when the market answers");
+
+  // And with no side at all, nothing is claimed either way.
+  const waiting = build();
+  assert.equal(waiting.model.executable, false);
+  assert.equal(waiting.model.bookable, null);
+  assert.equal(waiting.model.diagnostic_edge.cents, null);
+});
+
+test("a STALE seat that still speaks is counted as a speaker, with its feed warning", () => {
+  // `applyHealth` only silences a DOWN feed. A STALE one keeps the seat's
+  // direction and multiplies its confidence by 0.6, so it can still clear the
+  // speaking bar and reach the Chair. Classifying it as unhealthy removed a
+  // real vote from the family counts while the Chair was still hearing it.
+  const votes = SEAT_IDS.map((s) =>
+    s === "DRIFT"
+      ? vote(s, { lean: "UP", confidence: 41, health: "STALE", raw_lean: "UP", raw_conf: 68 })
+      : s === "PULSE"
+        ? vote(s, { lean: "WAIT", confidence: 0, health: "DOWN", raw_lean: "UP", raw_conf: 60 })
+        : vote(s),
+  );
+  const rows = SEAT_IDS.filter((s) => !CHAIR_NON_VOTER_IDS.includes(s)).map((s) =>
+    s === "DRIFT"
+      ? seatRow(s, { lean: "UP", conf: 41, health: "STALE", contribution: 0.12 })
+      : s === "PULSE"
+        ? seatRow(s, { lean: "WAIT", conf: 0, health: "DOWN", status: "DOWN" })
+        : seatRow(s),
+  );
+  const f = build({ votes, chair: { rows, quorum: { up: 1, down: 0, wait: 17 } } });
+
+  const drift = f.seats.find((x) => x.seat === "DRIFT")!;
+  assert.equal(drift.voice, "speaking", "a STALE seat that speaks IS a speaker");
+  assert.equal(drift.final_lean, "UP");
+  assert.equal(drift.health, "STALE");
+  assert.equal(drift.health_warning, true, "and the warning rides with the vote");
+  assert.equal(drift.suppression, null, "its feed did not suppress it");
+
+  // A DOWN feed genuinely did silence its seat, and that is still reported.
+  const pulse = f.seats.find((x) => x.seat === "PULSE")!;
+  assert.equal(pulse.voice, "unhealthy");
+  assert.equal(pulse.suppression, "feed");
+
+  // The family counts the STALE speaker, and does not count it as silenced.
+  const structure = f.families.find((x) => x.family === "structure")!;
+  assert.equal(structure.up, 1, "the STALE speaker is in the UP count");
+  assert.equal(structure.unhealthy, 0, "and is not counted as silenced");
+  assert.equal(structure.stale_speakers, 1, "but is flagged");
+  const tape = f.families.find((x) => x.family === "tape")!;
+  assert.equal(tape.unhealthy, 1, "the DOWN seat is the silenced one");
+  assert.equal(f.balance.unhealthy, 1);
+});
+
+test("an ordinary speaker's raw read falls back to its final vote; a forced sit's never does", () => {
+  // The pipeline's own convention is `raw_lean ?? lean`, because an unsuppressed
+  // speaker's final vote IS its raw read. Reading only the explicit field left
+  // every ordinary speaker showing "—", as though it had seen nothing.
+  const votes = SEAT_IDS.map((s) => {
+    if (s === "DRIFT") {
+      // An ordinary speaker whose vote carries no explicit raw fields.
+      const v = vote(s, { lean: "UP", confidence: 68 });
+      delete v.raw_lean;
+      delete v.raw_conf;
+      return v;
+    }
+    if (s === "STREAK") {
+      // A genuine WAIT with no explicit raw fields is still a genuine WAIT.
+      const v = vote(s, { lean: "WAIT", confidence: 12 });
+      delete v.raw_lean;
+      delete v.raw_conf;
+      return v;
+    }
+    if (s === "CARRY") {
+      // A forced sit: `lean` became WAIT and `confidence` became max(70, raw).
+      const v = vote(s, { lean: "WAIT", confidence: 70, forced_sit: true });
+      delete v.raw_lean;
+      delete v.raw_conf;
+      return v;
+    }
+    return vote(s);
+  });
+  const rows = SEAT_IDS.filter((s) => !CHAIR_NON_VOTER_IDS.includes(s)).map((s) =>
+    s === "DRIFT"
+      ? seatRow(s, { lean: "UP", conf: 68 })
+      : s === "STREAK"
+        ? seatRow(s, { lean: "WAIT", conf: 12 })
+        : s === "CARRY"
+          ? seatRow(s, { lean: "WAIT", conf: 70, forced_sit: true })
+          : seatRow(s),
+  );
+  const f = build({ votes, chair: { rows } });
+
+  const drift = f.seats.find((x) => x.seat === "DRIFT")!;
+  assert.equal(drift.raw_lean, "UP", "an ordinary speaker's raw read is its vote");
+  assert.equal(drift.raw_conf, 68);
+  assert.equal(drift.final_lean, "UP");
+  assert.equal(drift.final_conf_transformed, false);
+
+  const streak = f.seats.find((x) => x.seat === "STREAK")!;
+  assert.equal(streak.raw_lean, "WAIT", "a genuine WAIT reads as a WAIT, not as unknown");
+  assert.equal(streak.raw_conf, 12);
+  assert.equal(streak.voice, "waiting");
+
+  // The forced sit must NOT fall back: doing so would report the transform
+  // (WAIT at 70) as the seat's own reading.
+  const carry = f.seats.find((x) => x.seat === "CARRY")!;
+  assert.equal(carry.raw_lean, null, "a transformed vote is never its own raw read");
+  assert.equal(carry.raw_conf, null);
+  assert.equal(carry.final_lean, "WAIT");
+  assert.equal(carry.final_conf, 70);
+  assert.equal(carry.final_conf_transformed, true);
+  assert.notEqual(carry.raw_conf, carry.final_conf);
+
+  // An explicit raw field always wins over the fallback.
+  const explicit = build({
+    votes: SEAT_IDS.map((s) => (s === "VEL" ? vote(s, { lean: "UP", confidence: 70, raw_lean: "DOWN", raw_conf: 31 }) : vote(s))),
+  });
+  const vel = explicit.seats.find((x) => x.seat === "VEL")!;
+  assert.equal(vel.raw_lean, "DOWN");
+  assert.equal(vel.raw_conf, 31);
+});
+
+test("all clear covers every feed and check the card displays, and names what is not clear", () => {
+  const healthy = build();
+  assert.equal(healthy.health.all_clear, true);
+  assert.deepEqual(healthy.health.blockers, []);
+
+  // The regression: derivatives DOWN while spot, Kalshi and the sequence are
+  // fine used to read ALL CLEAR on a card that displays derivatives.
+  const derivsDown = build({ snap: { health: { ...snapshot().health, derivs: "DOWN" } } });
+  assert.equal(derivsDown.health.derivs, "DOWN");
+  assert.equal(derivsDown.health.all_clear, false, "a dead desk feed is not all clear");
+  assert.deepEqual(derivsDown.health.blockers, ["derivs DOWN"]);
+
+  // Every other condition the card shows counts too.
+  for (const [over, want] of [
+    [{ health: { ...snapshot().health, spot: "STALE" as const } }, ["spot STALE"]],
+    [{ health: { ...snapshot().health, kalshi: "DOWN" as const } }, ["kalshi DOWN"]],
+    [{ health: { ...snapshot().health, spot_divergent: true } }, ["spot sources diverge"]],
+    [{ health: { ...snapshot().health, basis_wide: true } }, ["basis wide"]],
+    [{ obs: { ...snapshot().obs, gap: "gap" as const } }, ["sequence gap"]],
+  ] as const) {
+    const f = build({ snap: over });
+    assert.equal(f.health.all_clear, false, `${want[0]} must not read as all clear`);
+    assert.deepEqual(f.health.blockers, want);
+  }
+
+  // Several at once are all named, so the badge is never vague.
+  const bad = build({
+    snap: { health: { ...snapshot().health, derivs: "DOWN", basis_wide: true }, obs: { ...snapshot().obs, gap: "reconnect" } },
+  });
+  assert.equal(bad.health.all_clear, false);
+  assert.deepEqual(bad.health.blockers, ["derivs DOWN", "sequence reconnect", "basis wide"]);
+});

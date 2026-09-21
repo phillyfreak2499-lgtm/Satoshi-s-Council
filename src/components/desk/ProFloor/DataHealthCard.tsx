@@ -36,7 +36,9 @@ export function DataHealthCard({ facts }: { facts: ProFloorFacts }) {
       id="data"
       title="Data health"
       right={
-        <Chip tone={h.all_clear ? "up" : "wait"}>{h.all_clear ? "all clear" : "check the feeds"}</Chip>
+        <Chip tone={h.all_clear ? "up" : "wait"} title={h.all_clear ? "every feed and check on this card is clear" : h.blockers.join(" · ")}>
+          {h.all_clear ? "all clear" : `${h.blockers.length} not clear`}
+        </Chip>
       }
     >
       <div className="mt-2 grid gap-x-6 sm:grid-cols-2">
@@ -59,7 +61,7 @@ export function DataHealthCard({ facts }: { facts: ProFloorFacts }) {
             </span>
           </div>
           <div className="flex items-baseline justify-between gap-2 border-t border-border py-1.5">
-            <span className="font-mono text-micro uppercase tracking-wider text-subtle">index vs spot</span>
+            <span className="font-mono text-micro uppercase tracking-wider text-subtle">perp vs spot</span>
             <span className={cn("font-mono text-micro tabular", h.basis_wide ? "text-wait" : "text-muted")}>
               {h.basis_wide ? "basis wide" : "in line"}
               {h.spot_divergent ? " · sources diverge" : ""}
@@ -82,9 +84,16 @@ export function DataHealthCard({ facts }: { facts: ProFloorFacts }) {
         </div>
       ) : null}
 
+      {h.all_clear ? null : (
+        <p className="mt-3 font-mono text-micro leading-relaxed text-wait">
+          Not clear: {h.blockers.join(" · ")}.
+        </p>
+      )}
+
       <p className="mt-3 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
         A book that has not moved in a while is a quiet market, not necessarily a stale one. The exchange&apos;s own
-        quote timestamp is not available from this feed, so every age here is the desk&apos;s own clock.
+        quote timestamp is not available from this feed, so every age here is the desk&apos;s own clock. The
+        perpetual basis above is an OKX/Binance reference, not the settlement index.
       </p>
     </Panel>
   );

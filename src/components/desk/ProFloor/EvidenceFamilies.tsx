@@ -50,7 +50,7 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
           {suppressed
             ? `raw read · ${s.suppression ? SUPPRESSION_LABEL[s.suppression] : "suppressed"}`
             : speaking
-              ? s.why || "speaking"
+              ? `${s.health_warning ? "STALE feed · " : ""}${s.why || "speaking"}`
               : VOICE_LABEL[s.voice]}
         </span>
       </button>
@@ -60,6 +60,14 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
 
 function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat: SeatId) => void }) {
   const suppressed = f.suppressed_up + f.suppressed_down;
+  // One list, so a family with only STALE speakers still gets its note. The
+  // earlier version gated the whole line on suppressed/unhealthy counts, which
+  // silently dropped the STALE-speaker warning.
+  const notes = [
+    suppressed > 0 ? `${suppressed} suppressed directional (${f.suppressed_up} UP · ${f.suppressed_down} DOWN)` : null,
+    f.unhealthy > 0 ? `${f.unhealthy} silenced by their feed` : null,
+    f.stale_speakers > 0 ? `${f.stale_speakers} speaking on a STALE feed` : null,
+  ].filter((n): n is string => n != null);
   return (
     <article className="flex min-w-0 flex-col rounded-sm border border-border bg-bg/40 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
@@ -73,12 +81,8 @@ function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat
         <span className="text-down">{f.down} DOWN</span>
         <span className="text-wait">{f.wait} WAIT</span>
       </div>
-      {suppressed > 0 || f.unhealthy > 0 ? (
-        <div className="mt-1 font-mono text-micro text-subtle">
-          {suppressed > 0 ? `${suppressed} suppressed directional (${f.suppressed_up} UP · ${f.suppressed_down} DOWN)` : null}
-          {suppressed > 0 && f.unhealthy > 0 ? " · " : null}
-          {f.unhealthy > 0 ? `${f.unhealthy} on an unhealthy feed` : null}
-        </div>
+      {notes.length ? (
+        <div className="mt-1 font-mono text-micro text-subtle">{notes.join(" · ")}</div>
       ) : null}
 
       <ul className="mt-2 border-t border-border pt-1">
