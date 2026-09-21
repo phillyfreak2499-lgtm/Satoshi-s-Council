@@ -6,7 +6,14 @@
  * untouched — this is a front door, not a replacement.
  */
 import type { PublicLabRegistrySnapshot } from "@/lib/desk/lab-registry.server";
-import { FRONT_DOOR_COPY, labFrontDoor, type FrontDoorCard, type FrontDoorRow } from "@/lib/desk/lab-front-door";
+import { LAB_RESEARCH_REGISTRY } from "@/lib/desk/lab-registry";
+import {
+  declaredBench,
+  FRONT_DOOR_COPY,
+  labFrontDoor,
+  type FrontDoorCard,
+  type FrontDoorRow,
+} from "@/lib/desk/lab-front-door";
 
 function Card({ c }: { c: FrontDoorCard }) {
   return (
@@ -62,16 +69,31 @@ function Group({
 }
 
 export function LabFrontDoor({ registry }: { registry: PublicLabRegistrySnapshot | null }) {
-  // A registry that could not be read is said aloud, never shown as an empty bench.
+  // The live lifecycle scan did not answer this request. That is a missing set
+  // of COUNTS, not a missing bench: the register is frozen in this bundle and
+  // every study below renders from its own snapshot regardless. So the bench is
+  // still listed, with the numbers withheld and said plainly to be withheld.
   if (!registry) {
+    const declared = declaredBench(LAB_RESEARCH_REGISTRY);
     return (
       <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-door">
-        <h2 id="lab-door" className="font-sans text-title font-medium text-fg">
-          The bench at a glance
-        </h2>
-        <p className="mt-2 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">
-          The study register could not be read this request, so this summary is unavailable. That is
-          not an empty bench — the full research below is unaffected.
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <div>
+            <p className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">The Lab</p>
+            <h2 id="lab-door" className="mt-1 font-sans text-title font-medium text-fg">
+              The bench at a glance
+            </h2>
+          </div>
+          <span className="rounded-sm border border-gold/40 bg-canvas px-2 py-0.5 font-mono text-micro uppercase tracking-widest text-gold">
+            {declared.length} studies · authority none
+          </span>
+        </div>
+        <p className="mt-2 max-w-[80ch] font-sans text-ui leading-relaxed text-muted">
+          {FRONT_DOOR_COPY.pending}
+        </p>
+        <Group id="lab-declared" title="On the bench" note={FRONT_DOOR_COPY.declared} cards={declared} />
+        <p className="mt-5 max-w-[80ch] border-t border-border pt-3 font-mono text-micro leading-relaxed text-subtle">
+          {FRONT_DOOR_COPY.footer}
         </p>
       </section>
     );

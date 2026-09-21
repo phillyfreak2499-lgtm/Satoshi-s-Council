@@ -81,6 +81,49 @@ export function conditionFor(gate: Gate): string {
 export const MULTI_BLOCKER_LINE =
   "More than one condition still needs to improve before the Council would act.";
 
+/**
+ * Collapse bullets that say the same thing.
+ *
+ * Two different gate ids deliberately share one beginner sentence — `warden`
+ * and `semantic` are both "the data sources need to pass their freshness
+ * check" — and the bar can arrive both as a failing gate and as the deduced
+ * second blocker. A reader cannot tell those apart on the page, so printing
+ * the sentence twice reads as a rendering fault rather than as two conditions.
+ * First occurrence wins, so the order the Chair published is preserved.
+ *
+ * This collapses WORDING ONLY. How many things are actually short is
+ * `blockerCount`, which is counted from the Chair's state, not from this list.
+ */
+function once(lines: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+  }
+  return out;
+}
+
+/**
+ * How many DISTINCT things are short — not how many bullets get printed.
+ *
+ * `more_than_one_thing_missing` is true when a second gate fails OR when the
+ * score is also short. Those are the SAME fact when the one failing gate is
+ * the `bar` gate itself, and that single case is what put "more than one
+ * condition still needs to improve" underneath one lone bullet on the live
+ * card. Counted this way, two gates that merely share wording are still two
+ * blockers, and the bar failing on its own is one.
+ *
+ * This reads the Chair's own flag and gate list. It sets no threshold, and it
+ * can only ever be narrower than the flag, never broader.
+ */
+function blockerCount(w: WhyFacts): number {
+  const barFailing = w.failed_hard.some((g) => g.id === "bar");
+  const barAlsoShort = w.more_than_one_thing_missing && w.failed_hard.length === 1 && !barFailing;
+  return w.failed_hard.length + (barAlsoShort ? 1 : 0);
+}
+
 export type WhatWouldChange = {
   /** "WAIT" while the Council is waiting, otherwise the side it currently reads. */
   stance: "WAIT" | "UP" | "DOWN";
@@ -133,8 +176,8 @@ export function whatWouldChange(chair: ChairResult, plain: string): WhatWouldCha
       stance,
       // A directional read can still have a gate short — the desk may read a
       // side and decline to book it — so the failures are still listed.
-      conditions: w.failed_hard.map(conditionFor),
-      multiple: w.more_than_one_thing_missing,
+      conditions: once(w.failed_hard.map(conditionFor)),
+      multiple: blockerCount(w) > 1,
       supports,
       invalidate,
       closing: invalidate
@@ -143,14 +186,14 @@ export function whatWouldChange(chair: ChairResult, plain: string): WhatWouldCha
     };
   }
 
-  const conditions = w.failed_hard.map(conditionFor);
-  // ONE GATE PLUS "more than one thing is missing" MEANS THE BAR IS THE OTHER
-  // ONE. That flag is true when a second gate fails OR when the score is also
-  // short, so with exactly one failing gate the second thing can only be the
-  // bar. Naming it is a deduction from the Chair's own flag, not a new test —
-  // and without it the card lists one condition and then says there is more
-  // than one, which reads like a contradiction.
-  if (conditions.length === 1 && w.more_than_one_thing_missing) {
+  const blockers = blockerCount(w);
+  const conditions = once(w.failed_hard.map(conditionFor));
+  // ONE GATE PLUS a second missing thing MEANS THE BAR IS THE OTHER ONE, and
+  // naming it is a deduction from the Chair's own flag rather than a new test.
+  // `blockerCount` has already excluded the case where that one failing gate
+  // IS the bar: there the flag counts one fact twice, and appending the line a
+  // second time is what printed the same bullet twice on the live card.
+  if (w.failed_hard.length === 1 && blockers > 1) {
     conditions.push(GATE_CONDITION.bar);
   }
   // No hard gate is failing, so the Chair is short on agreement or on price —
@@ -166,7 +209,7 @@ export function whatWouldChange(chair: ChairResult, plain: string): WhatWouldCha
   return {
     stance: "WAIT",
     conditions,
-    multiple: w.more_than_one_thing_missing,
+    multiple: blockers > 1,
     supports: [],
     invalidate: "",
     closing:

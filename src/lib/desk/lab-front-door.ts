@@ -21,7 +21,7 @@
  *
  * Nothing here writes, promotes, grades or decides anything.
  */
-import type { LabStudyHealth, LabStudyType } from "./lab-registry.ts";
+import type { LabStudyHealth, LabStudySpec, LabStudyType } from "./lab-registry.ts";
 
 /** The shape the Lab registry server publishes. Structural, so this stays pure. */
 export type FrontDoorRow = {
@@ -81,7 +81,7 @@ export function statusLabel(row: Pick<FrontDoorRow, "health">): string {
  * It restates the study's own `purpose` and its cadence. It never adds a
  * finding, a direction or an expectation.
  */
-export function whyItMatters(row: FrontDoorRow): string {
+export function whyItMatters(row: Pick<FrontDoorRow, "purpose" | "cadence">): string {
   const purpose = String(row.purpose ?? "").trim();
   return purpose ? `${purpose} Measured ${row.cadence}, with no authority over any live call.` : `Measured ${row.cadence}, with no authority over any live call.`;
 }
@@ -129,6 +129,44 @@ function card(row: FrontDoorRow): FrontDoorCard {
     authority: authorityLabel(row),
     why: whyItMatters(row),
   };
+}
+
+/** The status a card carries when the live register has not answered yet. */
+export const PENDING_STATUS = "evidence count not available this request";
+
+/**
+ * The bench as the frozen register itself declares it, for a request that
+ * arrived before the live lifecycle scan was warm.
+ *
+ * WHY THIS EXISTS. `labRegistrySnapshot` is deliberately a cache-only reader:
+ * it refuses to run the heavy lifecycle scan on the request path, and throws
+ * while the background observer is still warming or after that scan has failed.
+ * `lab-public` turns that into `registry: null`. The studies are not missing
+ * when that happens — every other snapshot in the SAME request still queried
+ * successfully and the detailed research below renders in full — so a summary
+ * that announced the whole register as unreadable was describing a much larger
+ * outage than the one that occurred.
+ *
+ * WHAT IT IS ALLOWED TO SAY. Only what the frozen spec already states: the
+ * study's label, its recorded purpose and its authority. `sample` is null and
+ * the status says plainly that the count is not available, because a number
+ * invented here would be indistinguishable on the page from a measured one.
+ * Nothing is fetched, nothing is counted, and no health is guessed at.
+ *
+ * The specs are passed in rather than imported, so this module stays a pure
+ * mapper over rows it is handed and never reaches for the register itself.
+ */
+export function declaredBench(specs: readonly LabStudySpec[] | null | undefined): FrontDoorCard[] {
+  const all = Array.isArray(specs) ? specs : [];
+  return all.map((spec) => ({
+    id: spec.id,
+    label: spec.label,
+    purpose: String(spec.purpose ?? "").trim(),
+    status: PENDING_STATUS,
+    sample: null,
+    authority: authorityLabel(spec),
+    why: whyItMatters(spec),
+  }));
 }
 
 const ACTIVE: readonly LabStudyHealth[] = Object.freeze(["collecting", "event-driven"]);
@@ -197,4 +235,8 @@ export const FRONT_DOOR_COPY = Object.freeze({
     "Started but not yet producing evidence, gone quiet, or run by hand. Listed so the bench is never quietly shorter than it looks.",
   footer:
     "Every study below carries authority: none. The full evidence for each one is unchanged underneath.",
+  pending:
+    "The live count of what each study has recorded is still warming for this request, so no numbers are shown here. The bench itself is listed in full below, and the detailed research further down the page is unaffected.",
+  declared:
+    "Every study the desk is running, as the register itself declares them. Whether each one is currently collecting, and how much it has recorded, is the part that is unavailable this request — it is not being guessed at here.",
 });

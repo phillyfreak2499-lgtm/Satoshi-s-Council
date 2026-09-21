@@ -296,3 +296,132 @@ test("no new research experiment, model, seat, room or bot was created", () => {
   // And no third floor appeared.
   assert.doesNotMatch(codeOf(APP), /ExpertFloor|TraderFloor|QuantFloor|AdvancedFloor|UnifiedFloor/);
 });
+
+// ---------------------------------------------------------------------------
+// 10. The two hotfixes: one bullet per condition, one source for the bench
+// ---------------------------------------------------------------------------
+
+const DOORUI = "src/components/desk/LabFrontDoor.tsx";
+const ROOM = "src/components/desk/LabRoom.tsx";
+
+test("the Guided card deduplicates its own bullets in the read model, not in the markup", () => {
+  const cont = codeOf(CONT);
+  // The collapse happens where the list is built, so every caller of
+  // `whatWouldChange` gets the same corrected list.
+  assert.match(cont, /function once\(/, "a deduplicating helper exists in the read model");
+  assert.match(cont, /conditions: once\(w\.failed_hard\.map\(conditionFor\)\)/);
+  assert.match(cont, /const conditions = once\(w\.failed_hard\.map\(conditionFor\)\)/);
+  // And NOT by hiding a rendered line, or by comparing rendered text.
+  const ui = codeOf(GUIDED);
+  for (const banned of ["slice(0, 1)", "textContent", "innerText", "indexOf(t) === i", ".filter((t, i)"]) {
+    assert.ok(!ui.includes(banned), `the component must not paper over duplicates with ${banned}`);
+  }
+  assert.match(ui, /w\.conditions\.map\(/, "the component still renders the whole list it is handed");
+});
+
+test("the bar line is only appended when the bar is not already the failing gate", () => {
+  const cont = codeOf(CONT);
+  // The live duplicate came from appending the bar sentence while the `bar`
+  // gate had already produced it. The append is now gated on a count that
+  // excludes exactly that case.
+  assert.match(cont, /function blockerCount\(/);
+  assert.match(cont, /const barFailing = w\.failed_hard\.some\(\(g\) => g\.id === "bar"\)/);
+  assert.match(cont, /if \(w\.failed_hard\.length === 1 && blockers > 1\) \{\s*\n\s*conditions\.push\(GATE_CONDITION\.bar\);/);
+  // The multi-condition caution is driven by that same count, never by the
+  // number of bullets left after deduplication.
+  assert.match(cont, /multiple: blockers > 1/);
+  assert.match(cont, /multiple: blockerCount\(w\) > 1/);
+  assert.ok(!cont.includes("multiple: conditions.length > 1"), "the caution is not a bullet count");
+});
+
+test("the Guided card still sets no threshold and runs no Chair of its own", () => {
+  const cont = codeOf(CONT);
+  for (const banned of ["runChair", "chair(", "seats(", "learner", "score >", "score <", "bar *", "Math.exp", "Math.pow"]) {
+    assert.ok(!cont.includes(banned), `the read model must not ${banned}`);
+  }
+  // Its only inputs remain the Chair's published state, via floor-clarity.
+  assert.match(cont, /from "\.\/floor-clarity\.ts"/);
+  const imports = cont.match(/^import .*$/gm) ?? [];
+  for (const line of imports) {
+    assert.ok(
+      /floor-clarity\.ts|record\.ts|books\.ts|types\.ts/.test(line),
+      `guided-continuity may not import: ${line}`,
+    );
+  }
+});
+
+test("the front door reads the parent's snapshot and never fetches a register itself", () => {
+  const room = codeOf(ROOM);
+  // One fetch, in the parent, shared by the summary and the detail below it.
+  assert.match(room, /const \[data, setData\] = useState/);
+  assert.match(room, /<LabFrontDoor registry=\{data\.registry\} \/>/);
+  assert.match(room, /<ResearchRegistry data=\{data\.registry\} \/>/);
+  assert.equal((room.match(/publicLabSnapshot\(\)/g) ?? []).length, 1, "exactly one Lab fetch in the room");
+  // The summary layer has no fetch of its own, in either file.
+  for (const rel of [DOOR, DOORUI]) {
+    const src = codeOf(rel);
+    for (const banned of [
+      "createServerFn",
+      "labRegistrySnapshot",
+      "publicLabSnapshot",
+      "refreshLabRegistrySnapshot",
+      "getSql",
+      "fetch(",
+      "useEffect",
+    ]) {
+      assert.ok(!src.includes(banned), `${rel} must not ${banned}`);
+    }
+  }
+  // The component receives the registry as a prop, and imports the server
+  // module for its TYPE only.
+  assert.match(codeOf(DOORUI), /export function LabFrontDoor\(\{ registry \}/);
+  assert.match(codeOf(DOORUI), /import type \{ PublicLabRegistrySnapshot \} from "@\/lib\/desk\/lab-registry\.server"/);
+});
+
+test("a warming register lists the bench instead of declaring the research unreadable", () => {
+  const ui = codeOf(DOORUI);
+  const door = codeOf(DOOR);
+  // The frozen register is read (not edited) to name the bench, and the pure
+  // mapper is handed those specs rather than reaching for them itself.
+  assert.match(ui, /import \{ LAB_RESEARCH_REGISTRY \} from "@\/lib\/desk\/lab-registry"/);
+  assert.match(ui, /declaredBench\(LAB_RESEARCH_REGISTRY\)/);
+  assert.match(door, /export function declaredBench\(specs: readonly LabStudySpec\[\]/);
+  assert.ok(!door.includes("LAB_RESEARCH_REGISTRY"), "the mapper still does not reach for the register");
+  for (const banned of ["LAB_RESEARCH_REGISTRY.push", "LAB_RESEARCH_REGISTRY ="]) {
+    assert.ok(!ui.includes(banned), `the register is read-only here: must not ${banned}`);
+  }
+  // No number is manufactured for the withheld counts.
+  assert.match(door, /sample: null/);
+  assert.match(door, /export const PENDING_STATUS = "evidence count not available this request"/);
+  assert.doesNotMatch(read(DOOR).split("declaredBench")[1] ?? "", /sample_n \+|sample: \d/, "no invented count");
+  // And the copy no longer overstates the outage.
+  assert.ok(!ui.includes("could not be read"), "the old whole-register wording is gone");
+  assert.match(read(DOOR), /detailed research further down the page is unaffected/);
+});
+
+test("the front door change touches no study, no writes and no ASK_LEAD behavior", () => {
+  const src = codeOf(DOOR) + codeOf(DOORUI);
+  for (const banned of [
+    "insert into",
+    "update desk",
+    "delete from",
+    "ensureAskLeadObserver",
+    "askLeadSnapshot",
+    "desk_ask_lead",
+    "swapBucket",
+    "promoteToLive",
+    "noteCall",
+    "applyDeskOp",
+    "wallet",
+    "createOrder",
+    "placeOrder",
+  ]) {
+    assert.ok(!src.includes(banned), `the front door must not ${banned}`);
+  }
+  // ASK_LEAD remains a registry row like any other, with no authority.
+  const registry = read("src/lib/desk/lab-registry.ts");
+  assert.match(registry, /id: "ask-lead-swap"/);
+  assert.match(registry, /authority: "none"/);
+  // And it is still rendered below the front door by the room itself.
+  assert.match(codeOf(ROOM), /<AskLeadStudy data=\{data\.ask_lead\} \/>/);
+});
