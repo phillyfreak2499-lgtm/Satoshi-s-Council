@@ -20,6 +20,7 @@ import { openAIBlindSnapshot, type OpenAIBlindSnapshot } from "./openai-blind.se
 import { openAILunaSnapshot, type OpenAILunaSnapshot } from "./openai-luna.server";
 import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
+import { askLeadSnapshot, type AskLeadSnapshot } from "./ask-lead.server";
 
 export type PublicLabSpecimen = {
   id: string;
@@ -51,6 +52,7 @@ export type PublicLabSnapshot = {
   openai_blind: OpenAIBlindSnapshot | null;
   openai_luna: OpenAILunaSnapshot | null;
   astra_director: AstraDirectorSnapshot | null;
+  ask_lead: AskLeadSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
   governance: {
     paper_only: true;
@@ -63,7 +65,7 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, openAILuna, astraDirector] = await Promise.all([
+    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, openAILuna, astraDirector, askLead] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
@@ -72,6 +74,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       openAIBlindSnapshot().catch(() => null),
       openAILunaSnapshot().catch(() => null),
       astraDirectorSnapshot().catch(() => null),
+      askLeadSnapshot().catch(() => null),
     ]);
     // The lifecycle registry scans several large research tables. Run it after
     // the other Lab snapshots so it does not compete for connections on the
@@ -114,6 +117,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       openai_blind: openAIBlind,
       openai_luna: openAILuna,
       astra_director: astraDirector,
+      ask_lead: askLead,
       registry,
       governance: {
         paper_only: true,

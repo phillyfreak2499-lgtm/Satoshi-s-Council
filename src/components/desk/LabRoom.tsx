@@ -6,6 +6,7 @@ import { GlobalHeader } from "./GlobalHeader";
 import { evidenceAge, labComparisons } from "@/lib/desk/public-room-view";
 import { CallQualityStudy } from "./CallQualityStudy";
 import { LabFrontDoor } from "./LabFrontDoor";
+import { AskLeadStudy } from "./AskLeadStudy";
 
 function cents(v: number | null): string {
   if (v == null) return "—";
@@ -948,6 +949,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />
+            <AskLeadStudy data={data.ask_lead} />
             <OpenAIShadowStudy data={data.openai_shadow} />
             <OpenAIBlindStudy data={data.openai_blind} />
             <OpenAILunaStudy data={data.openai_luna} />

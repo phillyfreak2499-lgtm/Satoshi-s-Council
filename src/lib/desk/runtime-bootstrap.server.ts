@@ -18,6 +18,9 @@ export function ensureDeskRuntime(): void {
   void import("./forced-v4.server")
     .then((m) => m.ensureForcedV4Observer())
     .catch(() => {});
+  void import("./ask-lead.server")
+    .then((m) => m.ensureAskLeadObserver())
+    .catch(() => {});
   void import("./openai-shadow.server")
     .then((m) => m.ensureOpenAIShadowObserver())
     .catch(() => {});

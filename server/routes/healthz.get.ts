@@ -16,6 +16,9 @@ export default function healthz() {
   void import("../../src/lib/desk/forced-v4.server")
     .then((m) => m.ensureForcedV4Observer())
     .catch(() => {});
+  void import("../../src/lib/desk/ask-lead.server")
+    .then((m) => m.ensureAskLeadObserver())
+    .catch(() => {});
   void import("../../src/lib/desk/openai-shadow.server")
     .then((m) => m.ensureOpenAIShadowObserver())
     .catch(() => {});
