@@ -602,16 +602,55 @@ export function runHuddle(learner: Learner): { learner: Learner; line: string } 
     }
   }
 
+  // 2. Recalibrate phase from graded windows (EXPLORE < 15 / CALIBRATE < 80 / EXPLOIT).
   learner.learn_phase = phaseOfWindows(learner.graded_windows);
   learner.last_huddle = Date.now();
   learner.last_huddle_n = learner.graded_windows;
-  const tuned = retuneThresholds(learner);
-  const lock = lockDecision(learner.weight_regime ?? "", learner.last_regime ?? "", learner.weight_lock_left ?? 0);
-  learner.weight_lock_left = lock.lockLeft;
-  learner.weight_regime = lock.regime;
-  const weights = lock.reweight ? rebuildSeatWeights(learner) : [];
-  const wNote = lock.reweight ? (weights[0] ?? "hold") : lock.note;
-  const line = `HUDDLE ${new Date().toISOString().slice(11, 16)} · ${learner.learn_phase} n=${learner.graded_windows} · promo ${promo[0] ?? "none"} · bench ${bench[0] ?? "none"} · unbench ${unbench[0] ?? "none"} · candidate ${learner.candidate?.id ?? "none"} · thresh ${tuned[0] ?? "hold"} · w ${wNote}`;
+  // Keep tuning thresholds off graded history for its side effects, but the
+  // huddle line follows the fixed SATOSHI shape and does not quote it.
+  retuneThresholds(learner);
+
+  // 1. Rebuild seat weights from graded history only. With nothing graded yet
+  //    there is no history to rebuild from, so hold the roster steady and flag
+  //    the huddle line NO HISTORY.
+  const noHistory = learner.graded_windows === 0;
+  let weightNotes: string[] = [];
+  let wNote = "weights unchanged";
+  if (!noHistory) {
+    const lock = lockDecision(
+      learner.weight_regime ?? "",
+      learner.last_regime ?? "",
+      learner.weight_lock_left ?? 0,
+    );
+    learner.weight_lock_left = lock.lockLeft;
+    learner.weight_regime = lock.regime;
+    weightNotes = lock.reweight ? rebuildSeatWeights(learner) : [];
+    wNote = weightNotes.length
+      ? weightNotes.join(" · ")
+      : lock.reweight
+        ? "weights unchanged"
+        : lock.note;
+  }
+
+  // 3. Report promo / bench / unbench ids only when a numeric gate actually
+  //    fired (these arrays gain an entry only on a real status change).
+  const gateBits: string[] = [];
+  if (promo.length) gateBits.push(`promo ${promo.join(" · ")}`);
+  if (bench.length) gateBits.push(`bench ${bench.join(" · ")}`);
+  if (unbench.length) gateBits.push(`unbench ${unbench.join(" · ")}`);
+  const gatesNote = gateBits.length ? gateBits.join(" · ") : "gates quiet";
+
+  // 4. At most one CANDIDATE per huddle (mined above). It waits in the Settings
+  //    queue as CANDIDATE until Zach Accepts it into SHADOW; if nothing cleared,
+  //    print CANDIDATE none rather than invent an id.
+  const candidateNote = learner.candidate ? `CANDIDATE ${learner.candidate.id}` : "CANDIDATE none";
+
+  // The tax line comes from the most recent chair (a printed number), or a plain
+  // dash before any chair has run — never a guessed hit rate.
+  const taxLine = learner.last_calib_tax_line ?? "tax —";
+
+  // 5. One SATOSHI huddle line the 03:00 America/Chicago huddle can quote verbatim.
+  const line = `HUDDLE ${noHistory ? "NO HISTORY · " : ""}${learner.learn_phase} n=${learner.graded_windows} · ${wNote} · ${taxLine} · ${gatesNote} · ${candidateNote}`;
   learner.huddle_log = [line, ...learner.huddle_log].slice(0, 20);
   return { learner, line };
 }
