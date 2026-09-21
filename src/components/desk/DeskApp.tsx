@@ -7,6 +7,7 @@ import { useDesk } from "@/lib/desk/store";
 import { tourSeen } from "@/lib/desk/glossary";
 import { CHAIR_SCALP, readScalp, scalpAvg } from "@/lib/desk/scalp";
 import { SEAT_IDS, type SeatId, type TabId } from "@/lib/desk/types";
+import type { BooksWindow } from "@/lib/desk/books";
 import { cn } from "@/lib/utils";
 import { BotCard } from "./BotCard";
 import { MetaFooter, SatoshiTab } from "./SatoshiTab";
@@ -49,6 +50,81 @@ const PRIMARY: { id: TabId; label: string }[] = [
 // One shape for every primary nav item — the tab buttons (FLOOR, DESKS, BOOKS,
 // BOARD) and the ARENA room link alike — so every word sits at the same size in
 // the same box, whether it is a <button> or an <a>.
+/**
+ * THE FLOOR VIEW SWITCH — the first choice on the page, in both views.
+ *
+ * Guided and Pro are two ways to watch the SAME live window, so the control
+ * that moves between them has to look like one control with two settings, not
+ * like a link to somewhere else. It renders identically in both modes, sits in
+ * the same place, and never hides behind a menu.
+ *
+ * WHY IT IS NOT IN "DESK TOOLS" ANY MORE. Pro mode used to list "Overview",
+ * "Specialists", "Desk tools" and "Guided Floor" in one flat row — so Guided
+ * read as a fourth Pro section rather than the other half of the product — and
+ * on phones the dedicated button disappeared entirely into the Desk tools
+ * dropdown. A reader on a phone could not find the plain-language view at all
+ * without opening a menu that looked like it held settings.
+ *
+ * Both labels stay spelled out. "Guided" alone, or "Overview", would put the
+ * reader back to guessing which of them is a whole view and which is a section.
+ */
+function FloorModeSwitch({ mode, onMode }: { mode: FloorMode; onMode: (m: FloorMode) => void }) {
+  const seg =
+    "flex min-h-11 flex-1 shrink-0 items-center justify-center rounded-md border px-3 font-mono text-micro tracking-wide sm:flex-none";
+  return (
+    <nav
+      aria-label="Floor view"
+      className="council-floor-view gutter flex items-center gap-1 border-b border-border bg-surface py-1"
+    >
+      <span className="mr-2 hidden font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
+        View
+      </span>
+      <div className="flex w-full items-center gap-1 sm:w-auto">
+        {(
+          [
+            ["guided", "Guided Floor", "the plain-language view"],
+            ["pro", "Pro Floor", "the full research view"],
+          ] as const
+        ).map(([id, label, hint]) => {
+          const on = mode === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onMode(id)}
+              aria-current={on ? "page" : undefined}
+              title={hint}
+              className={cn(seg, on ? NAV_TAB_ON : NAV_TAB_IDLE)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <span className="ml-auto hidden font-mono text-micro text-subtle lg:block">
+        Same live window · {mode === "guided" ? "in plain English" : "with the full evidence"}
+      </span>
+    </nav>
+  );
+}
+
+/**
+ * Does this address name a floor view of its own?
+ *
+ * `?view=guided` asks for Guided outright; a `?tab=` or `?seat=` deep link is a
+ * Pro section and therefore asks for Pro. Either way the saved preference must
+ * stand aside, or a shared link would open the wrong view for half the people
+ * who follow it.
+ */
+function urlPinsFloorMode(): boolean {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("view") === "guided" || sp.has("tab") || sp.has("seat");
+  } catch {
+    return false;
+  }
+}
+
 const NAV_TAB =
   "flex min-h-11 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-micro tracking-wide";
 const NAV_TAB_IDLE = "border-transparent text-muted hover:bg-surface-2 hover:text-fg";
@@ -102,14 +178,12 @@ function MoreMenu({
   onTab,
   onTour,
   onSearch,
-  onGuided,
   onWelcome,
 }: {
   tab: TabId;
   onTab: (t: TabId) => void;
   onTour: () => void;
   onSearch: () => void;
-  onGuided: () => void;
   onWelcome: () => void;
 }) {
   const cur = MORE.find((m) => m.id === tab);
@@ -135,10 +209,6 @@ function MoreMenu({
           sideOffset={6}
           className="council-desk-menu z-50 min-w-60 rounded-md border border-border bg-surface p-1 shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
         >
-          <DropdownMenu.Item onSelect={onGuided} className={cn(item, "sm:hidden")}>
-            Guided Floor
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator className="my-1 h-px bg-border sm:hidden" />
           {MORE.map((m) => (
             <DropdownMenu.Item key={m.id} onSelect={() => onTab(m.id)} className={item}>
               {m.label}
@@ -159,7 +229,7 @@ function MoreMenu({
   );
 }
 
-export function DeskApp() {
+export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
   const frame = useDesk();
   const initialSearch = useRouterState({ select: state => state.location.searchStr });
   const [tab, setTab] = useState<TabId>(() => {
@@ -209,7 +279,13 @@ export function DeskApp() {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
     setFloorDensityState(readFloorDensity());
-    setFloorModeState(readFloorMode());
+    // THE URL OUTRANKS THE SAVED PREFERENCE, so a link that pins a view is not
+    // quietly overruled by what this browser happened to choose last time.
+    // Everything else falls back to the stored choice, and a browser that has
+    // never chosen opens Guided. The read happens here rather than in the
+    // initial state because it touches localStorage: doing it during render
+    // would make the server and the first client paint disagree.
+    if (!urlPinsFloorMode()) setFloorModeState(readFloorMode());
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     beacon("desk_view", true);
   }, []);
@@ -279,6 +355,15 @@ export function DeskApp() {
     }
     urlReady.current = true;
   }, []);
+  // Which floor a reader actually ended up on, once per session per floor. It
+  // runs after the address and the saved preference have both been applied, so
+  // it counts the floor that was really shown rather than the first guess.
+  useEffect(() => {
+    if (!urlReady.current) return;
+    if (tab !== "satoshi") return;
+    beacon(floorMode === "guided" ? "floor_guided_open" : "floor_pro_open", true);
+  }, [floorMode, tab]);
+
   useEffect(() => {
     if (!urlReady.current) return;
     try {
@@ -330,60 +415,42 @@ export function DeskApp() {
         searchOverride={tab === "satoshi" ? floorMode === "guided" ? "?view=guided" : "" : `?tab=${tab}`}
         action={{ label: "Search", hint: "⌘K", onSelect: () => setPaletteOn(true) }}
       />
-      <nav
-        aria-label="Floor views"
-        className="council-floor-tools gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
-      >
-        <span className="hidden mr-2 font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
-          Floor
-        </span>
-        {floorMode === "guided" ? (
-          <>
-            <button type="button" aria-current="page" className={cn(NAV_TAB, NAV_TAB_ON)}>
-              Guided
-            </button>
-            <button
-              type="button"
-              onClick={() => setFloorMode("pro")}
-              className={cn(NAV_TAB, NAV_TAB_IDLE)}
-            >
-              Pro Floor
-            </button>
-          </>
-        ) : (
-          <>
-            {PRIMARY.map((item) => {
-              const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-            <MoreMenu
-              tab={tab}
-              onTab={setTab}
-              onTour={startTour}
-              onSearch={() => setPaletteOn(true)}
-              onGuided={() => setFloorMode("guided")}
-              onWelcome={() => setWelcomeOn(true)}
-            />
-            <button
-              type="button"
-              onClick={() => setFloorMode("guided")}
-              className={cn(NAV_TAB, NAV_TAB_IDLE, "hidden sm:flex")}
-            >
-              Guided Floor
-            </button>
-          </>
-        )}
-      </nav>
+      <FloorModeSwitch mode={floorMode} onMode={setFloorMode} />
+
+      {/* Secondary navigation, and it is secondary: these are sections INSIDE
+          the Pro Floor, chosen after the view above. Guided has no second row
+          because it is deliberately one page. */}
+      {floorMode === "pro" ? (
+        <nav
+          aria-label="Pro Floor sections"
+          className="council-floor-tools gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
+        >
+          <span className="mr-2 hidden font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
+            Pro Floor
+          </span>
+          {PRIMARY.map((item) => {
+            const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                aria-current={active ? "page" : undefined}
+                className={cn(NAV_TAB, active ? NAV_TAB_ON : NAV_TAB_IDLE)}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+          <MoreMenu
+            tab={tab}
+            onTab={setTab}
+            onTour={startTour}
+            onSearch={() => setPaletteOn(true)}
+            onWelcome={() => setWelcomeOn(true)}
+          />
+        </nav>
+      ) : null}
 
       <div className="company-desk-intro company-container"><div><p className="company-eyebrow">{frame.settings.source === "demo" ? "Demo · Simulated data" : "Bitcoin · 15-minute paper research"}</p><h2>{tab === "satoshi" ? "The live floor." : tab === "atelier" ? "The gallery." : tab === "settings" ? "Your preferences." : desk ? "The specialist desks." : "Inside the research desk."}</h2></div><p>Paper only · No live orders</p>{nudge && !tourOn ? <button type="button" className="company-text-link" onClick={startTour}>Take a quick tour →</button> : null}</div>
 
@@ -456,6 +523,7 @@ export function DeskApp() {
             chair={frame.chair}
             callLog={frame.call_log}
             demo={frame.settings.source === "demo"}
+            last={last}
             onPro={() => setFloorMode("pro")}
           />
         )}

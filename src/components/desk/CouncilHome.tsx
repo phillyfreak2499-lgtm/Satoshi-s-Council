@@ -5,6 +5,7 @@ import { clockMs } from "@/lib/desk/math";
 import { bookState } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
 import { SHOP_URL } from "@/lib/desk/navigation";
+import { beacon } from "@/lib/desk/beacon";
 import { GlobalHeader } from "./GlobalHeader";
 import { CouncilGuides } from "./CouncilExperience";
 import { LiveConnectionNotice } from "./LiveConnectionNotice";
@@ -39,8 +40,21 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
           <p className="company-eyebrow">Independent Bitcoin research</p>
           <h1 id="home-title">A clearer view.<br /><em>A considered call.</em></h1>
           <p className="company-hero-lede">Follow the Council as it weighs Bitcoin’s next 15 minutes. See the decision, explore the evidence, and judge the record for yourself.</p>
-          <div className="company-actions"><a href="/desk" className="company-button">Enter the live floor <span aria-hidden="true">↗</span></a><a href="/training/wick" className="company-text-link">Start with WICK <span aria-hidden="true">→</span></a></div>
-          <p className="company-hero-note">Paper research. Public prices. No live orders.</p>
+          {/* TWO DOORS INTO ONE WINDOW. The hero keeps exactly two actions on
+              purpose — they are the two ways to watch the same live decision,
+              not two products. The difference is how much of the working is
+              shown, so neither claims better research and neither sees a
+              different call. */}
+          <div className="company-actions">
+            <a href="/desk?view=guided" onClick={() => beacon("home_guided_click")} className="company-button">Start with Guided Floor <span aria-hidden="true">↗</span></a>
+            <a href="/desk" onClick={() => beacon("home_pro_click")} className="company-button company-button-outline">Open Pro Floor <span aria-hidden="true">↗</span></a>
+          </div>
+          <p className="company-hero-doors">
+            <span><strong>Guided Floor</strong> — New here? See the Council’s live decision in plain English.</span>
+            <span><strong>Pro Floor</strong> — Full evidence, prices, model, gates and diagnostics.</span>
+            <span className="company-hero-doors-note">Both are the same live window and the same call; Pro simply shows more of the working.</span>
+          </p>
+          <p className="company-hero-note">Paper research. Public prices. No live orders. <a href="/training/wick" className="company-text-link">Start with WICK <span aria-hidden="true">→</span></a></p>
         </div>
       </section>
 
@@ -70,7 +84,7 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
           <div className="company-process-grid">
             <article><span className="company-step">01 / Observe</span><h3>See the whole picture.</h3><p>Specialist seats read price structure, order flow, derivatives, market odds, and context.</p><a href="/?tab=structure">Explore the specialists <span aria-hidden="true">→</span></a></article>
             <article><span className="company-step">02 / Decide</span><h3>Know when to wait.</h3><p>The Chair brings the evidence together. A directional read must also clear the paper book’s price and safety rules.</p><a href="/desk">Follow the decision <span aria-hidden="true">→</span></a></article>
-            <article><span className="company-step">03 / Review</span><h3>Let the record speak.</h3><p>Review recorded paper positions, fees, settlement results, and the experiments being tested alongside them.</p><a href="/books">Open the results <span aria-hidden="true">→</span></a></article>
+            <article><span className="company-step">03 / Review</span><h3>Let the record speak.</h3><p>Review recorded paper positions, fees, settlement results, and the experiments being tested alongside them.</p><a href="/books" onClick={() => beacon("results_open")}>Open the results <span aria-hidden="true">→</span></a></article>
           </div>
         </section>
 

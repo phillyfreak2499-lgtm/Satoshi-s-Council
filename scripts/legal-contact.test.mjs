@@ -55,5 +55,7 @@ test("the homepage and the Live Floor render that footer", () => {
   assert.match(read("src/components/desk/CouncilHome.tsx"), /<PaperDisclaimer \/>/);
   assert.match(read("src/components/desk/DeskApp.tsx"), /<PaperDisclaimer \/>/);
   assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} \/>/);
-  assert.match(read("src/routes/desk.tsx"), /<DeskApp \/>/);
+  // The route may pass props; what this rail protects is that it renders the
+  // component that carries the disclaimer.
+  assert.match(read("src/routes/desk.tsx"), /<DeskApp[\s/]/);
 });

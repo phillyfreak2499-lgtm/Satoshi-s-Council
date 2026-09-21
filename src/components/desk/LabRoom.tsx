@@ -5,6 +5,7 @@ import { publicLabSnapshot, type PublicLabSnapshot, type PublicLabSpecimen } fro
 import { GlobalHeader } from "./GlobalHeader";
 import { evidenceAge, labComparisons } from "@/lib/desk/public-room-view";
 import { CallQualityStudy } from "./CallQualityStudy";
+import { LabFrontDoor } from "./LabFrontDoor";
 import { AskLeadStudy } from "./AskLeadStudy";
 
 function cents(v: number | null): string {
@@ -942,6 +943,9 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
+            {/* A front door above the bench, not a replacement for it: every
+                study below is unchanged and still carries its own evidence. */}
+            <LabFrontDoor registry={data.registry} />
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <ForcedV4Study data={data.forced_v4} />

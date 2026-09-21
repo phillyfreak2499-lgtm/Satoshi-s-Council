@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { beacon } from "@/lib/desk/beacon";
 import { fmtCents, fmtPct, scoreNote, type WeekRecord } from "@/lib/desk/record";
 import { publicWeekRecord } from "@/lib/desk/record-public";
 import { utcStamp } from "@/lib/desk/display-evidence";
@@ -85,6 +86,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
     if (!data) return;
     try {
       await navigator.clipboard.writeText(data.copy);
+      beacon("record_copy");
       setCopied("copied");
     } catch {
       setCopied("select the text below and copy it");
