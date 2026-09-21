@@ -16,7 +16,28 @@ export type BeaconEvent =
   /** UI-only: the Pro Floor's Core/Full desk switch. Carries no trading intent. */
   | "floor_density_toggle"
   /** UI-only: the Pro Floor's full gate checklist was opened. */
-  | "floor_gates_expand";
+  | "floor_gates_expand"
+  /**
+   * THE NEW-USER FUNNEL. Navigation only: which door someone chose, whether a
+   * Guided reader graduated to Pro or to training, and whether anyone looks at
+   * the record or copies a window.
+   *
+   * Every one of these is a name and nothing else — the payload below is
+   * `{ event }` and has never carried anything about the visitor. None of them
+   * names a market action, a side, a price, an amount or an intent to act,
+   * because this desk has no execution path for such an intent to reach. They answer
+   * five product questions and cannot answer anything about a person.
+   */
+  | "home_guided_click"
+  | "home_pro_click"
+  | "floor_guided_open"
+  | "floor_pro_open"
+  | "guided_to_pro"
+  | "guided_to_wick"
+  | "window_replay_open"
+  | "results_open"
+  | "window_copy"
+  | "record_copy";
 
 export function beacon(event: BeaconEvent, oncePerSession = false): void {
   try {

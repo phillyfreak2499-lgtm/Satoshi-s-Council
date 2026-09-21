@@ -4,6 +4,8 @@ import { Page } from "@/components/desk/Page";
 import { ReplayPane } from "@/components/desk/ReplayPane";
 import { ogWindowImage, pageHead } from "@/lib/desk/site";
 import { loadReplay } from "@/lib/desk/replay";
+import { shareWindowText } from "@/lib/desk/guided-continuity";
+import { beacon } from "@/lib/desk/beacon";
 
 const TICKER_RE = /^[A-Z0-9-]{4,40}$/;
 
@@ -23,6 +25,36 @@ function WindowPage() {
   const [tz, setTz] = useState("America/Chicago");
 
   useEffect(() => setTz(browserTz()), []);
+  /**
+   * The window as plain text, built only from what the replay recorded.
+   *
+   * The read is the chair lean at the LAST recorded instant — the value the
+   * replay already stores per tick — and nothing is filled in when a field is
+   * absent: an ungraded window simply has no paper-net line. No reason string
+   * is recorded on this shape, so none is printed rather than composed here.
+   */
+  const copyWindow = async () => {
+    const lean = replay.cols.lean;
+    const i = lean.length - 1;
+    const read = i >= 0 ? (lean[i] > 0 ? "UP" : lean[i] < 0 ? "DOWN" : "WAIT") : null;
+    const text = shareWindowText({
+      ticker: replay.ticker,
+      close_time: replay.close_time,
+      read,
+      call: replay.call ? { lean: read === "WAIT" ? null : read, entry: replay.call.entry, ev: replay.call.ev } : null,
+      winner: replay.winner,
+      why: null,
+      origin: typeof window !== "undefined" ? window.location.origin : "",
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      beacon("window_copy");
+      setMsg("window copied");
+    } catch {
+      setMsg("could not copy — select the text on the page instead");
+    }
+  };
+
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
@@ -50,6 +82,13 @@ function WindowPage() {
           className="btn btn-secondary"
         >
           share this window
+        </button>
+        <button
+          type="button"
+          onClick={() => void copyWindow()}
+          className="btn btn-secondary"
+        >
+          copy this window
         </button>
         <a href="/desk" className="btn btn-secondary">
           open the floor
