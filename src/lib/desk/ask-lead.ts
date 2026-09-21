@@ -5,6 +5,11 @@
  * one 15-minute window, and when on the clock does that happen?
  *
  * No 90¢ filter. No bot. No Chair. No paper fill. Authority: none.
+ *
+ * Lead = the side whose ask is strictly higher.
+ * A swap is a confirmed YES↔NO lead change. Ties keep the last clear lead
+ * and do not count. A one-snapshot flicker must hold on the next snapshot.
+ * The first confirmed lead in a window is the open, not a swap.
  */
 export const ASK_LEAD_STUDY = "ASK_LEAD_SWAP_V1" as const;
 export const ASK_LEAD_VERSION = 1 as const;
@@ -133,12 +138,16 @@ export function applyAskLeadTick(
   }
 
   if (state.last_clear == null) {
-    state.last_clear = read;
-    state.first_lead = read;
-    state.first_lead_secs = tick.secs_left;
-    state.last_lead = read;
-    state.last_lead_secs = tick.secs_left;
-    state.pending = null;
+    if (state.pending === read) {
+      state.last_clear = read;
+      state.first_lead = read;
+      state.first_lead_secs = tick.secs_left;
+      state.last_lead = read;
+      state.last_lead_secs = tick.secs_left;
+      state.pending = null;
+    } else {
+      state.pending = read;
+    }
     return { state, swap: null };
   }
 
@@ -187,5 +196,5 @@ export function median(xs: number[]): number | null {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
