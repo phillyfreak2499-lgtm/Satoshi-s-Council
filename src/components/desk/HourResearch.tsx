@@ -95,6 +95,15 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
               <div className="mt-1">
                 <Fresh label={snap?.brti_source || "settlement index"} age={snap?.brti_age_s ?? null} ok={data.read?.quality.brti_fresh ?? false} />
               </div>
+              {/* Both clocks, because both must pass: a tick we received a
+                  moment ago but cannot date at the source is not current. */}
+              <div>
+                <Fresh
+                  label="vendor stamp"
+                  age={snap?.brti_source_age_s ?? null}
+                  ok={data.read?.quality.brti_fresh ?? false}
+                />
+              </div>
             </div>
             <div className="rounded-sm border border-border bg-canvas p-3">
               <div className="font-mono text-micro uppercase tracking-widest text-subtle">Strike in focus</div>

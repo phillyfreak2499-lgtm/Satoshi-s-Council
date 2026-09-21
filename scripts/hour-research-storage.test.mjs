@@ -9,6 +9,10 @@
  *
  * What it proves:
  *   - a later WAIT checkpoint replaces the whole snapshot, never the clock alone;
+ *   - `model_version` and `build_sha` move WITH that snapshot, so a deploy
+ *     landing mid-hour can never leave a row naming the model that did not
+ *     produce its numbers;
+ *   - `authority` does not move, because it is immutable at "none";
  *   - a duplicate tick at the same checkpoint writes nothing;
  *   - an out-of-order earlier checkpoint writes nothing;
  *   - a directional candidate locks the hour against every later WAIT;
@@ -220,6 +224,89 @@ test("a graded WAIT keeps a null result and still carries a completion stamp", a
   assert.equal(row.side, null);
   assert.equal(row.ask, null);
   assert.ok(row.wait_reason);
+});
+
+// ---------------------------------------------------------------------------
+// The version travels with the snapshot it describes
+// ---------------------------------------------------------------------------
+
+test("the upsert replaces model_version with the snapshot, and never the immutable authority", () => {
+  // Read off the shipped statement itself, so a change to the excluded set that
+  // re-pins the version is caught here rather than in production six hours later.
+  assert.ok(
+    HOUR_SHADOW_UPSERT.includes("model_version = excluded.model_version"),
+    "model_version moves with the rest of the frozen snapshot",
+  );
+  assert.ok(HOUR_SHADOW_UPSERT.includes("build_sha = excluded.build_sha"), "as build_sha already did");
+  assert.ok(
+    !HOUR_SHADOW_UPSERT.includes("authority = excluded.authority"),
+    "authority is immutable: a later tick can never promote an hour",
+  );
+  assert.ok(!HOUR_SHADOW_UPSERT.includes("close_time = excluded.close_time"), "the conflict key is not replaced");
+  assert.ok(!HOUR_SHADOW_UPSERT.includes("event_ticker = excluded.event_ticker"), "nor the hour's identity");
+  // And the outcome columns are not in the statement at all.
+  for (const col of ["result", "official_value", "settle_cents", "ev_cents", "graded_at"]) {
+    assert.ok(!HOUR_SHADOW_UPSERT.includes(`${col} = excluded.${col}`), `${col} is appended by grading, never upserted`);
+  }
+});
+
+test("a later WAIT checkpoint carries its own model version and build, not the first one's", async () => {
+  const pg = await db();
+  // A deploy lands mid-hour: the 30-minute capture ran on v1 from build A, and
+  // the 15-minute capture runs on v2 from build B.
+  await upsert(pg, waitRow(30, { model_version: "hour-research-v1.0.0", build_sha: "aaaaaaa" }));
+  let [row] = await only(pg);
+  assert.equal(row.model_version, "hour-research-v1.0.0");
+  assert.equal(row.build_sha, "aaaaaaa");
+
+  await upsert(pg, waitRow(15, { model_version: "hour-research-v2.0.0", build_sha: "bbbbbbb" }));
+  [row] = await only(pg);
+  assert.equal(Number(row.checkpoint), 15, "the later checkpoint won");
+  assert.equal(row.model_version, "hour-research-v2.0.0", "and named the model that produced its numbers");
+  assert.equal(row.build_sha, "bbbbbbb", "and the build that ran it");
+  assert.equal(row.authority, "none", "authority is untouched and still none");
+  // Every other frozen field belongs to 15 as well: the version did not travel
+  // alone any more than the clock did.
+  assertSelfConsistent(row, 15);
+});
+
+test("version replacement respects the same three guards as the rest of the snapshot", async () => {
+  // A duplicate tick at the same checkpoint changes nothing, version included.
+  const dup = await db();
+  await upsert(dup, waitRow(30, { model_version: "v1", build_sha: "aaaaaaa" }));
+  await upsert(dup, waitRow(30, { model_version: "v2", build_sha: "bbbbbbb", explanation: "second tick" }));
+  let [row] = await only(dup);
+  assert.equal(row.model_version, "v1", "the first capture's version stands");
+  assert.equal(row.build_sha, "aaaaaaa");
+  assert.equal(row.explanation, "explanation at 30");
+
+  // An out-of-order earlier checkpoint cannot roll the version backwards either.
+  const back = await db();
+  await upsert(back, waitRow(15, { model_version: "v2", build_sha: "bbbbbbb" }));
+  await upsert(back, waitRow(30, { model_version: "v1", build_sha: "aaaaaaa" }));
+  [row] = await only(back);
+  assert.equal(Number(row.checkpoint), 15);
+  assert.equal(row.model_version, "v2", "the later checkpoint's version survives");
+  assert.equal(row.build_sha, "bbbbbbb");
+
+  // A directional candidate locks the hour: its version is frozen with it.
+  const locked = await db();
+  await upsert(locked, callRow(30));
+  await upsert(locked, waitRow(5, { model_version: "v9", build_sha: "ccccccc" }));
+  [row] = await only(locked);
+  assert.equal(row.decision, "YES", "the call stands");
+  assert.equal(Number(row.checkpoint), 30);
+  assert.equal(row.model_version, "hour-research-v1.0.0", "and keeps the version that made it");
+
+  // A graded hour is history: nothing about it moves, version included.
+  const graded = await db();
+  await upsert(graded, waitRow(45, { model_version: "v1", build_sha: "aaaaaaa" }));
+  await graded.query("update desk_hour_shadow set graded_at = now() where close_time = $1", [CLOSE]);
+  await upsert(graded, waitRow(5, { model_version: "v2", build_sha: "bbbbbbb" }));
+  [row] = await only(graded);
+  assert.equal(Number(row.checkpoint), 45, "settled history stands");
+  assert.equal(row.model_version, "v1");
+  assert.equal(row.build_sha, "aaaaaaa");
 });
 
 test("the ladder insert stores every rung it is given and cannot double-count", async () => {

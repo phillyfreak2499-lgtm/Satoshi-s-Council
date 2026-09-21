@@ -22,7 +22,7 @@ import {
   HOUR_RESEARCH_AUTHORITY,
   HOUR_RESEARCH_VERSION,
   checkpointFor,
-  distanceBaselineP,
+  distanceBaselineFor,
   hourRead,
   ladderRungs,
   brier,
@@ -149,11 +149,14 @@ export function featuresFromRaw(snap: RawSnap | null, brti: BrtiRead | null = nu
   const venueIndex = numOrNull(snap?.index_px);
   const brtiValue = brti && Number.isFinite(brti.value) && brti.value > 0 ? brti.value : null;
   return {
-    // THE SETTLEMENT INPUT, FROM THE SETTLEMENT FEED. The age is the one WE
-    // measured; when there is no value there is no age either, so a missing
-    // reading can never look current.
+    // THE SETTLEMENT INPUT, FROM THE SETTLEMENT FEED. Both clocks are carried:
+    // the age WE measured, and the age of the vendor's own stamp. When there is
+    // no value there is no age either, so a missing reading can never look
+    // current; and a tick that arrived without a source time keeps a null vendor
+    // age, which `brtiUsable` refuses rather than waves through.
     brti: brtiValue,
     brti_age_s: brtiValue != null ? numOrNull(brti?.age_s) : null,
+    brti_source_age_s: brtiValue != null ? numOrNull(brti?.source_age_s) : null,
     brti_source: brtiValue != null ? (brti?.source ?? "") : "",
 
     // VENUE CONTEXT, NEVER SETTLEMENT. `snap.index_px` is an OKX/Binance
@@ -180,25 +183,32 @@ export function featuresFromRaw(snap: RawSnap | null, brti: BrtiRead | null = nu
   };
 }
 
-/** The shape this module needs from the lab's BRTI read. Structural on purpose. */
-export type BrtiRead = { value: number; age_s: number; source: string };
+/**
+ * The shape this module needs from the lab's BRTI read. Structural on purpose.
+ *
+ * `source_age_s` is the vendor's own stamp age and is `null` when the tick
+ * carried none. It is carried all the way onto the frozen snapshot because a
+ * reading that cannot be dated at the source cannot be trusted to be current,
+ * however recently it arrived.
+ */
+export type BrtiRead = { value: number; age_s: number; source_age_s: number | null; source: string };
 
 /**
  * The CF Benchmarks settlement value, from the lab's websocket state.
  *
  * Dynamic on purpose, exactly as the frame read is: nothing here statically
  * imports the lab, and the only thing taken from it is raw measurement — a
- * number, its age and its source. No fair value, no probability, no Chair, no
- * seat, no learner. When the lab is dark this is null and the model WAITs rather
- * than substituting an exchange print or a perpetual index for the thing the
- * contract actually settles on.
+ * number, its two ages and its source. No fair value, no probability, no Chair,
+ * no seat, no learner. When the lab is dark this is null and the model WAITs
+ * rather than substituting an exchange print or a perpetual index for the thing
+ * the contract actually settles on.
  */
 export async function brtiSnapshot(): Promise<BrtiRead | null> {
   try {
     const { labBrtiNow } = await import("./lab.server");
     const b = labBrtiNow();
     if (!b) return null;
-    return { value: b.value, age_s: b.age_s, source: b.source };
+    return { value: b.value, age_s: b.age_s, source_age_s: b.source_age_s, source: b.source };
   } catch {
     return null;
   }
@@ -331,7 +341,10 @@ async function recordCheckpoint(
       params.push(
         eventTicker, closeIso, checkpoint, r.ticker, r.strike, asOfIso, secsLeft,
         r.p_yes, r.uncertainty, r.z, r.dollars_to_strike, r.market_p_yes,
-        distanceBaselineP(features.spot, r.strike, secsLeft),
+        // Null unless spot itself passes the same freshness contract the quality
+        // verdict uses. A baseline priced off a spot the desk cannot date is not
+        // a fair comparison, so the row stores no baseline rather than a bad one.
+        distanceBaselineFor(features, r.strike, secsLeft),
         r.yes_ask, r.no_ask, r.spread_yes, r.spread_no, r.edge_yes, r.edge_no,
         r.best_side, r.best_edge, r.ticker === selected, HOUR_RESEARCH_VERSION, sha,
       );

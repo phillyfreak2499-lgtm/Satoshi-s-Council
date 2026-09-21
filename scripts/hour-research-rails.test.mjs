@@ -327,7 +327,7 @@ test("the settlement value is the CF Benchmarks feed, and a venue index can neve
   const pure = codeOf(READ_MODEL_PURE);
   // ONE source, and it is named for the feed it comes from.
   assert.match(pure, /export type HourExpectedSource = "cfbenchmarks-brti" \| "none";/);
-  assert.match(pure, /if \(!isFresh\(f\.brti, f\.brti_age_s, HOUR_MODEL\.max_brti_age_s\)\) return \{ value: null, source: "none" \};/);
+  assert.match(pure, /if \(!brtiUsable\(f\)\) return \{ value: null, source: "none" \};/);
   assert.match(pure, /return \{ value: f\.brti, source: "cfbenchmarks-brti" \};/);
   // The whole body of expectedSettlement must not mention any other candidate:
   // no spot fallback, no venue index, no basis carry.
@@ -352,8 +352,9 @@ test("the observer takes the settlement value from the settlement feed, and only
   const server = codeOf("src/lib/desk/hour-research.server.ts");
   assert.match(server, /const \{ labBrtiNow \} = await import\("\.\/lab\.server"\);/, "dynamic, like the frame read");
   assert.doesNotMatch(server, /^import .*lab\.server/m, "never a static import");
-  // Only the raw triple is taken. Nothing else from the lab may cross this line.
-  assert.match(server, /return \{ value: b\.value, age_s: b\.age_s, source: b\.source \};/);
+  // Only the raw measurement is taken — the value, BOTH its ages and its source.
+  // Nothing else from the lab may cross this line.
+  assert.match(server, /return \{ value: b\.value, age_s: b\.age_s, source_age_s: b\.source_age_s, source: b\.source \};/);
   for (const banned of ["labFairNow", "labFairState", "settleFair", "labSummary", "noteDeskState", "vel2Now", "whale2Now", "tape2Now"]) {
     assert.doesNotMatch(server, new RegExp(esc(banned)), `the hourly observer must not read ${banned}`);
   }
@@ -379,11 +380,83 @@ test("unknown freshness is never treated as fresh", () => {
   assert.match(pure, /if \(ageS < 0\) return false;/);
   assert.match(pure, /return ageS <= maxAgeS;/);
   // Freshness is only ever decided through that one predicate.
-  assert.match(pure, /const brtiFresh = isFresh\(f\.brti, f\.brti_age_s, HOUR_MODEL\.max_brti_age_s\);/);
+  assert.match(pure, /const brtiFresh = brtiUsable\(f\);/);
   assert.match(pure, /const spotFresh = isFresh\(f\.spot, f\.spot_age_s, HOUR_MODEL\.max_spot_age_s\);/);
   assert.doesNotMatch(pure, /age_s == null \|\|/, "a null age must never short-circuit to fresh");
   // And only the settlement input gates the model.
   assert.match(pure, /if \(!quality\.brti_fresh\) return wait\(/);
+});
+
+// ---------------------------------------------------------------------------
+// The settlement input is held to the repository's own BRTI standard, on BOTH
+// clocks
+// ---------------------------------------------------------------------------
+
+test("the hourly BRTI threshold is the repository's 15-second standard, and cannot drift from it", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /export const HOUR_BRTI_FRESH_S = \d+;/, "one explicit hourly constant, not a scattered literal");
+  const hourly = Number(/export const HOUR_BRTI_FRESH_S = (\d+);/.exec(pure)?.[1]);
+  // The repository's existing standard, read from where it actually lives.
+  const repoMs = Number(/const BRTI_FRESH_MS = ([\d_]+);/.exec(read("src/lib/desk/lab.server.ts"))?.[1]?.replace(/_/g, ""));
+  assert.ok(Number.isFinite(hourly) && Number.isFinite(repoMs), "both constants are readable");
+  assert.equal(repoMs, 15_000, "the repository standard is 15 seconds");
+  assert.equal(
+    hourly,
+    repoMs / 1000,
+    "the hourly research must not hold the settlement value to a looser clock than the rest of the desk",
+  );
+  // The tunables table points at that one constant rather than restating it.
+  assert.match(pure, /max_brti_age_s: HOUR_BRTI_FRESH_S,/, "no duplicated, drift-prone number");
+  assert.doesNotMatch(pure, /max_brti_age_s: \d+/, "and no literal left behind");
+});
+
+test("a settlement reading needs BOTH its clocks: an unknown vendor stamp never passes", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  // The snapshot carries both ages, so a frozen row can be re-judged later.
+  assert.match(pure, /brti_age_s: number \| null;/);
+  assert.match(pure, /brti_source_age_s: number \| null;/);
+  // And the predicate checks both, against the one threshold.
+  assert.match(pure, /export function brtiUsable\(/);
+  assert.match(
+    pure,
+    /isFresh\(f\.brti, f\.brti_age_s, HOUR_BRTI_FRESH_S\) && isFresh\(f\.brti, f\.brti_source_age_s, HOUR_BRTI_FRESH_S\)/,
+    "receipt age AND vendor age, both inside the same limit",
+  );
+  // No fallback of any kind may appear in the predicate's body.
+  const from = pure.indexOf("export function brtiUsable");
+  const body = pure.slice(from, pure.indexOf("export function", from + 10));
+  assert.ok(body.length < 500, "the slice really is just that function");
+  for (const banned of ["venue_index", "f.spot", "??", "||"]) {
+    assert.ok(!body.includes(banned), `brtiUsable must not contain ${banned}`);
+  }
+  // The observer carries the vendor age all the way onto the frozen snapshot.
+  const server = codeOf("src/lib/desk/hour-research.server.ts");
+  assert.match(server, /brti_source_age_s: brtiValue != null \? numOrNull\(brti\?\.source_age_s\) : null,/);
+  assert.match(server, /source_age_s: number \| null;/, "and the read's own shape admits a null stamp");
+  // The lab accessor really does publish it, and honestly.
+  const lab = read("src/lib/desk/lab.server.ts");
+  const acc = lab.slice(lab.indexOf("export function labBrtiNow"), lab.indexOf("export function labSettleReceipt"));
+  assert.match(acc, /source_age_s: srcAge != null && Number\.isFinite\(srcAge\) && srcAge >= 0 \? srcAge : null,/);
+});
+
+test("the stored distance baseline is a fresh-spot baseline or nothing, with no substitute", () => {
+  const pure = codeOf(READ_MODEL_PURE);
+  assert.match(pure, /export function distanceBaselineFor\(/);
+  assert.match(
+    pure,
+    /if \(!isFresh\(f\.spot, f\.spot_age_s, HOUR_MODEL\.max_spot_age_s\)\) return null;/,
+    "the same freshness contract the quality verdict already uses for spot",
+  );
+  const from = pure.indexOf("export function distanceBaselineFor");
+  const body = pure.slice(from, pure.indexOf("export function", from + 10));
+  assert.ok(body.length < 500, "the slice really is just that function");
+  for (const banned of ["venue_index", "f.brti", "??", "last_spot"]) {
+    assert.ok(!body.includes(banned), `the baseline must not fall back to ${banned}`);
+  }
+  // And the recorder stores it through that gate, never the raw helper.
+  const server = codeOf("src/lib/desk/hour-research.server.ts");
+  assert.match(server, /distanceBaselineFor\(features, r\.strike, secsLeft\),/);
+  assert.doesNotMatch(server, /distanceBaselineP\(/, "the ungated helper is never called from the recorder");
 });
 
 test("an unknown spread cannot pass the liquidity gate, and no bid is ever invented", () => {
@@ -410,6 +483,50 @@ test("a checkpoint is claimed at or after its target, never early, and never bac
   const grace = Number(/HOUR_CHECKPOINT_GRACE_S = (\d+);/.exec(read(READ_MODEL_PURE))?.[1]);
   assert.ok(Number.isFinite(tick) && Number.isFinite(grace), "both constants are readable");
   assert.ok(tick / 1000 < grace, `the ${tick / 1000}s tick must fit inside the ${grace}s grace`);
+});
+
+test("the public timeline reuses the storage checkpoint rule instead of embedding a second one", () => {
+  const brief = codeOf("src/lib/desk/hour-research-brief.ts");
+  // The authoritative helper is imported from the pure model and actually used.
+  assert.match(brief, /^\s*checkpointFor,$/m, "the timeline imports the model's own checkpoint helper");
+  assert.match(
+    brief,
+    /const claimable = secsLeft == null \? null : checkpointFor\(secsLeft\);/,
+    "and asks it what the observer could capture on this clock",
+  );
+  assert.match(brief, /else if \(claimable === cp\) state = "now";/, "live means exactly that window");
+  // The old symmetric display band, and any re-derivation of one, are gone.
+  assert.doesNotMatch(brief, /Math\.abs\(minsLeft - cp\)/, "the symmetric ±band is gone");
+  assert.doesNotMatch(brief, /Math\.abs\([^)]*checkpoint[^)]*\)/i, "and is not rebuilt under another name");
+  assert.doesNotMatch(brief, /1\.25/, "no second tolerance literal survives");
+  assert.doesNotMatch(brief, /HOUR_CHECKPOINT_GRACE_S\s*[/*+-]/, "the grace is not re-scaled into a private rule");
+  assert.doesNotMatch(brief, /const minsLeft =/, "the minutes-based display arithmetic is gone");
+  // "done" is decided by a stored row, not by the clock.
+  assert.match(brief, /if \(row\) state = "done";/);
+});
+
+test("a later WAIT checkpoint replaces its model version too, while authority stays immutable", () => {
+  const stmts = read("src/lib/desk/hour-research-sql.ts");
+  assert.match(
+    stmts,
+    /\(c\) => c !== "close_time" && c !== "event_ticker" && c !== "authority",/,
+    "only the conflict key, the hour's identity and the immutable authority are held back",
+  );
+  assert.doesNotMatch(
+    stmts,
+    /c !== "model_version"/,
+    "model_version must move with the snapshot: a mid-hour deploy cannot leave a row naming the wrong model",
+  );
+  // The columns list still carries both, and both tables still store them.
+  for (const col of ["model_version", "build_sha", "authority"]) {
+    assert.ok(stmts.includes(`"${col}"`), `the shadow statement binds ${col}`);
+  }
+  // Outcome columns are still outside the replaced set entirely.
+  const sql = read("migrations/0055_desk_hour_research.sql");
+  for (const col of ["result", "official_value", "settle_cents", "ev_cents", "graded_at"]) {
+    assert.ok(!read("src/lib/desk/hour-research-sql.ts").includes(`"${col}"`), `${col} is never upserted`);
+    assert.ok(sql.includes(col), `${col} exists as an appended outcome column`);
+  }
 });
 
 test("a graded WAIT is a completed hour, and windows always equals waits plus calls", () => {

@@ -10,8 +10,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  HOUR_BRTI_FRESH_S,
   HOUR_CHECKPOINTS,
   HOUR_CHECKPOINT_GRACE_S,
+  brtiUsable,
   checkpointMissed,
   isFresh,
   HOUR_MODEL,
@@ -19,6 +21,7 @@ import {
   HOUR_WAIT_REASONS,
   brier,
   checkpointFor,
+  distanceBaselineFor,
   distanceBaselineP,
   edgeCents,
   expectedSettlement,
@@ -69,6 +72,7 @@ const rung = (strike: number, over: Partial<HourRung> = {}): HourRung => ({
 const FEATURES: HourFeatures = {
   brti: 100_000,
   brti_age_s: 5,
+  brti_source_age_s: 6,
   brti_source: "cfbenchmarks-brti",
   venue_index: 99_995,
   venue_index_age_s: 3,
@@ -363,7 +367,7 @@ test("the settlement value is the CF Benchmarks value or nothing — a venue ind
   // The venue/perp index and exchange spot are BOTH present and fresh here, and
   // neither may be promoted: this is the regression that stops a perpetual index
   // silently becoming "the settlement index" again.
-  const noBrti: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source: "", venue_index: 100_500, venue_index_age_s: 1, spot: 99_990, spot_age_s: 1 };
+  const noBrti: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source_age_s: null, brti_source: "", venue_index: 100_500, venue_index_age_s: 1, spot: 99_990, spot_age_s: 1 };
   assert.deepEqual(expectedSettlement(noBrti), { value: null, source: "none" });
   const read = hourRead({ clock: clock(1800), rungs: healthyLadder(), features: noBrti, ladderComplete: true });
   assert.equal(read.decision, "WAIT");
@@ -428,7 +432,7 @@ test("the evidence board reports six families and says which could not be read",
   const cards = evidenceBoard(FEATURES, read.quality, read.expected_settlement, read.expected_source, read.sigma_horizon, 900, 100_000);
   assert.equal(cards.length, 6);
   assert.ok(cards.every((c) => c.ok), "a healthy snapshot reads as usable");
-  const blind: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source: "", venue_index: null, venue_index_age_s: null, venue_basis_bps: null, spot: null, spot_age_s: null, brti_spot_basis: null, sigma_hour: null, ret5: null, ret15: null, ret30: null, ret60: null, ret4h: null, ret24h: null };
+  const blind: HourFeatures = { ...FEATURES, brti: null, brti_age_s: null, brti_source_age_s: null, brti_source: "", venue_index: null, venue_index_age_s: null, venue_basis_bps: null, spot: null, spot_age_s: null, brti_spot_basis: null, sigma_hour: null, ret5: null, ret15: null, ret30: null, ret60: null, ret4h: null, ret24h: null };
   const blindRead = hourRead({ clock: clock(900), rungs: healthyLadder(), features: blind, ladderComplete: true });
   const blindCards = evidenceBoard(blind, blindRead.quality, null, "none", null, 900, null);
   assert.ok(blindCards.filter((c) => !c.ok).length >= 4, "missing feeds are reported as unusable");
@@ -447,6 +451,56 @@ test("the checkpoint timeline shows all six, and a checkpoint with no stored row
   assert.equal(rows.find((r) => r.checkpoint === 20)!.state, "missed", "a passed checkpoint with no row is shown, not dropped");
   assert.equal(rows.find((r) => r.checkpoint === 10)!.state, "ahead");
   assert.equal(rows.find((r) => r.checkpoint === 5)!.decision, null);
+});
+
+test("the timeline calls a checkpoint live on EXACTLY the window storage would capture in", () => {
+  // The regression: the page used a symmetric ±75s display band while storage
+  // captures only at or after the target. So the timeline could print "live"
+  // with 31m15s on the clock — a full minute before the observer was allowed to
+  // freeze anything — and the two surfaces described different checkpoints.
+  const stateAt = (secsLeft: number, cp = 30) =>
+    checkpointTimeline([], secsLeft).find((r) => r.checkpoint === cp)!.state;
+
+  const TARGET = 30 * 60; // 1800s
+  assert.equal(stateAt(TARGET + 75), "ahead", "the old band's early edge is not live");
+  assert.equal(stateAt(TARGET + 1), "ahead", "30:01 remaining — one second early is still ahead");
+  assert.equal(stateAt(TARGET), "now", "30:00 — the target instant itself");
+  assert.equal(stateAt(TARGET - 10), "now", "29:50");
+  assert.equal(stateAt(TARGET - HOUR_CHECKPOINT_GRACE_S), "now", "29:15 — the last second of the grace");
+  assert.equal(stateAt(TARGET - HOUR_CHECKPOINT_GRACE_S - 1), "missed", "29:14 — one second past the grace");
+  assert.equal(stateAt(TARGET - 75), "missed", "the old band's late edge is not live either");
+
+  // The same rule at every checkpoint, taken from the pure model rather than
+  // restated here: whatever `checkpointFor` would claim is what prints as live.
+  for (const cp of HOUR_CHECKPOINTS) {
+    const target = cp * 60;
+    assert.equal(stateAt(target + 1, cp), "ahead", `${cp}m: one second early claims nothing`);
+    for (let s = target; s >= target - HOUR_CHECKPOINT_GRACE_S; s--) {
+      assert.equal(checkpointFor(s), cp, `${cp}m: the observer could capture at ${s}s`);
+      assert.equal(stateAt(s, cp), "now", `${cp}m: so the page says live at ${s}s`);
+    }
+    assert.equal(stateAt(target - HOUR_CHECKPOINT_GRACE_S - 1, cp), "missed", `${cp}m: past the grace is missed`);
+    assert.equal(checkpointFor(target - HOUR_CHECKPOINT_GRACE_S - 1), null, "and the observer agrees");
+  }
+
+  // A stored row is the strongest fact there is and outranks the clock entirely:
+  // done stays done at its own live instant, and long after it.
+  const stored: HourCheckpointRow[] = [
+    { checkpoint: 30, decision: "WAIT", wait_reason: "insufficient_edge", ticker: null, strike: null, side: null, ask: null, p_model: null, edge_cents: null, as_of: "2026-09-18T18:30:00.000Z" },
+  ];
+  for (const secs of [TARGET + 600, TARGET + 1, TARGET, TARGET - 10, TARGET - HOUR_CHECKPOINT_GRACE_S, 0]) {
+    assert.equal(
+      checkpointTimeline(stored, secs).find((r) => r.checkpoint === 30)!.state,
+      "done",
+      `a frozen row reads done at ${secs}s left`,
+    );
+  }
+  // With no clock at all nothing is claimed as live or missed.
+  assert.deepEqual(
+    checkpointTimeline([], null).map((r) => r.state),
+    HOUR_CHECKPOINTS.map(() => "ahead"),
+    "an unknown clock never manufactures a state",
+  );
 });
 
 test("calibration and per-checkpoint Brier come from graded rows only, and an empty bucket stays empty", () => {
@@ -555,6 +609,176 @@ test("every unusable settlement clock produces a WAIT rather than a candidate", 
   assert.notEqual(spotBroken.decision, "WAIT", "a broken spot clock does not block a fresh settlement value");
   assert.equal(spotBroken.quality.spot_fresh, false, "but it is still reported as unfresh");
   assert.equal(spotBroken.quality.brti_fresh, true);
+});
+
+// ---------------------------------------------------------------------------
+// The settlement input: both clocks, at the repository's own 15-second standard
+// ---------------------------------------------------------------------------
+
+test("the hourly settlement threshold IS the repository's BRTI standard, not a looser one of its own", () => {
+  assert.equal(HOUR_BRTI_FRESH_S, 15, "the repo standard is BRTI_FRESH_MS = 15_000");
+  assert.equal(
+    HOUR_MODEL.max_brti_age_s,
+    HOUR_BRTI_FRESH_S,
+    "the tunables table must not carry a second, looser number",
+  );
+  assert.ok(HOUR_BRTI_FRESH_S < HOUR_MODEL.max_spot_age_s, "the settlement input is held tighter than context spot");
+});
+
+test("a settlement reading is usable only when BOTH its clocks pass; an unknown vendor stamp never does", () => {
+  const f = (over: Partial<HourFeatures>): HourFeatures => ({ ...FEATURES, ...over });
+
+  // The control: a genuinely fresh reading, dated on both clocks, passes.
+  assert.equal(brtiUsable(FEATURES), true);
+  assert.deepEqual(expectedSettlement(FEATURES), { value: 100_000, source: "cfbenchmarks-brti" });
+  assert.equal(brtiUsable(f({ brti_age_s: 0, brti_source_age_s: 0 })), true, "a brand new reading is usable");
+  assert.equal(
+    brtiUsable(f({ brti_age_s: HOUR_BRTI_FRESH_S, brti_source_age_s: HOUR_BRTI_FRESH_S })),
+    true,
+    "the limit itself is inside",
+  );
+
+  // Every way a clock can fail, on either side. None of them may pass.
+  const unusable: Array<[string, Partial<HourFeatures>]> = [
+    ["receipt age null", { brti_age_s: null }],
+    ["vendor age null", { brti_source_age_s: null }],
+    ["receipt age stale", { brti_age_s: HOUR_BRTI_FRESH_S + 1 }],
+    ["vendor age stale", { brti_source_age_s: HOUR_BRTI_FRESH_S + 1 }],
+    ["receipt age negative", { brti_age_s: -1 }],
+    ["vendor age negative", { brti_source_age_s: -1 }],
+    ["receipt age NaN", { brti_age_s: Number.NaN }],
+    ["vendor age NaN", { brti_source_age_s: Number.NaN }],
+    ["receipt age infinite", { brti_age_s: Number.POSITIVE_INFINITY }],
+    ["vendor age infinite", { brti_source_age_s: Number.POSITIVE_INFINITY }],
+    ["no value at all", { brti: null }],
+    ["a non-positive value", { brti: 0 }],
+  ];
+  for (const [name, over] of unusable) {
+    assert.equal(brtiUsable(f(over)), false, `${name} must not be usable`);
+    assert.deepEqual(expectedSettlement(f(over)), { value: null, source: "none" }, `${name} yields no settlement`);
+  }
+
+  // The old 120-second allowance is gone: a reading the rest of the desk has
+  // already given up on is no longer good enough for the hourly research.
+  assert.equal(brtiUsable(f({ brti_age_s: 100, brti_source_age_s: 100 })), false, "100s was once accepted; it is not now");
+});
+
+test("every unusable settlement clock WAITs, and no other feed is allowed to rescue it", () => {
+  // Mispriced enough that a healthy frame calls, so each WAIT below is caused by
+  // the settlement clock and by nothing else.
+  const rungs = [99_000, 99_200, 99_400].map((k) => rung(k, { yes_bid: 8, yes_ask: 10, no_bid: 88, no_ask: 90 }));
+  const at = (over: Partial<HourFeatures>) =>
+    hourRead({ clock: clock(600), rungs, features: { ...FEATURES, ...over }, ladderComplete: true });
+
+  assert.notEqual(at({}).decision, "WAIT", "the control frame does call");
+
+  // A fresh venue index and a fresh exchange spot are present in EVERY case
+  // below, and neither may stand in for a settlement value the model cannot date.
+  const withProxies = { venue_index: 100_500, venue_index_age_s: 1, spot: 99_990, spot_age_s: 1 } as const;
+  const cases: Array<[string, Partial<HourFeatures>, string]> = [
+    ["value present, receipt age null", { brti_age_s: null }, "stale_index"],
+    ["value present, vendor age null", { brti_source_age_s: null }, "stale_index"],
+    ["receipt age stale", { brti_age_s: 120 }, "stale_index"],
+    ["vendor age stale", { brti_source_age_s: 120 }, "stale_index"],
+    ["receipt age negative", { brti_age_s: -5 }, "stale_index"],
+    ["vendor age negative", { brti_source_age_s: -5 }, "stale_index"],
+    ["receipt age NaN", { brti_age_s: Number.NaN }, "stale_index"],
+    ["vendor age NaN", { brti_source_age_s: Number.NaN }, "stale_index"],
+    ["no value at all", { brti: null, brti_age_s: null, brti_source_age_s: null }, "no_settlement_index"],
+  ];
+  for (const [name, over, reason] of cases) {
+    const read = at({ ...withProxies, ...over });
+    assert.equal(read.decision, "WAIT", `${name} must WAIT`);
+    assert.equal(read.wait_reason, reason, name);
+    assert.equal(read.candidate, null, `${name} carries no candidate`);
+    assert.equal(read.expected_settlement, null, `${name} invents no settlement value`);
+    assert.equal(read.expected_source, "none");
+    assert.equal(read.quality.brti_fresh, false, `${name} is reported unfresh`);
+    assert.notEqual(read.expected_settlement, 100_500, "the venue index never stands in");
+    assert.notEqual(read.expected_settlement, 99_990, "and neither does exchange spot");
+  }
+
+  // A fresh venue index does not make a stale settlement value usable.
+  const venueFreshBrtiStale = at({ ...withProxies, brti_age_s: 600, brti_source_age_s: 600 });
+  assert.equal(venueFreshBrtiStale.decision, "WAIT");
+  assert.equal(venueFreshBrtiStale.wait_reason, "stale_index");
+
+  // Nor does a fresh spot make an undateable vendor stamp usable.
+  const spotFreshVendorUnknown = at({ spot: 99_990, spot_age_s: 1, brti_source_age_s: null });
+  assert.equal(spotFreshVendorUnknown.decision, "WAIT");
+  assert.equal(spotFreshVendorUnknown.wait_reason, "stale_index");
+  assert.equal(spotFreshVendorUnknown.quality.spot_fresh, true, "spot really was fresh; it simply does not count");
+
+  // And a fully fresh settlement reading still calls, so the gate is strict
+  // rather than broken.
+  const healthy = at({ brti_age_s: 2, brti_source_age_s: 3 });
+  assert.notEqual(healthy.decision, "WAIT");
+  assert.equal(healthy.expected_settlement, 100_000);
+  assert.equal(healthy.expected_source, "cfbenchmarks-brti");
+  assert.equal(healthy.quality.brti_fresh, true);
+});
+
+// ---------------------------------------------------------------------------
+// The distance baseline is a FRESH-spot baseline, or it is unavailable
+// ---------------------------------------------------------------------------
+
+test("the stored distance baseline is scored from a strictly fresh spot, or not at all", () => {
+  const STRIKE = 100_000;
+  const f = (over: Partial<HourFeatures>): HourFeatures => ({ ...FEATURES, ...over });
+
+  const fresh = distanceBaselineFor(f({ spot: 99_990, spot_age_s: 3 }), STRIKE, 1800);
+  assert.ok(fresh != null && fresh > 0, "a fresh spot produces a baseline");
+  assert.equal(fresh, distanceBaselineP(99_990, STRIKE, 1800), "and it is the same naive rule as before");
+  assert.equal(
+    distanceBaselineFor(f({ spot: 99_990, spot_age_s: HOUR_MODEL.max_spot_age_s }), STRIKE, 1800),
+    distanceBaselineP(99_990, STRIKE, 1800),
+    "the freshness limit itself is inside",
+  );
+
+  const unavailable: Array<[string, Partial<HourFeatures>]> = [
+    ["spot stale", { spot: 99_990, spot_age_s: HOUR_MODEL.max_spot_age_s + 1 }],
+    ["spot age null", { spot: 99_990, spot_age_s: null }],
+    ["spot age NaN", { spot: 99_990, spot_age_s: Number.NaN }],
+    ["spot age negative", { spot: 99_990, spot_age_s: -1 }],
+    ["spot NaN", { spot: Number.NaN, spot_age_s: 3 }],
+    ["spot zero", { spot: 0, spot_age_s: 3 }],
+    ["spot null", { spot: null, spot_age_s: 3 }],
+  ];
+  for (const [name, over] of unavailable) {
+    assert.equal(distanceBaselineFor(f(over), STRIKE, 1800), null, `${name} stores no baseline`);
+  }
+
+  // No substitution of any kind: a null baseline is never quietly refilled from
+  // the venue index, the settlement value, or anything else on the snapshot.
+  const stale = f({ spot: 99_990, spot_age_s: 9_999, venue_index: 100_500, brti: 100_000 });
+  assert.equal(distanceBaselineFor(stale, STRIKE, 1800), null);
+  assert.notEqual(distanceBaselineFor(stale, STRIKE, 1800), distanceBaselineP(stale.venue_index, STRIKE, 1800));
+  assert.notEqual(distanceBaselineFor(stale, STRIKE, 1800), distanceBaselineP(stale.brti, STRIKE, 1800));
+});
+
+test("rows with no distance baseline are excluded from the baseline Brier rather than counted as a miss", () => {
+  // Two rows carry a baseline, two do not. The baseline's score must be the mean
+  // over the two that have one — a missing baseline is not a wrong baseline.
+  const graded: HourGradedPrediction[] = [
+    { checkpoint: 30, p_model: 0.9, p_market: 0.8, p_baseline_dist: 0.9, outcome_yes: 1 },
+    { checkpoint: 30, p_model: 0.1, p_market: 0.2, p_baseline_dist: 0.1, outcome_yes: 0 },
+    { checkpoint: 30, p_model: 0.5, p_market: 0.5, p_baseline_dist: null, outcome_yes: 1 },
+    { checkpoint: 30, p_model: 0.5, p_market: 0.5, p_baseline_dist: null, outcome_yes: 0 },
+  ];
+  // The scorer publishes to three decimals, so the expectation is rounded the
+  // same way rather than compared against a raw float sum.
+  const r3 = (n: number) => Math.round(n * 1000) / 1000;
+  const at30 = checkpointScores(graded).find((s) => s.checkpoint === 30)!;
+  assert.equal(at30.n, 4, "all four rows are graded rows");
+  assert.equal(at30.brier_baseline, r3((brier(0.9, 1) + brier(0.1, 0)) / 2), "only the two dated baselines are scored");
+  assert.equal(at30.brier_model, r3((brier(0.9, 1) + brier(0.1, 0) + brier(0.5, 1) + brier(0.5, 0)) / 4));
+  assert.ok(at30.brier_baseline! < at30.brier_model!, "and the two means really are over different row sets");
+
+  // With no dated baseline anywhere, the baseline column is null — not zero, and
+  // not a perfect score it never earned.
+  const none = checkpointScores(graded.map((r) => ({ ...r, p_baseline_dist: null })));
+  assert.equal(none.find((s) => s.checkpoint === 30)!.brier_baseline, null);
+  assert.ok(none.find((s) => s.checkpoint === 30)!.brier_model != null, "the model is still scored");
 });
 
 // ---------------------------------------------------------------------------

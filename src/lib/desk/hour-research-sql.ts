@@ -52,9 +52,28 @@ export const HOUR_SHADOW_COLUMNS = [
   "features", "explanation", "model_version", "authority", "build_sha",
 ] as const;
 
-/** Every column a later checkpoint replaces. `graded_at` and the outcome columns are NOT here. */
+/**
+ * Every column a later checkpoint replaces. `graded_at` and the outcome columns
+ * are not in `HOUR_SHADOW_COLUMNS` at all, so they can never appear here.
+ *
+ * THREE EXCLUSIONS, AND EACH ONE EARNS ITS PLACE:
+ *   `close_time`    — the conflict key; replacing it would be meaningless.
+ *   `event_ticker`  — the hour's identity, the same at every checkpoint.
+ *   `authority`     — structurally immutable. It is `'none'` on every row this
+ *                     code can write, and a promotion is a human decision made
+ *                     somewhere else, never a side effect of a later tick.
+ *
+ * `model_version` USED TO BE EXCLUDED TOO, AND THAT WAS WRONG. The whole point
+ * of the replacement is that a row is ONE internally consistent frozen
+ * snapshot. `build_sha`, the clock, the probabilities, the expected settlement,
+ * sigma, the feature JSON, the ladder stats and the explanation all move to the
+ * later checkpoint; pinning the version to the first one meant a deploy landing
+ * mid-hour produced a row whose numbers came from the new model and whose
+ * `model_version` still named the old one. A research record that misattributes
+ * its own numbers cannot be replayed, so the version moves with them.
+ */
 const SHADOW_REPLACED = HOUR_SHADOW_COLUMNS.filter(
-  (c) => c !== "close_time" && c !== "event_ticker" && c !== "model_version" && c !== "authority",
+  (c) => c !== "close_time" && c !== "event_ticker" && c !== "authority",
 );
 
 /**
@@ -65,7 +84,8 @@ const SHADOW_REPLACED = HOUR_SHADOW_COLUMNS.filter(
  * the index and spot values, sigma, the ladder counts and the features JSON from
  * the PREVIOUS checkpoint — so a row could claim the 10-minute clock over the
  * 30-minute inputs, and no reader could tell. Every frozen field now moves in
- * the same statement.
+ * the same statement — `model_version` included, so the row always names the
+ * model that produced the numbers printed on it.
  *
  * THREE GUARDS, EACH DOING ONE JOB:
  *   `decision = 'WAIT'`  — once the hour has a directional candidate it is

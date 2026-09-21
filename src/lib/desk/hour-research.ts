@@ -137,6 +137,18 @@ export type HourFeatures = {
   brti: number | null;
   /** Seconds since WE received that value. Null when unmeasurable — never assumed fresh. */
   brti_age_s: number | null;
+  /**
+   * Seconds since the VENDOR stamped that value, from the tick's own source
+   * time. Null when the tick carried no stamp — which is not "probably fine".
+   *
+   * BOTH CLOCKS ARE REQUIRED, AND THIS IS THE ONE THAT CATCHES A REPLAY. The
+   * receipt age only says when this process last heard something; a socket that
+   * reconnects and re-delivers an old tick, or a vendor that buffers, produces a
+   * reading that is seconds old by our clock and minutes old by the market's.
+   * Dating a value by arrival alone is exactly how a stale number becomes a
+   * confident one, so an undateable vendor stamp makes the reading unusable.
+   */
+  brti_source_age_s: number | null;
   /** Which feed the value came from, stored verbatim for audit. */
   brti_source: string;
 
@@ -199,6 +211,23 @@ export type HourDataQuality = {
 // Tunables — frozen with the version, never fitted to recent results
 // ---------------------------------------------------------------------------
 
+/**
+ * How old a CF Benchmarks reading may be, in seconds, before this model refuses
+ * it. THE ONE HOURLY FRESHNESS CONTRACT FOR THE SETTLEMENT INPUT.
+ *
+ * It is the repository's existing BRTI standard, not a second opinion:
+ * `lab.server.ts` holds `BRTI_FRESH_MS = 15_000` and stops trusting the index
+ * past it, and a rail asserts these two numbers stay equal so they cannot drift
+ * apart silently. An earlier version of this model allowed 120 seconds, which
+ * let the hourly research act on a settlement value the rest of the desk had
+ * already given up on — eight times looser than the standard, on the one input
+ * the contract actually settles against.
+ *
+ * The SAME limit applies to both the receipt age and the vendor's own stamp.
+ * One threshold, checked twice, so there is nothing to keep in sync.
+ */
+export const HOUR_BRTI_FRESH_S = 15;
+
 export const HOUR_MODEL = Object.freeze({
   /** After-fee cents of edge a rung must show before it can be a candidate. */
   min_edge_cents: 4,
@@ -206,8 +235,12 @@ export const HOUR_MODEL = Object.freeze({
   max_spread_cents: 6,
   /** The model refuses to act when its own p-band is wider than this. */
   max_uncertainty: 0.18,
-  /** A settlement value older than this is stale. Unknown age is never fresh. */
-  max_brti_age_s: 120,
+  /**
+   * A settlement value older than this is stale, by EITHER clock. Unknown age
+   * is never fresh. One value, defined once above, so the tunables table and the
+   * freshness contract can never disagree.
+   */
+  max_brti_age_s: HOUR_BRTI_FRESH_S,
   /** Exchange spot older than this is stale. Measurement only; it gates nothing. */
   max_spot_age_s: 60,
   /** Neighbouring-rung YES price inversion tolerated before the ladder is called inconsistent, in cents. */
@@ -378,6 +411,26 @@ export function isFresh(value: number | null | undefined, ageS: number | null | 
 export type HourExpectedSource = "cfbenchmarks-brti" | "none";
 
 /**
+ * Is the settlement reading usable at all?
+ *
+ * TEN CONDITIONS, AND EVERY ONE OF THEM MUST HOLD: a value that exists, is
+ * finite and is positive; a receipt age that exists, is finite, is not negative
+ * and is inside the limit; and a vendor age with the same four properties. This
+ * is the ONLY predicate that may decide the settlement input, and both
+ * `expectedSettlement` and `dataQuality` go through it.
+ *
+ * AN UNKNOWN VENDOR STAMP FAILS. A reading we received a moment ago but cannot
+ * date at the source is not a current reading; it is a reading of unknown
+ * vintage that happens to have arrived recently. There is no fallback here: no
+ * proxy index, no exchange spot, no last-known value. The model waits.
+ */
+export function brtiUsable(f: Pick<HourFeatures, "brti" | "brti_age_s" | "brti_source_age_s">): boolean {
+  return (
+    isFresh(f.brti, f.brti_age_s, HOUR_BRTI_FRESH_S) && isFresh(f.brti, f.brti_source_age_s, HOUR_BRTI_FRESH_S)
+  );
+}
+
+/**
  * The expected settlement value.
  *
  * ONE SOURCE, AND IT IS THE CONTRACT'S OWN. KXBTCD settles on the CF Benchmarks
@@ -387,9 +440,11 @@ export type HourExpectedSource = "cfbenchmarks-brti" | "none";
  * settles the contract, and a research record built on that would not measure
  * what it claims to measure. No fresh settlement value means no expected
  * settlement, which means the model waits.
+ *
+ * "Usable" means BOTH clocks inside the limit — see `brtiUsable` above.
  */
 export function expectedSettlement(f: HourFeatures): { value: number | null; source: HourExpectedSource } {
-  if (!isFresh(f.brti, f.brti_age_s, HOUR_MODEL.max_brti_age_s)) return { value: null, source: "none" };
+  if (!brtiUsable(f)) return { value: null, source: "none" };
   return { value: f.brti, source: "cfbenchmarks-brti" };
 }
 
@@ -512,7 +567,7 @@ export function readLadder(rungs: readonly HourRung[], f: HourFeatures, secsLeft
 
 export function dataQuality(rungs: readonly HourRung[], f: HourFeatures, ladderComplete: boolean): HourDataQuality {
   const inversions = ladderInversions(rungs);
-  const brtiFresh = isFresh(f.brti, f.brti_age_s, HOUR_MODEL.max_brti_age_s);
+  const brtiFresh = brtiUsable(f);
   const spotFresh = isFresh(f.spot, f.spot_age_s, HOUR_MODEL.max_spot_age_s);
   const monotonic = inversions <= HOUR_MODEL.max_inversions;
   return {
@@ -716,6 +771,29 @@ export function distanceBaselineP(spot: number | null, strike: number, secsLeft:
   if (spot == null || !(spot > 0) || !(strike > 0) || !(secsLeft > 0)) return null;
   const sigma = HOUR_MODEL.baseline_sigma_hour * Math.sqrt(secsLeft / 3600);
   return pYes(spot, strike, sigma);
+}
+
+/**
+ * The distance baseline as it is STORED — or null.
+ *
+ * A BASELINE SCORED OFF A STALE SPOT IS NOT A BASELINE. `distanceBaselineP`
+ * happily prices any positive number, and the recorder used to hand it
+ * `features.spot` whenever the frame carried one at all: a spot the desk could
+ * not date, or had already called stale, was scored against the model anyway and
+ * then went into the Brier comparison as if it were a fair contest. Losing to a
+ * naive rule is useful information; losing to a naive rule fed a broken clock is
+ * noise that looks like information.
+ *
+ * So this applies the SAME `isFresh` contract the quality verdict already uses
+ * for spot, and returns null otherwise. Null means "this hour has no distance
+ * baseline", and the Brier scorers skip a null rather than filling it in. There
+ * is deliberately no substitute: not the venue index, not BRTI, not the last
+ * known spot, not a midpoint. The baseline stays what it claims to be — a simple
+ * fresh spot-distance baseline — or it is unavailable.
+ */
+export function distanceBaselineFor(f: HourFeatures, strike: number, secsLeft: number): number | null {
+  if (!isFresh(f.spot, f.spot_age_s, HOUR_MODEL.max_spot_age_s)) return null;
+  return distanceBaselineP(f.spot, strike, secsLeft);
 }
 
 /** Brier score contribution for one forecast. Lower is better. */

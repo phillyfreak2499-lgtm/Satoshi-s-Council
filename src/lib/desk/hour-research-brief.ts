@@ -11,11 +11,13 @@
  * the 15-minute Chair's verdict is not an input to any of it.
  */
 import {
+  HOUR_BRTI_FRESH_S,
   HOUR_CHECKPOINTS,
   HOUR_MODEL,
   HOUR_RESEARCH_AUTHORITY,
   HOUR_RESEARCH_VERSION,
   brier,
+  checkpointFor,
   shadowScore,
   type HourCandidate,
   type HourDataQuality,
@@ -153,8 +155,8 @@ export function evidenceBoard(
       value: expected == null ? dash : usd(expected),
       detail:
         expected == null
-          ? "No CF Benchmarks settlement value could be read and dated, so there is no expected settlement value. An exchange print and a perpetual index are different quantities and are never substituted for it."
-          : `Source: ${expectedSource}. This is the value the contract settles on, not an exchange print and not a perpetual index.${
+          ? `No CF Benchmarks settlement value could be read and dated within ${HOUR_BRTI_FRESH_S}s on BOTH clocks — when we received it and when the vendor stamped it — so there is no expected settlement value. An exchange print and a perpetual index are different quantities and are never substituted for it.`
+          : `Source: ${expectedSource}, inside ${HOUR_BRTI_FRESH_S}s by our receipt clock and by the vendor's own stamp. This is the value the contract settles on, not an exchange print and not a perpetual index.${
               f.brti_spot_basis == null
                 ? ""
                 : ` It sits ${usd(Math.abs(f.brti_spot_basis))} ${f.brti_spot_basis >= 0 ? "over" : "under"} exchange spot.`
@@ -218,7 +220,14 @@ export function evidenceBoard(
 
 export type HourTimelineRow = {
   checkpoint: number;
-  /** "done" once a row is frozen for this hour, "now" at the live checkpoint, else "ahead"/"passed". */
+  /**
+   * Where this checkpoint stands, on EXACTLY the rule storage uses:
+   *   done   — a row is frozen for it, whatever the clock says now;
+   *   now    — the clock is inside `checkpointFor`'s own one-sided capture
+   *            window, so the observer is entitled to capture it this instant;
+   *   ahead  — its target instant has not arrived yet;
+   *   missed — the target passed beyond the grace and nothing was stored.
+   */
   state: "done" | "now" | "ahead" | "missed";
   decision: "YES" | "NO" | "WAIT" | null;
   wait_reason: string | null;
@@ -249,18 +258,32 @@ export type HourCheckpointRow = {
  * The hour's six checkpoints in order, each marked done, live, still ahead, or
  * passed without a stored row. A checkpoint with no row is shown as missed
  * rather than quietly dropped.
+ *
+ * THE PAGE USES THE OBSERVER'S RULE, NOT A SECOND ONE OF ITS OWN. This used to
+ * test `Math.abs(minsLeft - cp) <= 1.25` — a SYMMETRIC ±75-second band — while
+ * storage captures only AT or AFTER the target within
+ * `HOUR_CHECKPOINT_GRACE_S`. So the timeline could print a checkpoint as live
+ * with 31 minutes 15 seconds still on the clock, a full minute before the
+ * observer was allowed to freeze anything, and a reader comparing the two
+ * surfaces would find them describing different checkpoints. `checkpointFor` is
+ * now the single authority for "is it that checkpoint's moment"; this module
+ * never reimplements the arithmetic.
  */
 export function checkpointTimeline(stored: readonly HourCheckpointRow[], secsLeft: number | null): HourTimelineRow[] {
   const byCp = new Map(stored.map((r) => [r.checkpoint, r]));
+  // The checkpoint the observer could claim on this clock, from the pure model.
+  const claimable = secsLeft == null ? null : checkpointFor(secsLeft);
   return HOUR_CHECKPOINTS.map((cp) => {
     const row = byCp.get(cp);
-    const minsLeft = secsLeft == null ? null : secsLeft / 60;
     let state: HourTimelineRow["state"];
+    // A frozen row is the strongest fact available and outranks the clock: the
+    // checkpoint is done whatever this request's instant happens to be.
     if (row) state = "done";
-    else if (minsLeft == null) state = "ahead";
-    else if (minsLeft > cp) state = "ahead";
+    else if (secsLeft == null) state = "ahead";
+    // Live exactly when storage would accept a capture, and never a second early.
+    else if (claimable === cp) state = "now";
+    else if (secsLeft > cp * 60) state = "ahead";
     else state = "missed";
-    if (row && minsLeft != null && Math.abs(minsLeft - cp) <= 1.25) state = "now";
     return {
       checkpoint: cp,
       state,
@@ -392,7 +415,10 @@ export type HourLiveRead = {
  */
 export type HourSnapshotView = {
   brti: number | null;
+  /** Seconds since this process received the value. */
   brti_age_s: number | null;
+  /** Seconds since the vendor stamped it, or null when the tick carried no stamp. */
+  brti_source_age_s: number | null;
   brti_source: string;
   /** Venue/perp reference. Context only — never the settlement value. */
   venue_index: number | null;
@@ -471,6 +497,7 @@ export function buildHourResearchBrief(input: {
       ? {
           brti: input.features.brti,
           brti_age_s: input.features.brti_age_s,
+          brti_source_age_s: input.features.brti_source_age_s,
           brti_source: input.features.brti_source,
           venue_index: input.features.venue_index,
           spot: input.features.spot,
