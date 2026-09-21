@@ -1,8 +1,10 @@
 import { useCountdownText } from "@/lib/desk/hooks";
 import { clockMs } from "@/lib/desk/math";
 import { clockET, fmtCents, fmtPct, type HourBrief } from "@/lib/desk/hour";
+import type { HourResearchBrief } from "@/lib/desk/hour-research-brief";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { GlobalHeader } from "./GlobalHeader";
+import { HourClockHero, HourResearchBoard } from "./HourResearch";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -55,7 +57,7 @@ function LiveWindow({ data }: { data: HourBrief }) {
   );
 }
 
-export function HourRoom({ initial }: { initial: HourBrief | null }) {
+export function HourRoom({ initial, research = null }: { initial: HourBrief | null; research?: HourResearchBrief | null }) {
   const data = initial;
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -69,13 +71,17 @@ export function HourRoom({ initial }: { initial: HourBrief | null }) {
           {data ? <p className="mt-2 font-mono text-micro text-subtle">Kalshi series {data.series} · hourly book authority {data.authority} · as of {utcStamp(data.at)}.</p> : null}
         </section>
 
+        {research ? <HourClockHero data={research} /> : null}
+
         {!data ? (
           <div className="mt-6 rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">The hour could not be read. This is not a zero result.</div>
         ) : (
           <>
             <LiveWindow data={data} />
 
-            <Block n="02" title="Score">
+            <HourResearchBoard data={research} />
+
+            <Block n="08" title="Score">
               <p className="mt-2 font-mono text-micro text-subtle">{data.window.label}. Hourly ledger only; no 15-minute row is counted here.</p>
               {data.ledger_unavailable ? (
                 <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">The hourly ledger could not be read this request. That is not a zero record.</p>
@@ -95,12 +101,12 @@ export function HourRoom({ initial }: { initial: HourBrief | null }) {
               )}
             </Block>
 
-            <Block n="03" title="One right WAIT">
+            <Block n="09" title="One right WAIT">
               <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">{data.right_wait ? data.right_wait.reason : "There is no hourly WAIT to show yet. A sit becomes evidence only when a recorded lean never filled and the other side paid."}</p>
               {data.right_wait ? <p className="mt-2 font-mono text-micro text-subtle">{data.right_wait.ticker} · {utcStamp(data.right_wait.close_time)}</p> : null}
             </Block>
 
-            <Block n="04" title="One wrong fill">
+            <Block n="10" title="One wrong fill">
               {data.wrong_fill ? (
                 <>
                   <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
