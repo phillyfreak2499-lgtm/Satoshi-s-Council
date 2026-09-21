@@ -24,6 +24,21 @@ function get(k: string): string {
   }
 }
 
+/**
+ * The raw stored value, or null when the key was never written.
+ *
+ * `get` collapses "absent" and "empty string" into `""`, which is fine for the
+ * on/off flags above. The floor mode needs the difference: see
+ * `floorModeFromStored`.
+ */
+function getRaw(k: string): string | null {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+
 function set(k: string, v: string): void {
   try {
     localStorage.setItem(k, v);
@@ -91,11 +106,42 @@ export function setFloorRoomHidden(hidden: boolean): void {
   set(FLOOR_ROOM_KEY, hidden ? "hidden" : "");
 }
 
-/** The existing Pro Floor remains the default, including for old bookmarks. */
+/**
+ * The two ways to watch the same live Council window. Browser-only: nothing
+ * here reaches the desk, and the server has no say in which view you get.
+ */
 export type FloorMode = "pro" | "guided";
-export function readFloorMode(): FloorMode {
-  return get(FLOOR_MODE_KEY) === "guided" ? "guided" : "pro";
+
+/** Where a browser that has never chosen lands. Guided is the gentler door. */
+export const FIRST_VISIT_FLOOR_MODE: FloorMode = "guided";
+
+/**
+ * Read a stored choice out of its raw value, or null for "never chose".
+ *
+ * THE LEGACY EMPTY STRING IS A PRO CHOICE, NOT AN ABSENCE. `setFloorMode`
+ * used to write `""` for Pro, so a browser that deliberately picked Pro looks
+ * identical to one that never picked anything — unless we look at the raw
+ * value, where "never written" is `null` and "picked Pro" is `""`. Collapsing
+ * the two would silently move every existing Pro reader to Guided, which is
+ * exactly the kind of quiet preference change a returning visitor would read
+ * as a bug. Pure, and exported so a test can pin every case.
+ */
+export function floorModeFromStored(raw: string | null): FloorMode | null {
+  if (raw === null) return null;
+  return raw === "guided" ? "guided" : "pro";
 }
+
+/** The stored choice, or null when this browser has never made one. */
+export function readStoredFloorMode(): FloorMode | null {
+  return floorModeFromStored(getRaw(FLOOR_MODE_KEY));
+}
+
+/** The view to open: the stored choice, else the first-visit default. */
+export function readFloorMode(): FloorMode {
+  return readStoredFloorMode() ?? FIRST_VISIT_FLOOR_MODE;
+}
+
+/** Records the choice explicitly, so "Pro" is never again stored as "". */
 export function setFloorMode(mode: FloorMode): void {
-  set(FLOOR_MODE_KEY, mode === "guided" ? "guided" : "");
+  set(FLOOR_MODE_KEY, mode === "guided" ? "guided" : "pro");
 }
