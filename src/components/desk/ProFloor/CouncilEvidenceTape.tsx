@@ -26,6 +26,7 @@ function voiceTone(s: SeatFact): string {
       return "text-wait";
     case "unhealthy":
     case "muted":
+    case "vetoed":
       return "text-down";
     default:
       return "text-subtle";

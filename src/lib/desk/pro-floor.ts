@@ -529,8 +529,10 @@ export type SeatVoice =
   | "retired"
   /** Benched by COACH until a future instant. */
   | "benched"
-  /** Muted or vetoed on this frame. */
-  | "muted";
+  /** Muted on this frame: the Chair gives it no weight. */
+  | "muted"
+  /** The Chair removed its authority on this frame (`status = VETO`). */
+  | "vetoed";
 
 /** Why a directional read did not reach the Chair. Null when the frame cannot prove one. */
 export type SuppressionReason =
@@ -539,6 +541,12 @@ export type SuppressionReason =
   | "benched"
   | "feed"
   | "muted"
+  /**
+   * `status = VETO`. The frame proves the Chair removed this seat's authority;
+   * it does not prove WHICH guard did it (a sequence gap and a both-feeds-down
+   * condition both land here), so the label says VETO and nothing more.
+   */
+  | "veto"
   | "non-voter";
 
 export type SeatFact = {
@@ -637,18 +645,25 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   } else if (RETIRED.has(seat)) {
     voice = "retired";
     suppression = rawDirectional ? "retired" : null;
-  } else if (speaksNow) {
-    // THE FINAL VOTE DECIDES FIRST. A STALE feed does not silence a seat — it
-    // only scales its confidence — so a STALE seat that still speaks reached the
-    // Chair and is a speaker. Classifying it "unhealthy" here removed a real
-    // vote from the family counts while the Chair was still hearing it.
-    voice = "speaking";
-  } else if (health === "DOWN" || health === "STALE") {
+  } else if (status === "MUTED" || status === "VETO") {
+    // AUTHORITY BEFORE DIRECTION. A muted or vetoed seat can still carry a
+    // directional `lean` — chair.ts sets the status and zeroes the weight, it
+    // does not rewrite the vote — so reading the lean first would draw a seat as
+    // a speaker while the Chair was giving it nothing. The frame proves the
+    // authority was removed, so that is what the page says.
+    voice = status === "MUTED" ? "muted" : "vetoed";
+    suppression = rawDirectional ? (status === "MUTED" ? "muted" : "veto") : null;
+  } else if (health === "DOWN") {
+    // A DOWN feed is the one health state that silences a vote outright:
+    // `applyHealth` rewrites the lean to WAIT and the confidence to 0.
     voice = "unhealthy";
     suppression = rawDirectional ? "feed" : null;
-  } else if (status === "MUTED" || status === "VETO") {
-    voice = "muted";
-    suppression = rawDirectional && finalLean === "WAIT" ? "muted" : null;
+  } else if (speaksNow) {
+    // STALE is NOT a suppression state. `applyHealth` only scales a STALE
+    // seat's confidence by 0.6 and lets `sitUnlessSure` decide; a STALE seat
+    // that survives its speaking bar really did reach the Chair, so it is a
+    // speaker carrying a health warning, not a silenced seat.
+    voice = "speaking";
   } else if (forced && benched) {
     voice = "benched";
     suppression = "benched";
@@ -714,6 +729,8 @@ export type FamilyFacts = {
   unhealthy: number;
   /** Seats that spoke anyway on a STALE feed — counted as speakers, flagged as warnings. */
   stale_speakers: number;
+  /** Seats leaning a side while muted or vetoed. Never in the speaker counts. */
+  no_authority: number;
   /** True when this family has speakers on both sides at once. */
   split: boolean;
 };
@@ -751,6 +768,7 @@ export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
       suppressed_down: seats.filter((s) => s.voice !== "speaking" && s.raw_lean === "DOWN").length,
       unhealthy: seats.filter((s) => s.voice === "unhealthy").length,
       stale_speakers: seats.filter((s) => s.voice === "speaking" && s.health_warning).length,
+      no_authority: seats.filter((s) => noAuthority(s) && (s.final_lean === "UP" || s.final_lean === "DOWN")).length,
       split: up > 0 && down > 0,
     };
   });
@@ -769,6 +787,21 @@ export type BalanceFacts = {
   speaking: { up: number; down: number; wait: number };
   /** Directional raw reads that did not become votes, tallied by direction. */
   suppressed: { up: number; down: number };
+  /**
+   * Seats whose FINAL lean is directional but whose authority the Chair removed
+   * (`MUTED` or `VETO`, both weight 0).
+   *
+   * WHY THIS IS SHOWN RATHER THAN QUIETLY DROPPED. `countChairQuorum` excludes
+   * muted seats and forced sits, but NOT vetoed ones — so a directional VETO
+   * seat appears in `chair.quorum.up`/`down` while contributing nothing to the
+   * aggregation. The family counts below exclude it, because it is not a
+   * speaker. That is a real divergence in the machine's own two tallies, and
+   * naming it here is the only honest way to show both: the identity
+   * `quorum.up === Σ family.up + veto_directional.up` is asserted by a test.
+   */
+  no_authority: { up: number; down: number };
+  /** Of those, the ones the Chair's own quorum still counts (`VETO`, not `MUTED`). */
+  veto_directional: { up: number; down: number };
   /** Families with speakers on both sides at once. */
   split_families: number;
   /** Seats silenced by their own feed. */
@@ -780,12 +813,23 @@ export type BalanceFacts = {
   disclaimer: string;
 };
 
+/** A seat still leaning a side while the Chair gives it no weight at all. */
+const noAuthority = (f: SeatFact) => f.voice === "muted" || f.voice === "vetoed";
+
 export function balanceFacts(chair: ChairResult, facts: readonly SeatFact[], families: readonly FamilyFacts[]): BalanceFacts {
   return {
     speaking: chair.quorum ?? { up: 0, down: 0, wait: 0 },
     suppressed: {
       up: facts.filter((f) => f.voice !== "speaking" && f.raw_lean === "UP").length,
       down: facts.filter((f) => f.voice !== "speaking" && f.raw_lean === "DOWN").length,
+    },
+    no_authority: {
+      up: facts.filter((f) => noAuthority(f) && f.final_lean === "UP").length,
+      down: facts.filter((f) => noAuthority(f) && f.final_lean === "DOWN").length,
+    },
+    veto_directional: {
+      up: facts.filter((f) => f.voice === "vetoed" && f.final_lean === "UP").length,
+      down: facts.filter((f) => f.voice === "vetoed" && f.final_lean === "DOWN").length,
     },
     split_families: families.filter((f) => f.split).length,
     unhealthy: facts.filter((f) => f.voice === "unhealthy").length,
@@ -1046,7 +1090,8 @@ export const VOICE_LABEL: Readonly<Record<SeatVoice, string>> = Object.freeze({
   "non-voter": "pit crew · non-voter",
   retired: "retired from votes",
   benched: "benched",
-  muted: "muted",
+  muted: "muted — no weight",
+  vetoed: "VETO — authority removed",
 });
 
 /** The words for why a directional read did not reach the Chair. */
@@ -1054,7 +1099,9 @@ export const SUPPRESSION_LABEL: Readonly<Record<SuppressionReason, string>> = Ob
   "below-speak-bar": "below its speaking bar",
   retired: "seat retired from paper-call votes",
   benched: "benched by COACH",
-  feed: "its feed is not healthy",
-  muted: "muted on this frame",
+  feed: "its feed is down, so the vote was silenced",
+  muted: "muted on this frame — the Chair gives it no weight",
+  // The frame proves VETO; it does not prove which guard raised it.
+  veto: "VETO — the Chair removed its authority on this frame",
   "non-voter": "pit crew — never aggregated as a vote",
 });

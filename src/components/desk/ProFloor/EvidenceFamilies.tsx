@@ -67,6 +67,7 @@ function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat
     suppressed > 0 ? `${suppressed} suppressed directional (${f.suppressed_up} UP · ${f.suppressed_down} DOWN)` : null,
     f.unhealthy > 0 ? `${f.unhealthy} silenced by their feed` : null,
     f.stale_speakers > 0 ? `${f.stale_speakers} speaking on a STALE feed` : null,
+    f.no_authority > 0 ? `${f.no_authority} leaning with no authority` : null,
   ].filter((n): n is string => n != null);
   return (
     <article className="flex min-w-0 flex-col rounded-sm border border-border bg-bg/40 p-3">

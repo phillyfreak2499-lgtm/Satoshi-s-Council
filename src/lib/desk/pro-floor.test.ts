@@ -936,3 +936,225 @@ test("all clear covers every feed and check the card displays, and names what is
   assert.equal(bad.health.all_clear, false);
   assert.deepEqual(bad.health.blockers, ["derivs DOWN", "sequence reconnect", "basis wide"]);
 });
+
+// ---------------------------------------------------------------------------
+// Review round 3: authority before direction, and STALE is not suppression
+// ---------------------------------------------------------------------------
+
+/** One seat given a distinct state, every other seat quiet. */
+function oneSeat(seat: SeatId, v: Partial<Vote>, r: Partial<SeatRow>, chair: Partial<ChairResult> = {}) {
+  const votes = SEAT_IDS.map((s) => (s === seat ? vote(s, v) : vote(s)));
+  const rows = SEAT_IDS.filter((s) => !CHAIR_NON_VOTER_IDS.includes(s)).map((s) =>
+    s === seat ? seatRow(s, r) : seatRow(s),
+  );
+  return build({ votes, chair: { rows, ...chair } });
+}
+
+const famOf = (f: ProFloorFacts, seat: SeatId) => f.families.find((x) => x.seats.some((s) => s.seat === seat))!;
+const seatOf = (f: ProFloorFacts, seat: SeatId) => f.seats.find((x) => x.seat === seat)!;
+
+test("a MUTED seat leaning a side is not a speaker and never inflates a family count", () => {
+  // chair.ts sets `status = MUTED` and zeroes the weight; it does NOT rewrite
+  // the vote, so the lean survives. Reading the lean before the authority would
+  // draw this seat as a speaker while the Chair gives it nothing.
+  const f = oneSeat(
+    "DRIFT",
+    { lean: "UP", confidence: 74, raw_lean: "UP", raw_conf: 74 },
+    { lean: "UP", conf: 74, status: "MUTED", weight: 0, contribution: 0 },
+  );
+  const drift = seatOf(f, "DRIFT");
+  assert.notEqual(drift.voice, "speaking", "authority is checked before direction");
+  assert.equal(drift.voice, "muted");
+  assert.equal(drift.suppression, "muted");
+  assert.equal(drift.final_lean, "UP", "the lean itself is still reported");
+  assert.equal(drift.raw_lean, "UP", "and its raw read stays visible separately");
+  assert.equal(drift.raw_conf, 74);
+  assert.match(VOICE_LABEL[drift.voice], /no weight/);
+
+  const fam = famOf(f, "DRIFT");
+  assert.equal(fam.up, 0, "a muted seat is not in the family UP count");
+  assert.equal(fam.no_authority, 1, "it is reported as leaning without authority");
+  assert.equal(f.balance.no_authority.up, 1);
+  assert.equal(f.balance.suppressed.up, 1, "its directional read is still surfaced");
+});
+
+test("a VETO seat leaning a side is not a speaker, and the page says only what the frame proves", () => {
+  const f = oneSeat(
+    "STREAK",
+    { lean: "DOWN", confidence: 66, raw_lean: "DOWN", raw_conf: 66 },
+    { lean: "DOWN", conf: 66, status: "VETO", weight: 0, contribution: 0 },
+  );
+  const streak = seatOf(f, "STREAK");
+  assert.notEqual(streak.voice, "speaking");
+  assert.equal(streak.voice, "vetoed");
+  assert.equal(streak.suppression, "veto");
+  assert.equal(streak.final_lean, "DOWN");
+  // A sequence gap and a both-feeds-down condition both produce VETO, so the
+  // label must not claim which one it was.
+  assert.match(VOICE_LABEL[streak.voice], /^VETO/);
+  assert.match(SUPPRESSION_LABEL[streak.suppression!], /^VETO — the Chair removed its authority/);
+  assert.doesNotMatch(SUPPRESSION_LABEL[streak.suppression!], /sequence|gap|both/i, "no cause is invented");
+
+  const fam = famOf(f, "STREAK");
+  assert.equal(fam.down, 0, "a vetoed seat is not in the family DOWN count");
+  assert.equal(fam.no_authority, 1);
+  assert.equal(f.balance.veto_directional.down, 1);
+});
+
+test("a STALE seat that survives its speaking bar IS a speaker, with a warning", () => {
+  // `applyHealth` only scales a STALE seat's confidence by 0.6; it does not
+  // silence it. This one cleared its bar, so the Chair heard it.
+  const f = oneSeat(
+    "WICK",
+    { lean: "UP", confidence: 55, health: "STALE", raw_lean: "UP", raw_conf: 55 },
+    { lean: "UP", conf: 55, health: "STALE", contribution: 0.17 },
+    { quorum: { up: 1, down: 0, wait: 17 } },
+  );
+  const wick = seatOf(f, "WICK");
+  assert.equal(wick.voice, "speaking");
+  assert.equal(wick.suppression, null, "STALE is not a suppression reason");
+  assert.equal(wick.health, "STALE");
+  assert.equal(wick.health_warning, true);
+
+  const fam = famOf(f, "WICK");
+  assert.equal(fam.up, 1, "a STALE speaker counts as a speaker");
+  assert.equal(fam.stale_speakers, 1, "and is flagged");
+  assert.equal(fam.unhealthy, 0, "it was not silenced");
+  assert.equal(f.balance.unhealthy, 0);
+});
+
+test("a STALE read forced below the speaking bar is suppressed by the BAR, not by the feed", () => {
+  // The real pipeline order: applyHealth scales the seat's confidence by 0.6
+  // for STALE, then sitUnlessSure records raw_conf at the SCALED value and
+  // forces WAIT because it now sits under the seat's bar. The feed did not
+  // silence it; the bar did. 85 x 0.6 = 51, one point under the 52 bar.
+  const scaled = Math.round(85 * 0.6);
+  assert.ok(scaled < SPEAK_CONF, "the fixture really is under the bar");
+  const f = oneSeat(
+    "EXHAUST",
+    { lean: "WAIT", confidence: 70, forced_sit: true, health: "STALE", raw_lean: "UP", raw_conf: scaled },
+    { lean: "WAIT", conf: 70, forced_sit: true, health: "STALE" },
+  );
+  const seat = seatOf(f, "EXHAUST");
+  assert.equal(seat.voice, "suppressed");
+  assert.equal(seat.suppression, "below-speak-bar");
+  assert.notEqual(seat.suppression, "feed", "STALE did not directly silence it");
+  assert.equal(seat.health_warning, true, "the STALE warning is still visible");
+  assert.equal(seat.raw_lean, "UP");
+  assert.equal(seat.raw_conf, scaled);
+  assert.equal(seat.final_conf_transformed, true);
+
+  const fam = famOf(f, "EXHAUST");
+  assert.equal(fam.up, 0);
+  assert.equal(fam.unhealthy, 0, "not counted as feed-silenced");
+  assert.equal(fam.suppressed_up, 1);
+});
+
+test("a STALE seat with no directional read is a genuine WAIT, not a feed suppression", () => {
+  const f = oneSeat(
+    "VOLT",
+    { lean: "WAIT", confidence: 18, health: "STALE", raw_lean: "WAIT", raw_conf: 18 },
+    { lean: "WAIT", conf: 18, health: "STALE" },
+  );
+  const volt = seatOf(f, "VOLT");
+  assert.equal(volt.voice, "waiting", "it simply saw nothing");
+  assert.equal(volt.suppression, null);
+  assert.equal(volt.health_warning, true, "with its health warning still shown");
+  assert.equal(volt.final_conf_transformed, false);
+  const fam = famOf(f, "VOLT");
+  assert.equal(fam.unhealthy, 0);
+  assert.equal(fam.stale_speakers, 0, "it is not a speaker");
+  assert.equal(fam.up + fam.down, 0);
+});
+
+test("a DOWN feed still silences its seat — the STALE fix does not weaken it", () => {
+  // `applyHealth` rewrites a DOWN seat's lean to WAIT and its confidence to 0.
+  const f = oneSeat(
+    "PULSE",
+    { lean: "WAIT", confidence: 0, health: "DOWN", raw_lean: "DOWN", raw_conf: 71 },
+    { lean: "WAIT", conf: 0, health: "DOWN", status: "DOWN" },
+  );
+  const pulse = seatOf(f, "PULSE");
+  assert.equal(pulse.voice, "unhealthy");
+  assert.equal(pulse.suppression, "feed");
+  assert.equal(pulse.health_warning, false, "DOWN is not STALE");
+  assert.equal(pulse.raw_lean, "DOWN", "its raw read is still surfaced");
+  const fam = famOf(f, "PULSE");
+  assert.equal(fam.down, 0);
+  assert.equal(fam.unhealthy, 1);
+  assert.equal(f.balance.unhealthy, 1);
+});
+
+test("family UP/DOWN counts contain only seats the Chair treats as speakers", () => {
+  // Every non-speaking state at once, each leaning a side, plus one genuine
+  // speaker. Only the speaker may appear in a count.
+  const states: Array<[SeatId, Partial<Vote>, Partial<SeatRow>]> = [
+    ["DRIFT", { lean: "UP", confidence: 74, raw_lean: "UP", raw_conf: 74 }, { lean: "UP", conf: 74, status: "MUTED" }],
+    ["STREAK", { lean: "UP", confidence: 66, raw_lean: "UP", raw_conf: 66 }, { lean: "UP", conf: 66, status: "VETO" }],
+    ["PULSE", { lean: "WAIT", confidence: 0, health: "DOWN", raw_lean: "UP", raw_conf: 71 }, { lean: "WAIT", conf: 0, health: "DOWN", status: "DOWN" }],
+    ["VEL", { lean: "WAIT", confidence: 70, forced_sit: true, raw_lean: "UP", raw_conf: 40 }, { lean: "WAIT", conf: 70, forced_sit: true }],
+    ["ODDS", { lean: "WAIT", confidence: 70, forced_sit: true, raw_lean: "UP", raw_conf: 80 }, { lean: "WAIT", conf: 70, forced_sit: true }],
+    ["WICK", { lean: "UP", confidence: 55, health: "STALE", raw_lean: "UP", raw_conf: 55 }, { lean: "UP", conf: 55, health: "STALE" }],
+  ];
+  const votes = SEAT_IDS.map((s) => {
+    const hit = states.find(([id]) => id === s);
+    // A non-voter leaning hard, to prove the pit crew never counts either.
+    if (s === "ORBIT") return vote(s, { lean: "UP", confidence: 88, raw_lean: "UP", raw_conf: 88 });
+    return hit ? vote(s, hit[1]) : vote(s);
+  });
+  const rows = SEAT_IDS.filter((s) => !CHAIR_NON_VOTER_IDS.includes(s)).map((s) => {
+    const hit = states.find(([id]) => id === s);
+    return hit ? seatRow(s, hit[2]) : seatRow(s);
+  });
+  const f = build({ votes, chair: { rows, quorum: { up: 2, down: 0, wait: 16 } } });
+
+  const speakers = f.seats.filter((s) => s.voice === "speaking");
+  assert.deepEqual(speakers.map((s) => s.seat), ["WICK"], "only the STALE survivor speaks");
+
+  const totalUp = f.families.reduce((n, x) => n + x.up, 0);
+  const totalDown = f.families.reduce((n, x) => n + x.down, 0);
+  assert.equal(totalUp, 1, "one speaker, one UP");
+  assert.equal(totalDown, 0);
+  // Each excluded state is excluded for its own stated reason.
+  for (const [seat, want] of [["DRIFT", "muted"], ["STREAK", "vetoed"], ["PULSE", "unhealthy"], ["VEL", "suppressed"], ["ODDS", "retired"], ["ORBIT", "non-voter"]] as const) {
+    assert.equal(seatOf(f, seat).voice, want, `${seat} is ${want}`);
+  }
+  // And the flags stay accurate alongside.
+  assert.equal(famOf(f, "WICK").stale_speakers, 1);
+  assert.equal(famOf(f, "PULSE").unhealthy, 1);
+});
+
+test("family counts and the Chair's own quorum reconcile, and the one divergence is named", () => {
+  // `countChairQuorum` excludes non-voters, muted seats and forced sits — but
+  // NOT vetoed ones. So a directional VETO seat sits in the Chair's quorum while
+  // contributing nothing to the aggregation. The page shows both tallies and
+  // names the gap rather than quietly reconciling them.
+  const votes = SEAT_IDS.map((s) =>
+    s === "DRIFT" ? vote(s, { lean: "UP", confidence: 74, raw_lean: "UP", raw_conf: 74 })
+    : s === "STREAK" ? vote(s, { lean: "UP", confidence: 66, raw_lean: "UP", raw_conf: 66 })
+    : s === "WICK" ? vote(s, { lean: "UP", confidence: 61, raw_lean: "UP", raw_conf: 61 })
+    : vote(s));
+  const rows = SEAT_IDS.filter((s) => !CHAIR_NON_VOTER_IDS.includes(s)).map((s) =>
+    s === "DRIFT" ? seatRow(s, { lean: "UP", conf: 74, status: "MUTED" })
+    : s === "STREAK" ? seatRow(s, { lean: "UP", conf: 66, status: "VETO" })
+    : s === "WICK" ? seatRow(s, { lean: "UP", conf: 61 })
+    : seatRow(s));
+  // The quorum the Chair would publish for this frame: WICK and STREAK, because
+  // it drops muted seats but not vetoed ones.
+  const f = build({ votes, chair: { rows, quorum: { up: 2, down: 0, wait: 16 } } });
+
+  const totalUp = f.families.reduce((n, x) => n + x.up, 0);
+  assert.equal(totalUp, 1, "only WICK actually speaks with authority");
+  assert.equal(f.balance.speaking.up, 2, "the displayed balance stays the Chair's own quorum");
+  assert.equal(f.balance.veto_directional.up, 1, "and the gap is named");
+  assert.equal(
+    f.balance.speaking.up,
+    totalUp + f.balance.veto_directional.up,
+    "quorum.up === family speakers + directional vetoes",
+  );
+  // A muted seat is absent from BOTH tallies, so it is not part of the gap.
+  assert.equal(f.balance.no_authority.up, 2, "muted and vetoed both lean with no authority");
+  assert.equal(f.balance.no_authority.up - f.balance.veto_directional.up, 1, "one of them is the muted seat");
+  // There is still no second aggregation competing with the Chair.
+  assert.equal("lean" in f.balance, false);
+});

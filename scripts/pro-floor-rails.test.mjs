@@ -365,18 +365,40 @@ test("executable economics are suppressed whenever the priced ask is a midpoint 
   assert.match(card, /model\.bookable == null/, "the floor cell handles the unassessable case");
 });
 
-test("a STALE feed does not silence a seat: the final vote is classified first", () => {
+test("seat classification follows the Chair's own authority order", () => {
   const model = codeOf(READ_MODEL);
   assert.match(model, /const speaksNow = finalLean === "UP" \|\| finalLean === "DOWN";/);
-  // The speaking branch must come BEFORE the health branch, or a STALE speaker
-  // is removed from the counts while the Chair is still hearing it.
-  const speaks = model.indexOf("} else if (speaksNow) {");
-  const unhealthy = model.indexOf('health === "DOWN" || health === "STALE"');
-  assert.ok(speaks > 0 && unhealthy > 0, "both branches exist");
-  assert.ok(speaks < unhealthy, "the final vote decides before the feed state does");
+  // The exact precedence, asserted by position in source. Authority comes
+  // before direction (a muted or vetoed seat still carries a lean), a DOWN feed
+  // silences outright, and only then does a directional final vote speak.
+  const at = (needle) => {
+    const i = model.indexOf(needle);
+    assert.ok(i > 0, `branch missing: ${needle}`);
+    return i;
+  };
+  const order = [
+    at("if (NON_VOTERS.has(seat))"),
+    at("} else if (RETIRED.has(seat)) {"),
+    at('} else if (status === "MUTED" || status === "VETO") {'),
+    at('} else if (health === "DOWN") {'),
+    at("} else if (speaksNow) {"),
+    at("} else if (forced && benched) {"),
+    at("} else if (forced && rawDirectional) {"),
+  ];
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(order[i] > order[i - 1], `branch ${i} must follow branch ${i - 1}`);
+  }
+  // STALE must not appear in the silencing branch at all: it is a warning, not
+  // a suppression state.
+  assert.doesNotMatch(model, /health === "DOWN" \|\| health === "STALE"/, "STALE is not a silencing condition");
+  assert.match(model, /voice = status === "MUTED" \? "muted" : "vetoed";/);
+  assert.match(model, /suppression = rawDirectional \? \(status === "MUTED" \? "muted" : "veto"\) : null;/);
+  // The VETO label states only what the frame proves.
+  assert.match(read(READ_MODEL), /it does not prove WHICH guard did it/);
+  assert.doesNotMatch(model, /veto: "[^"]*(sequence|gap|both feeds)/i, "no cause is invented for a VETO");
   assert.match(model, /health_warning: health === "STALE",/);
   assert.match(model, /stale_speakers: seats\.filter\(\(s\) => s\.voice === "speaking" && s\.health_warning\)\.length,/);
-  assert.match(read(READ_MODEL), /only scales its confidence/, "the reason is recorded in source");
+  assert.match(read(READ_MODEL), /STALE is NOT a suppression state/, "the reason is recorded in source");
   // And the warning is visible beside the vote rather than replacing it.
   assert.match(read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx"), /STALE feed/);
   assert.match(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /health_warning/);
@@ -407,4 +429,17 @@ test("all clear covers every feed and check the card displays", () => {
   const card = read("src/components/desk/ProFloor/DataHealthCard.tsx");
   assert.match(card, /\$\{h\.blockers\.length\} not clear/);
   assert.match(card, /Not clear: \{h\.blockers\.join\(" · "\)\}/);
+});
+
+test("the Chair quorum stays the displayed balance, and the VETO divergence is named", () => {
+  const model = codeOf(READ_MODEL);
+  // Still the Chair's own count — no second aggregation competing with it.
+  assert.match(model, /speaking: chair\.quorum \?\? \{ up: 0, down: 0, wait: 0 \}/);
+  // And the one place the machine's two tallies genuinely differ is surfaced.
+  assert.match(model, /veto_directional: \{/);
+  assert.match(model, /no_authority: \{/);
+  assert.match(read(READ_MODEL), /countChairQuorum` excludes/, "the reason is stated in source");
+  assert.match(read(READ_MODEL), /quorum\.up === Σ family\.up \+ veto_directional\.up/, "and the identity is written down");
+  const families = read("src/components/desk/ProFloor/EvidenceFamilies.tsx");
+  assert.match(families, /leaning with no authority/, "the page says so too");
 });
