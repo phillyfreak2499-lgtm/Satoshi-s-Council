@@ -938,7 +938,7 @@ export function SatoshiTab({
             <div>invert cap {chair.invert_cap}</div>
             <div>LAW dimmer {chair.law_dimmer}</div>
             <div className={chair.tax_applied ? "text-wait" : "text-muted"}>
-              calibration tax: {chair.tax}
+              calibration tax: {chair.calib_tax_line}
             </div>
             <div>cousins {chair.knn_note}</div>
             <div>{chair.wait_note}</div>
@@ -991,6 +991,7 @@ export function SatoshiTab({
             <Field k="decision" v={chair.decision} />
             <Field k="invalidate if" v={invalidateCondition(chair.invalidate_if)} />
             <Field k="calc" v={<span className="font-mono text-data">{chair.calc}</span>} />
+            <Field k="calib tax" v={<span className="font-mono text-data">{chair.calib_tax_line}</span>} />
             <Field k="skill / huddle" v={`${chair.last_settle} / ${chair.huddle_line}`} />
           </div>
         </Pane>

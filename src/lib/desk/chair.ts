@@ -327,14 +327,26 @@ export function runChair(
   const bin = learner.conf_bins[key] ?? { n: 0, hits: 0 };
   let tax = "none";
   let taxApplied = false;
-  if (bin.n >= 12) {
+  // A single always-printable line so the huddle report can quote a real number
+  // instead of MISSING. Every branch cites the bin's own n and (once warm) its
+  // measured hit% — a hit rate is never invented, only printed when it exists.
+  let calibTaxLine: string;
+  if (bin.n < 12) {
+    calibTaxLine = `tax none · bin ${key} n=${bin.n} (need 12)`;
+  } else {
     const hit = bin.hits / bin.n;
-    if (hit < 0.55) {
+    const pct = (hit * 100).toFixed(0);
+    if (hit >= 0.55) {
+      calibTaxLine = `tax none · bin ${key} hit ${pct}% n=${bin.n}`;
+    } else {
       bar += 0.04;
-      tax = `${key} bin hit ${(hit * 100).toFixed(0)}% on n=${bin.n} → cap conf + bar +0.04`;
+      tax = `${key} bin hit ${pct}% on n=${bin.n} → cap conf + bar +0.04`;
       taxApplied = true;
+      calibTaxLine = `tax ON · bin ${key} hit ${pct}% n=${bin.n} → bar +0.04 · conf capped`;
     }
   }
+  // Persist for the huddle, which sees only the learner (not this ChairResult).
+  learner.last_calib_tax_line = calibTaxLine;
 
   bar += 0.2 * sitMass;
   const knn = knnRead(learner.window_memory.tapes, snap);
@@ -676,6 +688,7 @@ export function runChair(
     invert_cap: invertCap,
     tax,
     tax_applied: taxApplied,
+    calib_tax_line: calibTaxLine,
     law_dimmer: lawDimmer,
     full_conf_raw: full,
     calc,

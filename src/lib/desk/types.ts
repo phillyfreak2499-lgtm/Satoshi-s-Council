@@ -375,6 +375,8 @@ export type ChairResult = {
   invert_cap: string;
   tax: string;
   tax_applied: boolean;
+  /** Always-printable calibration-tax line for the huddle report to quote. Never a guessed hit rate: it reads the real conf-bin n and hit%. */
+  calib_tax_line: string;
   law_dimmer: string;
   full_conf_raw: number;
   calc: string;
@@ -529,6 +531,8 @@ export type Learner = {
   learn_phase: LearnPhase;
   settle_tape: string[];
   huddle_log: string[];
+  /** The most recent chair's calibration-tax line, persisted so a huddle can quote a printed number instead of MISSING. */
+  last_calib_tax_line?: string;
   window_memory: WindowMemory;
   law_wrongs: number;
   lockdown_until: number;
