@@ -182,6 +182,10 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     select 'hourly-book', count(*)::int,
       max(extract(epoch from recorded_at) * 1000)::bigint
       from desk_hour_ledger
+    union all
+    select 'ask-lead-swap', count(*)::int,
+      max(extract(epoch from updated_at) * 1000)::bigint
+      from desk_ask_lead_windows
   `;
 
   // Keep the largest ledgers in separate statements. Production enforces a

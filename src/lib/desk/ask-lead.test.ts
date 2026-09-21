@@ -7,7 +7,7 @@ import {
   leadFromAsks,
   swapBucket,
   type AskLeadState,
-} from "./ask-lead";
+} from "./ask-lead.ts";
 
 function step(state: AskLeadState, yes: number, no: number, secs: number) {
   return applyAskLeadTick(state, { yes_ask: yes, no_ask: no, secs_left: secs, as_of_ms: 1 }).state;
