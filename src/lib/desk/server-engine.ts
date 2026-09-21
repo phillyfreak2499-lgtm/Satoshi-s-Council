@@ -69,6 +69,7 @@ import { coachRun, ensureCrewBoot, sweepRun } from "./crew.server";
 import { ensureLedgerBoot, ledgerCitesFor, ledgerRun } from "./ledger-clerk.server";
 import { arenaDigestLine, settleHumanCalls } from "./arena.server";
 import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.server";
+import { noteSeatTelemetry } from "./telemetry.server";
 import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
 import { observeChairWaitMilestone } from "./chamber-wait.server";
 import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
@@ -1411,6 +1412,12 @@ async function tick(e: Eng) {
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
     await noteCall(e, snap, chair, votes);
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
+    // MEASUREMENT ONLY (authority: none). Buffers per-seat + Chair-gating telemetry
+    // for research. OFF unless SEAT_TELEMETRY_ENABLED; buffers in memory and flushes
+    // on a background interval — no synchronous DB work here — and is internally
+    // fail-open, so it can never delay or alter this decision. `rawChair` is the
+    // canonical aggregation output; `chair` is what was presented downstream.
+    noteSeatTelemetry(snap, votes, rawChair, chair, e.learner);
     // Hand the lab this tick's window state so a print landing between ticks
     // carries real context, with its own staleness recorded. Research only.
     noteDeskState({
