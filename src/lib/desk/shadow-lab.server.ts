@@ -185,10 +185,13 @@ function exactSideQuote(snap: Snapshot, side: "UP" | "DOWN") {
   const decisionAsk = up ? snap.yes_ask : snap.no_ask;
   const decisionBid = up ? snap.yes_bid : snap.no_bid;
   const decisionSize = up ? snap.no_bid_size : snap.yes_bid_size;
-  const exactAsk = up ? (snap.yes_ask_exact ?? decisionAsk) : (snap.no_ask_exact ?? decisionAsk);
-  const exactBid = up ? (snap.yes_bid_exact ?? decisionBid) : (snap.no_bid_exact ?? decisionBid);
+  const askCandidate = up ? snap.yes_ask_exact : snap.no_ask_exact;
+  const bidCandidate = up ? snap.yes_bid_exact : snap.no_bid_exact;
+  const exactAsk = realAskCents(Number(askCandidate)) ? Number(askCandidate) : decisionAsk;
+  const exactBid = realAskCents(Number(bidCandidate)) ? Number(bidCandidate) : decisionBid;
   // YES ask depth lives on the NO bid; DOWN/NO ask depth lives on the YES bid.
-  const exactSize = up ? (snap.no_bid_size_exact ?? decisionSize) : (snap.yes_bid_size_exact ?? decisionSize);
+  const sizeCandidate = up ? snap.no_bid_size_exact : snap.yes_bid_size_exact;
+  const exactSize = Number.isFinite(Number(sizeCandidate)) && Number(sizeCandidate) > 0 ? Number(sizeCandidate) : decisionSize;
   return { decisionAsk, decisionBid, decisionSize, exactAsk, exactBid, exactSize };
 }
 
