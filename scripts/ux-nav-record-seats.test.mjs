@@ -46,8 +46,13 @@ test("public seat copy is 15 voting + 3 retired + 3 pit crew", () => {
 test("canonical record block is shared and scoped", () => {
   const rec = read("src/lib/desk/canonical-record.ts");
   assert.match(rec, /canonicalFromBooks/);
-  assert.match(rec, /books\.trial\.live/);
+  assert.match(rec, /books\.live_floor/);
+  assert.match(rec, /live\.max_dd/);
+  assert.doesNotMatch(rec, /books\.trial\.live|keeper\?\.all\.max_dd/);
   assert.match(rec, /different scope/);
+  const server = read("src/lib/desk/books.server.ts");
+  assert.match(server, /close_time >= \$\{FLOOR_LIVE_SINCE\}::timestamptz as live_floor/);
+  assert.match(server, /maxDrawdownSince\(db, FLOOR_LIVE_SINCE\)/);
   const block = read("src/components/desk/CanonicalRecord.tsx");
   assert.match(block, /CANONICAL_RECORD_LABEL/);
   assert.match(block, /net after fees/);

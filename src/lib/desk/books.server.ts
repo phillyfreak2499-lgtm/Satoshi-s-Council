@@ -56,6 +56,17 @@ export type BooksTotals = {
   /** Win rate the calls needed to break even, 0–100 — for calls held to settlement, entry plus fee. Null with no calls. */
   breakeven: number | null;
 };
+export type LiveFloorBook = {
+  /** Exact start of the current live price-floor era. */
+  since: string;
+  /** Current live minimum ask in cents. */
+  live_cents: number;
+  /** Windows and fills from since through the latest graded window. */
+  totals: BooksTotals;
+  /** Peak-to-trough drawdown computed from those same fills only. */
+  max_dd: number | null;
+};
+
 export type BooksDay = { day: string; n: number; calls: number; wins: number; net: number };
 export type BooksPoint = { t: string; ev: number; cum: number };
 export type BooksBucket = Shelf;
@@ -135,6 +146,8 @@ export type Books = {
   last: BooksWindow | null;
   today: BooksTotals;
   week: BooksTotals;
+  /** Current live floor from FLOOR_LIVE_SINCE through the latest graded window. */
+  live_floor: LiveFloorBook;
   /** The book as it plays now: windows closing since the 70¢ floor went live. */
   floor: BooksTotals;
   floor_since: string;
@@ -237,6 +250,7 @@ async function build(): Promise<Books> {
         ceil(0.07 * entry_cents * (100 - entry_cents) / 100.0) as fee,
         (close_time at time zone 'America/Chicago')::date = (now() at time zone 'America/Chicago')::date as today,
         close_time > now() - interval '7 days' as week,
+        close_time >= ${FLOOR_LIVE_SINCE}::timestamptz as live_floor,
         close_time >= ${CHAIR_FLOOR_SINCE_ISO}::timestamptz as floored
       from desk_ledger_research
           )
@@ -250,15 +264,16 @@ async function build(): Promise<Books> {
       (avg(-ev_cents) filter (where entry_cents is not null and ev_cents < 0))::float as loss_avg,
       (avg(entry_cents + fee) filter (where entry_cents is not null))::float as cost_avg
     from base
-    cross join (values ('all'), ('week'), ('floor'), ('today')) as p(period)
+    cross join (values ('all'), ('week'), ('live_floor'), ('floor'), ('today')) as p(period)
     where p.period = 'all'
       or (p.period = 'week' and week)
+      or (p.period = 'live_floor' and live_floor)
       or (p.period = 'floor' and floored)
       or (p.period = 'today' and today)
     group by 1
   `;
   const byPeriod = new Map(periods.map((r) => [r.period, r]));
-  const pick = (k: "all" | "week" | "floor" | "today"): BooksTotals => {
+  const pick = (k: "all" | "week" | "live_floor" | "floor" | "today"): BooksTotals => {
     const r = byPeriod.get(k);
     if (!r) return EMPTY;
     const calls = Number(r.calls) || 0;
@@ -372,12 +387,19 @@ async function build(): Promise<Books> {
   const windows = rows.map((r) => toWindow(r, arena));
   const trial = await floorTrial(db);
   const keeper = await keeperCard(db);
+  const liveFloorDd = await maxDrawdownSince(db, FLOOR_LIVE_SINCE);
   const lab = await labStudy(db);
 
   return {
     last: windows[0] ?? null,
     today: pick("today"),
     week: pick("week"),
+    live_floor: {
+      since: FLOOR_LIVE_SINCE,
+      live_cents: FLOOR_LIVE_CENTS,
+      totals: pick("live_floor"),
+      max_dd: liveFloorDd,
+    },
     floor: pick("floor"),
     floor_since: CHAIR_FLOOR_SINCE_ISO,
     trial,
@@ -396,11 +418,34 @@ async function build(): Promise<Books> {
 }
 
 /**
- * The 80¢ trial's two books. The live side reads the real fills; the shadow side
- * reads shadow_entry_cents / shadow_ev_cents, which the engine captured live at
- * decision time — the first ask each window at which the old floor would have
- * filled. Both are restricted to windows closing since the trial began, so the
- * comparison is on identical windows and nothing pre-trial leaks in.
+ * Peak-to-trough drawdown for one explicitly bounded live-book population.
+ * The starting balance is 0, so an opening loss counts as drawdown.
+ */
+async function maxDrawdownSince(db: Awaited<ReturnType<typeof sql>>, since: string): Promise<number | null> {
+  try {
+    const [r] = await db<{ max_dd: number }>`
+      with c as (
+        select close_time, id, sum(ev_cents) over (order by close_time, id) as cum
+        from desk_ledger_research
+        where ev_cents is not null and close_time >= ${since}::timestamptz
+      ),
+      p as (
+        select cum, greatest(0, max(cum) over (order by close_time, id)) as peak
+        from c
+      )
+      select coalesce(min(cum - peak), 0)::float as max_dd from p
+    `;
+    return r ? round1(Number(r.max_dd) || 0) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The archived 80¢ vs 70¢ matched-window trial. The live side reads the real fills;
+ * the shadow side reads shadow_entry_cents / shadow_ev_cents captured live at
+ * decision time. It ends at SELECTIVE_FROZEN_AT and remains research-only; it is
+ * never the canonical current record.
  */
 async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTrial | null> {
   try {
