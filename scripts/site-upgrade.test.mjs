@@ -80,6 +80,16 @@ test("moderation is authenticated, reversible, audited, and hides a parent's rep
     await board.moderateBoard({ data: { admin_key: "test-admin", id: 1, hidden: false, reason: "reviewed" } });
     assert.equal((await board.listBoard()).length, 2);
     assert.equal((await pg.query("select * from board_moderation_log")).rows.length, 2);
+
+    await board.postBoard({ data: { who: "Counsel", body: "LEGAL\nPrivate intake" } });
+    assert.equal((await board.listBoard()).length, 2, "private intake never appears on the public Board");
+    const privateRows = await board.listBoardModeration({ data: { admin_key: "test-admin" } });
+    const privatePost = privateRows.find((p) => p.body === "LEGAL\nPrivate intake");
+    assert.equal(privatePost?.hidden, true);
+    assert.equal(privatePost?.moderation_reason, "private contact: LEGAL");
+    assert.equal((await pg.query("select * from board_moderation_log")).rows.length, 3);
+    await pg.exec("update board_rate_limits set last_post_at = now() - interval '31 seconds'");
+
     await board.postBoard({ data: { who: "First name", body: "Accepted" } });
     await assert.rejects(board.postBoard({ data: { who: "Changed name", body: "Cannot evade" } }), /30 seconds/);
     await assert.rejects(board.postBoard({ data: { who: "Bot", body: "Spam", website: "filled" } }), /accept/);
