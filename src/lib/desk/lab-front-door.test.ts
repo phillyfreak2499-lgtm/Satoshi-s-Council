@@ -26,6 +26,7 @@ import {
   type FrontDoorRow,
 } from "./lab-front-door.ts";
 import { LAB_RESEARCH_REGISTRY } from "./lab-registry.ts";
+import { RESEARCH_QUIET_NOTICE, researchQuietNoticeHiddenOn } from "./research-quiet-notice.ts";
 
 const row = (over: Partial<FrontDoorRow> = {}): FrontDoorRow => ({
   id: "chair-v2",
@@ -39,10 +40,6 @@ const row = (over: Partial<FrontDoorRow> = {}): FrontDoorRow => ({
   last_evidence_at: new Date().toISOString(),
   ...over,
 });
-
-// ---------------------------------------------------------------------------
-// 1. The live path, unchanged.
-// ---------------------------------------------------------------------------
 
 test("a populated register still groups into running, learning and not ready", () => {
   const door = labFrontDoor([
@@ -81,10 +78,6 @@ test("a zero sample prints no number at all rather than a zero", () => {
   assert.equal(door.not_ready[0].sample, null);
   assert.equal(door.not_ready[0].status, "no sample yet");
 });
-
-// ---------------------------------------------------------------------------
-// 2. The warming register: a bench, not an outage.
-// ---------------------------------------------------------------------------
 
 test("the declared bench lists every study on the frozen register", () => {
   const cards = declaredBench(LAB_RESEARCH_REGISTRY);
@@ -133,10 +126,6 @@ test("an absent or empty register is still handled without throwing", () => {
   assert.deepEqual(door.learning, []);
 });
 
-// ---------------------------------------------------------------------------
-// 3. Labels are read off the record, in both paths.
-// ---------------------------------------------------------------------------
-
 test("authority badges come only from the recorded study type", () => {
   assert.equal(authorityLabel({ type: "decider" }), "SHADOW ONLY");
   assert.equal(authorityLabel({ type: "measurement" }), "MEASUREMENT ONLY");
@@ -159,4 +148,12 @@ test("the same purpose wording is produced from a live row and from a frozen spe
   assert.equal(live.purpose, declared.purpose, "one source of truth for what a study is for");
   assert.equal(live.authority, declared.authority);
   assert.equal(whyItMatters(spec), whyItMatters({ purpose: spec.purpose, cadence: spec.cadence }));
+});
+
+test("quiet-floor notice is measurement copy and stays off Lab/Training", () => {
+  assert.match(RESEARCH_QUIET_NOTICE.body, /WAIT/);
+  assert.match(RESEARCH_QUIET_NOTICE.body, /Paper only/);
+  assert.equal(researchQuietNoticeHiddenOn("/lab"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/training"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/"), false);
 });
