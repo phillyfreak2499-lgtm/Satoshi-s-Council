@@ -200,14 +200,16 @@ test("rail 5: status-transition telemetry never throws into the engine, is queue
 });
 
 
-test("rail 6: shadow collection cannot start before an atomic prospective boundary and MIRROR-35 is excluded", () => {
+test("rail 6: shadow collection cannot start before verified atomic prospective boundary and MIRROR-35 is excluded", () => {
   const server = codeOf("src/lib/desk/shadow-lab.server.ts");
   const manifests = codeOf("src/lib/desk/shadow-manifests.ts");
-  assert.match(server, /await registerShadowManifests\(sql\);\s*await activateInitialShadowCollection\(sql, st\.activatedAt\);[\s\S]*st\.timer = setInterval/);
-  assert.match(server, /status = 'CANDIDATE' and prospective_start_at is null/);
-  assert.match(server, /status = 'SHADOW' and prospective_start_at is not null/);
+  assert.match(server, /await registerShadowManifests\(sql\);\s*await verifyShadowManifests\(sql\);\s*const activation = await activateInitialShadowCollection\(sql, Date\.now\(\)\);[\s\S]*st\.activatedAt = durableStart;[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /candidates = 3 or \(shadows = 3 and shadow_starts = 1\)/);
   assert.match(server, /coalesce\(m\.prospective_start_at,/);
-  assert.match(server, /\(select n from coherent\) = 3/);
+  assert.match(server, /shadow manifest fingerprint mismatch/);
+  assert.match(server, /shadow manifest fee fingerprint mismatch/);
+  assert.match(server, /a\.decided\.has\(k\) \|\| pending\.has\(k\)/);
+  assert.match(server, /recordShadowReceipt\(sql, r, payload\)[\s\S]*\.then\(\(inserted\) => \{[\s\S]*a\.decided\.add\(k\)/);
   assert.doesNotMatch(server.slice(server.indexOf("activateInitialShadowCollection"), server.indexOf("/**\n * Settle fill receipts")), /MIRROR_35_V1/);
   assert.match(manifests, /INITIAL_SHADOW_COLLECTION_IDS/);
   const targetBlock = manifests.slice(manifests.indexOf("INITIAL_SHADOW_COLLECTION_IDS"), manifests.indexOf("/** The three-active rule"));
