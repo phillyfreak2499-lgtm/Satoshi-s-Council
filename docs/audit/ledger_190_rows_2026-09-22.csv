@@ -1,0 +1,191 @@
+ledger_id,ticker,close_utc,era,ledger_tag,entry_ask_cents,exit_price_cents,settlement_value_cents,official_winner,booked_side,contracts,fee_methodology,fee_cents,stored_pnl_cents,recomputed_hold_pnl_cents,hold_identity,hold_vs_early_exit,official_win,calls_recorded,research_quality,shadow70_entry,shadow70_pnl,secs_left_at_entry
+1,KXBTC15M-26SEP050845-45,2026-09-05T12:45:00Z,A0_pre_floor,main_paper,80,78,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,8,-82,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+11,KXBTC15M-26SEP051115-15,2026-09-05T15:15:00Z,A0_pre_floor,main_paper,74,75,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-1,-76,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+21,KXBTC15M-26SEP051345-45,2026-09-05T17:45:00Z,A0_pre_floor,main_paper,52,36,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-18,-54,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+29,KXBTC15M-26SEP051545-45,2026-09-05T19:45:00Z,A0_pre_floor,main_paper,82,82,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,2,-84,NO,EARLY_EXIT_OR_MULTILEG,,3,valid,,,
+32,KXBTC15M-26SEP051630-30,2026-09-05T20:30:00Z,A0_pre_floor,main_paper,57,59,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,0,-59,NO,SCRATCH,,1,valid,,,
+37,KXBTC15M-26SEP051745-45,2026-09-05T21:45:00Z,A0_pre_floor,main_paper,68,69,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-7,-70,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+40,KXBTC15M-26SEP051830-30,2026-09-05T22:30:00Z,A0_pre_floor,main_paper,56,35,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-23,-58,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+41,KXBTC15M-26SEP051845-45,2026-09-05T22:45:00Z,A0_pre_floor,main_paper,82,99,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,15,-84,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+42,KXBTC15M-26SEP051900-00,2026-09-05T23:00:00Z,A0_pre_floor,main_paper,37,19,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-20,-39,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+44,KXBTC15M-26SEP051930-30,2026-09-05T23:30:00Z,A0_pre_floor,main_paper,72,74,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,1,-74,NO,EARLY_EXIT_OR_MULTILEG,,3,valid,,,
+45,KXBTC15M-26SEP051945-45,2026-09-05T23:45:00Z,A0_pre_floor,main_paper,73,76,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,1,-75,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+52,KXBTC15M-26SEP052130-30,2026-09-06T01:30:00Z,A0_pre_floor,main_paper,73,77,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,2,-75,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+53,KXBTC15M-26SEP052145-45,2026-09-06T01:45:00Z,A0_pre_floor,main_paper,63,82,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,17,-65,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+56,KXBTC15M-26SEP052230-30,2026-09-06T02:30:00Z,A0_pre_floor,main_paper,65,62,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-5,-67,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+63,KXBTC15M-26SEP060015-15,2026-09-06T04:15:00Z,A0_pre_floor,main_paper,87,91,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,3,-88,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+64,KXBTC15M-26SEP060030-30,2026-09-06T04:30:00Z,A0_pre_floor,main_paper,79,86,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,5,-81,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+66,KXBTC15M-26SEP060100-00,2026-09-06T05:00:00Z,A0_pre_floor,main_paper,41,42,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-5,-43,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+68,KXBTC15M-26SEP060130-30,2026-09-06T05:30:00Z,A0_pre_floor,main_paper,47,48,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-15,-49,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+72,KXBTC15M-26SEP060230-30,2026-09-06T06:30:00Z,A0_pre_floor,main_paper,65,65,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-9,-67,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+73,KXBTC15M-26SEP060245-45,2026-09-06T06:45:00Z,A0_pre_floor,main_paper,61,63,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,0,-63,NO,SCRATCH,,1,valid,,,
+81,KXBTC15M-26SEP060445-45,2026-09-06T08:45:00Z,A0_pre_floor,main_paper,60,61,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-2,-62,NO,EARLY_EXIT_OR_MULTILEG,,7,valid,,,
+85,KXBTC15M-26SEP060545-45,2026-09-06T09:45:00Z,A0_pre_floor,main_paper,97,98,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,0,-98,NO,SCRATCH,,1,valid,,,
+95,KXBTC15M-26SEP060815-15,2026-09-06T12:15:00Z,A0_pre_floor,main_paper,70,70,,DOWN,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-57,-72,NO,EARLY_EXIT_OR_MULTILEG,,2,valid,,,
+96,KXBTC15M-26SEP060830-30,2026-09-06T12:30:00Z,A0_pre_floor,main_paper,76,68,,UP,,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-10,-78,NO,EARLY_EXIT_OR_MULTILEG,,1,valid,,,
+115,KXBTC15M-26SEP061315-15,2026-09-06T17:15:00Z,A0_pre_floor,main_paper,86,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,13,13,YES,HOLD,1,1,valid,,,
+116,KXBTC15M-26SEP061330-30,2026-09-06T17:30:00Z,A0_pre_floor,main_paper,70,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+119,KXBTC15M-26SEP061415-15,2026-09-06T18:15:00Z,A0_pre_floor,main_paper,84,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,15,15,YES,HOLD,1,1,valid,,,
+144,KXBTC15M-26SEP062030-30,2026-09-07T00:30:00Z,A0_pre_floor,main_paper,91,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,8,8,YES,HOLD,1,1,valid,,,
+153,KXBTC15M-26SEP062245-45,2026-09-07T02:45:00Z,A0_pre_floor,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,17,17,YES,HOLD,1,1,valid,,,
+161,KXBTC15M-26SEP070045-45,2026-09-07T04:45:00Z,A0_pre_floor,main_paper,51,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-53,-53,YES,HOLD,0,1,valid,,,
+172,KXBTC15M-26SEP070330-30,2026-09-07T07:30:00Z,A0_pre_floor,main_paper,82,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,16,16,YES,HOLD,1,1,valid,,,
+179,KXBTC15M-26SEP070515-15,2026-09-07T09:15:00Z,A0_pre_floor,main_paper,95,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,4,4,YES,HOLD,1,1,valid,,,
+186,KXBTC15M-26SEP070700-00,2026-09-07T11:00:00Z,A0_pre_floor,main_paper,54,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-56,-56,YES,HOLD,0,1,valid,,,
+191,KXBTC15M-26SEP070815-15,2026-09-07T12:15:00Z,A0_pre_floor,main_paper,76,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,22,22,YES,HOLD,1,1,valid,,,
+192,KXBTC15M-26SEP070830-30,2026-09-07T12:30:00Z,A0_pre_floor,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,14,14,YES,HOLD,1,1,valid,,,
+193,KXBTC15M-26SEP070845-45,2026-09-07T12:45:00Z,A0_pre_floor,main_paper,95,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,4,4,YES,HOLD,1,1,valid,,,
+197,KXBTC15M-26SEP070945-45,2026-09-07T13:45:00Z,A0_pre_floor,main_paper,94,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,5,5,YES,HOLD,1,1,valid,,,
+199,KXBTC15M-26SEP071015-15,2026-09-07T14:15:00Z,A0_pre_floor,main_paper,83,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,16,16,YES,HOLD,1,1,valid,,,
+205,KXBTC15M-26SEP071145-45,2026-09-07T15:45:00Z,A0_pre_floor,main_paper,86,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,13,13,YES,HOLD,1,1,valid,,,
+214,KXBTC15M-26SEP071400-00,2026-09-07T18:00:00Z,A0_pre_floor,main_paper,64,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,34,34,YES,HOLD,1,1,valid,,,
+216,KXBTC15M-26SEP071430-30,2026-09-07T18:30:00Z,A0_pre_floor,main_paper,61,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-63,-63,YES,HOLD,0,1,valid,,,
+221,KXBTC15M-26SEP071545-45,2026-09-07T19:45:00Z,A0_pre_floor,main_paper,72,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,26,26,YES,HOLD,1,1,valid,,,
+223,KXBTC15M-26SEP071615-15,2026-09-07T20:15:00Z,A0_pre_floor,main_paper,95,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,4,4,YES,HOLD,1,1,valid,,,
+226,KXBTC15M-26SEP071700-00,2026-09-07T21:00:00Z,A0_pre_floor,main_paper,91,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,8,8,YES,HOLD,1,1,valid,,,
+230,KXBTC15M-26SEP071800-00,2026-09-07T22:00:00Z,A0_pre_floor,main_paper,64,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-66,-66,YES,HOLD,0,1,valid,,,
+233,KXBTC15M-26SEP071845-45,2026-09-07T22:45:00Z,A0_pre_floor,main_paper,96,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,3,3,YES,HOLD,1,1,valid,,,
+243,KXBTC15M-26SEP072115-15,2026-09-08T01:15:00Z,A0_pre_floor,main_paper,69,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,29,29,YES,HOLD,1,1,valid,,,
+277,KXBTC15M-26SEP080545-45,2026-09-08T09:45:00Z,A0_pre_floor,main_paper,95,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,4,4,YES,HOLD,1,1,valid,,,
+278,KXBTC15M-26SEP080600-00,2026-09-08T10:00:00Z,A0_pre_floor,main_paper,49,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,49,49,YES,HOLD,1,1,valid,,,
+280,KXBTC15M-26SEP080630-30,2026-09-08T10:30:00Z,A0_pre_floor,main_paper,93,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,6,6,YES,HOLD,1,1,valid,,,
+310,KXBTC15M-26SEP081400-00,2026-09-08T18:00:00Z,A0_pre_floor,main_paper,65,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-67,-67,YES,HOLD,0,1,valid,,,
+312,KXBTC15M-26SEP081430-30,2026-09-08T18:30:00Z,A0_pre_floor,main_paper,92,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,7,7,YES,HOLD,1,1,valid,,,
+317,KXBTC15M-26SEP081545-45,2026-09-08T19:45:00Z,A0_pre_floor,main_paper,54,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-56,-56,YES,HOLD,0,1,valid,,,
+326,KXBTC15M-26SEP081800-00,2026-09-08T22:00:00Z,A1_floor70,main_paper,90,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,9,9,YES,HOLD,1,1,valid,,,
+328,KXBTC15M-26SEP081830-30,2026-09-08T22:30:00Z,A1_floor70,main_paper,84,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,15,15,YES,HOLD,1,1,valid,,,
+330,KXBTC15M-26SEP081900-00,2026-09-08T23:00:00Z,A1_floor70,main_paper,88,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,11,11,YES,HOLD,1,1,valid,,,
+331,KXBTC15M-26SEP081915-15,2026-09-08T23:15:00Z,A1_floor70,main_paper,86,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,13,13,YES,HOLD,1,1,valid,,,
+335,KXBTC15M-26SEP082015-15,2026-09-09T00:15:00Z,A1_floor70,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,18,18,YES,HOLD,1,1,valid,,,
+338,KXBTC15M-26SEP082100-00,2026-09-09T01:00:00Z,A1_floor70,main_paper,76,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,22,22,YES,HOLD,1,1,valid,,,
+339,KXBTC15M-26SEP082115-15,2026-09-09T01:15:00Z,A1_floor70,main_paper,72,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-74,-74,YES,HOLD,0,1,valid,,,
+341,KXBTC15M-26SEP082145-45,2026-09-09T01:45:00Z,A1_floor70,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,16,16,YES,HOLD,1,1,valid,,,
+343,KXBTC15M-26SEP082215-15,2026-09-09T02:15:00Z,A1_floor70,main_paper,72,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-74,-74,YES,HOLD,0,1,valid,,,
+345,KXBTC15M-26SEP082245-45,2026-09-09T02:45:00Z,A1_floor70,main_paper,70,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+347,KXBTC15M-26SEP082315-15,2026-09-09T03:15:00Z,A1_floor70,main_paper,71,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,27,27,YES,HOLD,1,1,valid,,,
+351,KXBTC15M-26SEP090015-15,2026-09-09T04:15:00Z,A1_floor70,main_paper,94,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,5,5,YES,HOLD,1,1,valid,,,
+352,KXBTC15M-26SEP090030-30,2026-09-09T04:30:00Z,A1_floor70,main_paper,90,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,9,9,YES,HOLD,1,1,valid,,,
+361,KXBTC15M-26SEP090245-45,2026-09-09T06:45:00Z,A1_floor70,main_paper,75,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,23,23,YES,HOLD,1,1,valid,,,
+381,KXBTC15M-26SEP090745-45,2026-09-09T11:45:00Z,A1_floor70,main_paper,72,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,26,26,YES,HOLD,1,1,valid,,,
+385,KXBTC15M-26SEP090845-45,2026-09-09T12:45:00Z,A1_floor70,main_paper,92,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,7,7,YES,HOLD,1,1,valid,,,
+411,KXBTC15M-26SEP091530-30,2026-09-09T19:30:00Z,A1_floor70,main_paper,70,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+420,KXBTC15M-26SEP091745-45,2026-09-09T21:45:00Z,A1_floor70,main_paper,85,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,14,14,YES,HOLD,1,1,valid,,,
+421,KXBTC15M-26SEP091800-00,2026-09-09T22:00:00Z,A1_floor70,main_paper,80,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,18,18,YES,HOLD,1,1,valid,,,
+426,KXBTC15M-26SEP091915-15,2026-09-09T23:15:00Z,A1_floor70,main_paper,97,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,2,2,YES,HOLD,1,1,valid,,,
+433,KXBTC15M-26SEP092100-00,2026-09-10T01:00:00Z,A1_floor70,main_paper,72,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-74,-74,YES,HOLD,0,1,valid,,,
+434,KXBTC15M-26SEP092115-15,2026-09-10T01:15:00Z,A1_floor70,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,17,17,YES,HOLD,1,1,valid,,,
+436,KXBTC15M-26SEP092145-45,2026-09-10T01:45:00Z,A1_floor70,main_paper,82,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,16,16,YES,HOLD,1,1,valid,,,
+447,KXBTC15M-26SEP100030-30,2026-09-10T04:30:00Z,A1_floor70,main_paper,75,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,23,23,YES,HOLD,1,1,valid,,,
+450,KXBTC15M-26SEP100115-15,2026-09-10T05:15:00Z,A1_floor70,main_paper,75,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,23,23,YES,HOLD,1,1,valid,,,
+453,KXBTC15M-26SEP100200-00,2026-09-10T06:00:00Z,A1_floor70,main_paper,70,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+454,KXBTC15M-26SEP100215-15,2026-09-10T06:15:00Z,A1_floor70,main_paper,77,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,21,21,YES,HOLD,1,1,valid,,,
+455,KXBTC15M-26SEP100230-30,2026-09-10T06:30:00Z,A1_floor70,main_paper,71,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,27,27,YES,HOLD,1,1,valid,,,
+456,KXBTC15M-26SEP100245-45,2026-09-10T06:45:00Z,A1_floor70,main_paper,75,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-77,-77,YES,HOLD,0,1,valid,,,
+457,KXBTC15M-26SEP100300-00,2026-09-10T07:00:00Z,A1_floor70,main_paper,87,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,12,12,YES,HOLD,1,1,valid,,,
+467,KXBTC15M-26SEP100530-30,2026-09-10T09:30:00Z,A1_floor70,main_paper,76,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,22,22,YES,HOLD,1,1,valid,,,
+471,KXBTC15M-26SEP100630-30,2026-09-10T10:30:00Z,A1_floor70,main_paper,70,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-72,-72,YES,HOLD,0,1,valid,,,
+476,KXBTC15M-26SEP100745-45,2026-09-10T11:45:00Z,A1_floor70,main_paper,70,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-72,-72,YES,HOLD,0,1,valid,,,
+496,KXBTC15M-26SEP101245-45,2026-09-10T16:45:00Z,A1_floor70,main_paper,83,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,-84,-84,YES,HOLD,0,1,valid,,,
+497,KXBTC15M-26SEP101300-00,2026-09-10T17:00:00Z,A1_floor70,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,17,17,YES,HOLD,1,1,valid,,,
+500,KXBTC15M-26SEP101345-45,2026-09-10T17:45:00Z,A1_floor70,main_paper,88,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,11,11,YES,HOLD,1,1,valid,,,
+501,KXBTC15M-26SEP101400-00,2026-09-10T18:00:00Z,A1_floor70,main_paper,70,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-72,-72,YES,HOLD,0,1,valid,,,
+503,KXBTC15M-26SEP101430-30,2026-09-10T18:30:00Z,A1_floor70,main_paper,79,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,19,19,YES,HOLD,1,1,valid,,,
+504,KXBTC15M-26SEP101445-45,2026-09-10T18:45:00Z,A1_floor70,main_paper,72,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,26,26,YES,HOLD,1,1,valid,,,
+505,KXBTC15M-26SEP101500-00,2026-09-10T19:00:00Z,A1_floor70,main_paper,75,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,23,23,YES,HOLD,1,1,valid,,,
+508,KXBTC15M-26SEP101545-45,2026-09-10T19:45:00Z,A1_floor70,main_paper,70,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+511,KXBTC15M-26SEP101630-30,2026-09-10T20:30:00Z,A1_floor70,main_paper,70,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-72,-72,YES,HOLD,0,1,valid,,,
+515,KXBTC15M-26SEP101730-30,2026-09-10T21:30:00Z,A1_floor70,main_paper,71,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,27,27,YES,HOLD,1,1,valid,,,
+516,KXBTC15M-26SEP101745-45,2026-09-10T21:45:00Z,A1_floor70,main_paper,70,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,28,28,YES,HOLD,1,1,valid,,,
+520,KXBTC15M-26SEP101845-45,2026-09-10T22:45:00Z,A1_floor70,main_paper,83,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,16,16,YES,HOLD,1,1,valid,,,
+521,KXBTC15M-26SEP101900-00,2026-09-10T23:00:00Z,B_floor80_trial,main_paper,81,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),2,-83,-83,YES,HOLD,0,1,valid,73,-75,
+522,KXBTC15M-26SEP101915-15,2026-09-10T23:15:00Z,B_floor80_trial,main_paper,84,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,15,15,YES,HOLD,1,1,valid,84,15,
+524,KXBTC15M-26SEP101945-45,2026-09-10T23:45:00Z,B_floor80_trial,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (recomputed; not stored),1,14,14,YES,HOLD,1,1,valid,78,20,
+530,KXBTC15M-26SEP102115-15,2026-09-11T01:15:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,75,23,447.5
+533,KXBTC15M-26SEP102200-00,2026-09-11T02:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,72,26,413.2
+534,KXBTC15M-26SEP102215-15,2026-09-11T02:15:00Z,B_floor80_trial,main_paper,84,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,15,15,YES,HOLD,1,1,valid,84,15,69.1
+538,KXBTC15M-26SEP102315-15,2026-09-11T03:15:00Z,B_floor80_trial,main_paper,80,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-82,-82,YES,HOLD,0,1,valid,75,-77,406.5
+542,KXBTC15M-26SEP110015-15,2026-09-11T04:15:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,71,27,503.8
+543,KXBTC15M-26SEP110030-30,2026-09-11T04:30:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,70,28,371.7
+546,KXBTC15M-26SEP110115-15,2026-09-11T05:15:00Z,B_floor80_trial,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,31.7
+548,KXBTC15M-26SEP110145-45,2026-09-11T05:45:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,71,27,471.6
+549,KXBTC15M-26SEP110200-00,2026-09-11T06:00:00Z,B_floor80_trial,main_paper,87,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,12,12,YES,HOLD,1,1,valid,76,22,267.6
+550,KXBTC15M-26SEP110215-15,2026-09-11T06:15:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,72,26,427.6
+552,KXBTC15M-26SEP110245-45,2026-09-11T06:45:00Z,B_floor80_trial,main_paper,81,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,81,17,535.4
+554,KXBTC15M-26SEP110315-15,2026-09-11T07:15:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,73,25,491.1
+555,KXBTC15M-26SEP110330-30,2026-09-11T07:30:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,70,28,535.1
+560,KXBTC15M-26SEP110445-45,2026-09-11T08:45:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,78,20,262.9
+564,KXBTC15M-26SEP110545-45,2026-09-11T09:45:00Z,B_floor80_trial,main_paper,95,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,4,4,YES,HOLD,1,1,valid,95,4,510.9
+566,KXBTC15M-26SEP110615-15,2026-09-11T10:15:00Z,B_floor80_trial,main_paper,89,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,10,10,YES,HOLD,1,1,valid,89,10,594.8
+567,KXBTC15M-26SEP110630-30,2026-09-11T10:30:00Z,B_floor80_trial,main_paper,81,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-83,-83,YES,HOLD,0,1,valid,70,-72,522.8
+570,KXBTC15M-26SEP110715-15,2026-09-11T11:15:00Z,B_floor80_trial,main_paper,85,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,525.7
+572,KXBTC15M-26SEP110745-45,2026-09-11T11:45:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,71,27,240.9
+573,KXBTC15M-26SEP110800-00,2026-09-11T12:00:00Z,B_floor80_trial,main_paper,86,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,13,13,YES,HOLD,1,1,valid,71,27,432.9
+576,KXBTC15M-26SEP110845-45,2026-09-11T12:45:00Z,B_floor80_trial,main_paper,81,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-83,-83,YES,HOLD,0,1,valid,81,-83,871.9
+593,KXBTC15M-26SEP111300-00,2026-09-11T17:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,77,21,718.4
+598,KXBTC15M-26SEP111415-15,2026-09-11T18:15:00Z,B_floor80_trial,main_paper,96,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,3,3,YES,HOLD,1,1,valid,96,3,594.1
+604,KXBTC15M-26SEP111545-45,2026-09-11T19:45:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,76,22,101.9
+605,KXBTC15M-26SEP111600-00,2026-09-11T20:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,71,27,493.8
+606,KXBTC15M-26SEP111615-15,2026-09-11T20:15:00Z,B_floor80_trial,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,593.8
+612,KXBTC15M-26SEP111745-45,2026-09-11T21:45:00Z,B_floor80_trial,main_paper,80,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-82,-82,YES,HOLD,0,1,valid,70,-72,314.3
+613,KXBTC15M-26SEP111800-00,2026-09-11T22:00:00Z,B_floor80_trial,main_paper,81,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,79,19,588
+620,KXBTC15M-26SEP111945-45,2026-09-11T23:45:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,70,28,226.2
+621,KXBTC15M-26SEP112000-00,2026-09-12T00:00:00Z,B_floor80_trial,main_paper,86,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,13,13,YES,HOLD,1,1,valid,71,27,38.2
+622,KXBTC15M-26SEP112015-15,2026-09-12T00:15:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,70,28,458.2
+625,KXBTC15M-26SEP112100-00,2026-09-12T01:00:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,71,27,226
+626,KXBTC15M-26SEP112115-15,2026-09-12T01:15:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,74,24,398
+632,KXBTC15M-26SEP112245-45,2026-09-12T02:45:00Z,B_floor80_trial,main_paper,81,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,76,22,419.5
+638,KXBTC15M-26SEP120015-15,2026-09-12T04:15:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,78,20,397.3
+639,KXBTC15M-26SEP120030-30,2026-09-12T04:30:00Z,B_floor80_trial,main_paper,93,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,6,6,YES,HOLD,1,1,valid,93,6,285.3
+648,KXBTC15M-26SEP120245-45,2026-09-12T06:45:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,74,24,506.2
+655,KXBTC15M-26SEP120430-30,2026-09-12T08:30:00Z,B_floor80_trial,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,486
+711,KXBTC15M-26SEP121830-30,2026-09-12T22:30:00Z,B_floor80_trial,main_paper,81,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-83,-83,YES,HOLD,0,1,valid,73,-75,457.5
+729,KXBTC15M-26SEP122300-00,2026-09-13T03:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,77,21,167.3
+773,KXBTC15M-26SEP131000-00,2026-09-13T14:00:00Z,B_floor80_trial,main_paper,87,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,12,12,YES,HOLD,1,1,valid,87,12,551.4
+774,KXBTC15M-26SEP131015-15,2026-09-13T14:15:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,70,28,527.4
+776,KXBTC15M-26SEP131045-45,2026-09-13T14:45:00Z,B_floor80_trial,main_paper,95,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,4,4,YES,HOLD,1,1,valid,95,4,307
+805,KXBTC15M-26SEP131815-15,2026-09-13T22:15:00Z,B_floor80_trial,main_paper,90,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,9,9,YES,HOLD,1,1,valid,90,9,520.7
+811,KXBTC15M-26SEP131945-45,2026-09-13T23:45:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,79,19,510.9
+813,KXBTC15M-26SEP132015-15,2026-09-14T00:15:00Z,B_floor80_trial,main_paper,91,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,8,8,YES,HOLD,1,1,valid,91,8,414.8
+816,KXBTC15M-26SEP132100-00,2026-09-14T01:00:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,72,26,294.6
+821,KXBTC15M-26SEP132215-15,2026-09-14T02:15:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,78,20,363.3
+822,KXBTC15M-26SEP132230-30,2026-09-14T02:30:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,78,20,363.3
+824,KXBTC15M-26SEP132300-00,2026-09-14T03:00:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,70,28,551.2
+825,KXBTC15M-26SEP132315-15,2026-09-14T03:15:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,72,26,467.2
+829,KXBTC15M-26SEP140015-15,2026-09-14T04:15:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,71,27,55.7
+830,KXBTC15M-26SEP140030-30,2026-09-14T04:30:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,74,24,399.6
+831,KXBTC15M-26SEP140045-45,2026-09-14T04:45:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,79,19,90.9
+835,KXBTC15M-26SEP140145-45,2026-09-14T05:45:00Z,B_floor80_trial,main_paper,93,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,6,6,YES,HOLD,1,1,valid,93,6,306.5
+837,KXBTC15M-26SEP140215-15,2026-09-14T06:15:00Z,B_floor80_trial,main_paper,96,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,3,3,YES,HOLD,1,1,valid,96,3,428.7
+838,KXBTC15M-26SEP140245-45,2026-09-14T06:45:00Z,B_floor80_trial,main_paper,83,,0,UP,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,-84,-84,YES,HOLD,0,1,valid,83,-84,771.7
+840,KXBTC15M-26SEP140315-15,2026-09-14T07:15:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,82,16,511.7
+841,KXBTC15M-26SEP140330-30,2026-09-14T07:30:00Z,B_floor80_trial,main_paper,92,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,7,7,YES,HOLD,1,1,valid,92,7,275.7
+842,KXBTC15M-26SEP140345-45,2026-09-14T07:45:00Z,B_floor80_trial,main_paper,82,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,16,16,YES,HOLD,1,1,valid,71,27,447.6
+843,KXBTC15M-26SEP140400-00,2026-09-14T08:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,73,25,171.6
+850,KXBTC15M-26SEP140545-45,2026-09-14T09:45:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,78,20,567.4
+851,KXBTC15M-26SEP140600-00,2026-09-14T10:00:00Z,B_floor80_trial,main_paper,85,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,583.4
+860,KXBTC15M-26SEP140815-15,2026-09-14T12:15:00Z,B_floor80_trial,main_paper,88,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,11,11,YES,HOLD,1,1,valid,88,11,253.6
+861,KXBTC15M-26SEP140830-30,2026-09-14T12:30:00Z,B_floor80_trial,main_paper,88,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,11,11,YES,HOLD,1,1,valid,72,26,461.4
+864,KXBTC15M-26SEP140930-30,2026-09-14T13:30:00Z,B_floor80_trial,main_paper,84,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,15,15,YES,HOLD,1,1,valid,77,21,411.8
+865,KXBTC15M-26SEP140945-45,2026-09-14T13:45:00Z,B_floor80_trial,main_paper,93,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,6,6,YES,HOLD,1,1,valid,93,6,595.4
+876,KXBTC15M-26SEP141230-30,2026-09-14T16:30:00Z,B_floor80_trial,main_paper,93,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,6,6,YES,HOLD,1,1,valid,93,6,577.7
+880,KXBTC15M-26SEP141330-30,2026-09-14T17:30:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,74,24,375.1
+884,KXBTC15M-26SEP141430-30,2026-09-14T18:30:00Z,B_floor80_trial,main_paper,92,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,7,7,YES,HOLD,1,1,valid,92,7,534.9
+887,KXBTC15M-26SEP141515-15,2026-09-14T19:15:00Z,B_floor80_trial,main_paper,91,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,8,8,YES,HOLD,1,1,valid,91,8,577.8
+894,KXBTC15M-26SEP141700-00,2026-09-14T21:00:00Z,B_floor80_trial,main_paper,85,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,14,14,YES,HOLD,1,1,valid,85,14,588.5
+895,KXBTC15M-26SEP141715-15,2026-09-14T21:15:00Z,B_floor80_trial,main_paper,88,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,11,11,YES,HOLD,1,1,valid,88,11,764.4
+900,KXBTC15M-26SEP141830-30,2026-09-14T22:30:00Z,B_floor80_trial,main_paper,95,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,4,4,YES,HOLD,1,1,valid,95,4,477.9
+927,KXBTC15M-26SEP150115-15,2026-09-15T05:15:00Z,B_floor80_trial,main_paper,89,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,10,10,YES,HOLD,1,1,valid,89,10,243.6
+929,KXBTC15M-26SEP150145-45,2026-09-15T05:45:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,83,16,119.5
+930,KXBTC15M-26SEP150200-00,2026-09-15T06:00:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,72,26,535.5
+931,KXBTC15M-26SEP150215-15,2026-09-15T06:15:00Z,B_floor80_trial,main_paper,83,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,-84,-84,YES,HOLD,0,1,valid,83,-84,591.5
+934,KXBTC15M-26SEP150300-00,2026-09-15T07:00:00Z,B_floor80_trial,main_paper,94,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,5,5,YES,HOLD,1,1,valid,94,5,487.3
+946,KXBTC15M-26SEP150600-00,2026-09-15T10:00:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,72,26,502.5
+947,KXBTC15M-26SEP150615-15,2026-09-15T10:15:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,75,23,342.5
+950,KXBTC15M-26SEP150700-00,2026-09-15T11:00:00Z,B_floor80_trial,main_paper,80,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,77,21,166.4
+951,KXBTC15M-26SEP150715-15,2026-09-15T11:15:00Z,B_floor80_trial,main_paper,80,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-82,-82,YES,HOLD,0,1,valid,77,-79,450.3
+953,KXBTC15M-26SEP150745-45,2026-09-15T11:45:00Z,B_floor80_trial,main_paper,80,,100,DOWN,DOWN,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,18,18,YES,HOLD,1,1,valid,80,18,594.2
+955,KXBTC15M-26SEP150815-15,2026-09-15T12:15:00Z,B_floor80_trial,main_paper,80,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-82,-82,YES,HOLD,0,1,valid,76,-78,86.1
+956,KXBTC15M-26SEP150830-30,2026-09-15T12:30:00Z,B_floor80_trial,main_paper,82,,0,DOWN,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,-84,-84,YES,HOLD,0,1,valid,75,-77,378.1
+958,KXBTC15M-26SEP150900-00,2026-09-15T13:00:00Z,B_floor80_trial,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,71,27,554.1
+959,KXBTC15M-26SEP150915-15,2026-09-15T13:15:00Z,B_floor80_trial,main_paper,83,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=1),1,16,16,YES,HOLD,1,1,valid,83,16,570
+1277,KXBTC15M-26SEP181830-30,2026-09-18T22:30:00Z,C2_selective_v3,main_paper,81,,100,UP,UP,1,ceil(7·p·(1−p)) whole cent (stored entry_fee_cents=2),2,17,17,YES,HOLD,1,1,valid,81,17,484.9

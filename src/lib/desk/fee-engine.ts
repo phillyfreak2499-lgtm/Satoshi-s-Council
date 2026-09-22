@@ -108,3 +108,51 @@ export function feeTable(engine: FeeEngineId = DEFAULT_FEE_ENGINE): Array<{ ask:
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-contract schedule and provenance (added 2026-09-22 reconciliation).
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the 7% rule comes from. The venue's fee page and series metadata were
+ * unreachable from the audit environment (connection refused through the
+ * proxy), so the schedule is pinned as the repository's documented rule with
+ * the date it was written, not as a fetched venue record. A fetched record
+ * (URL, fetch time, series multiplier) should replace this block verbatim.
+ */
+export const FEE_PROVENANCE = Object.freeze({
+  rule: "fee = ceil_to_cent(0.07 × C × P × (1 − P)) per order, C contracts, P price in dollars",
+  source: "repository rule (clock.ts, 2026-09-06); Kalshi fee schedule not fetched — provenance ASSUMED",
+  series_multiplier: "UNKNOWN for KXBTC15M (some series carry a reduced multiplier); 0.07 assumed",
+  effective_date: "UNKNOWN",
+  fetched_at: null as string | null,
+});
+
+export type FeeQuote = {
+  ask_cents: number;
+  contracts: number;
+  /** 0.07 × C × P × (1 − P), in cents, before any rounding. */
+  raw_cents: number;
+  /** The order's charged fee in cents, rounded up to the next whole cent for the whole order. */
+  charged_cents: number;
+  /** charged / C: what one contract effectively pays inside an order of C. */
+  per_contract_cents: number;
+  /** True when the whole-cent engine's per-contract fee (C = 1) equals this order's per-contract fee. */
+  matches_c1_engine: boolean;
+};
+
+/**
+ * The fee for an order of `contracts` at `ask`. Rounding is applied once to
+ * the ORDER total, so a 100-contract order at 83¢ pays 99¢ (0.99¢ each) while
+ * one contract pays 1¢, and one contract at 82¢ pays 2¢ while 100 pay 104¢.
+ * "One cent at every price" is therefore false for one contract: it is 2¢ from
+ * 18¢ to 82¢ (and 1¢ elsewhere) under this schedule.
+ */
+export function feeForContracts(ask: number, contracts: number): FeeQuote {
+  if (!realAskCents(ask) || !Number.isInteger(contracts) || contracts < 1) return { ask_cents: ask, contracts, raw_cents: NaN, charged_cents: NaN, per_contract_cents: NaN, matches_c1_engine: false };
+  const p = ask / 100;
+  const raw = 7 * contracts * p * (1 - p); // cents
+  const charged = Math.ceil(raw - 1e-9);
+  const per = charged / contracts;
+  return { ask_cents: ask, contracts, raw_cents: Math.round(raw * 10_000) / 10_000, charged_cents: charged, per_contract_cents: Math.round(per * 10_000) / 10_000, matches_c1_engine: Math.abs(per - feeCents(ask)) < 1e-9 };
+}

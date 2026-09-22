@@ -258,6 +258,12 @@ export type BookSummary = {
   /** UNKNOWN from the ledger alone: needs decision receipts. */
   entry_time_wait_rate_pct: null;
   avg_ask: number | null;
+  avg_fee: number | null;
+  losses: number;
+  /** Ledger-contract fields: what precision the stored asks can claim, and the span covered. */
+  price_precision: "whole_cent_stored; exact fraction UNKNOWN for asks < 10¢ or ≥ 90¢";
+  start_ms: number | null;
+  end_ms: number | null;
   /** Peak-to-trough on cumulative settled-HOLD net, ordered by (close_time, id). */
   max_drawdown_cents: number;
   drawdown_order: "close_time,id";
@@ -366,6 +372,11 @@ export function bookSummary(rows: readonly LedgerRow[], scope: ScopeSpec, engine
     no_book_rate_pct: valid.length ? r1((100 * (valid.length - booked)) / valid.length) : null,
     entry_time_wait_rate_pct: null,
     avg_ask: asks.length ? r1(asks.reduce((s, a) => s + a, 0) / asks.length) : null,
+    avg_fee: settled.length ? Math.round(((cost - asks.reduce((s, a) => s + a, 0)) / settled.length) * 100) / 100 : null,
+    losses: settled.filter((c) => c.official_win === false).length,
+    price_precision: "whole_cent_stored; exact fraction UNKNOWN for asks < 10¢ or ≥ 90¢",
+    start_ms: scoped.length ? scoped[0]!.close_ms : null,
+    end_ms: scoped.length ? scoped[scoped.length - 1]!.close_ms : null,
     max_drawdown_cents: r1(worst),
     drawdown_order: "close_time,id",
     worst_week: worstWeek,
