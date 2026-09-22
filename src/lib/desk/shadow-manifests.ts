@@ -1,5 +1,5 @@
 /**
- * The three frozen shadow manifests. Hand-written; nothing may append to this
+ * The four frozen shadow manifests. Hand-written; nothing may append to this
  * at runtime. A parameter change is a new experiment version with zero
  * evidence, never an edit. `prospective_start_at` is null here by design: it
  * is set by an owner-approved activation in the database, at the actual
