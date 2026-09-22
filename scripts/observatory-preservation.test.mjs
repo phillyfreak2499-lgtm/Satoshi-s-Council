@@ -16,7 +16,7 @@ function navigation() {
 test("the Observatory adds wayfinding without dropping any existing destination", () => {
   const { SITE_DESTINATIONS } = navigation();
   const paths = Array.from(SITE_DESTINATIONS, item => item.href);
-  for (const href of ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/?tab=atelier", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided"]) {
+  for (const href of ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/gallery", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided"]) {
     assert.equal(paths.filter(path => path === href).length, 1, `${href} remains reachable exactly once in the canonical map`);
   }
   const shared = read("src/components/desk/CouncilNavigation.tsx");
@@ -31,6 +31,7 @@ test("the Observatory adds wayfinding without dropping any existing destination"
 
 test("existing Gallery, Settings and specialist bookmarks have correct active navigation", () => {
   const { sitePathActive } = navigation();
+  assert.equal(sitePathActive("/", "/gallery", "?tab=atelier&room=streamer"), true);
   assert.equal(sitePathActive("/", "/?tab=atelier", "?tab=atelier&room=streamer"), true);
   assert.equal(sitePathActive("/", "/?tab=settings", "?tab=settings"), true);
   assert.equal(sitePathActive("/", "/", "?tab=settings"), false);
@@ -75,7 +76,6 @@ test("focus and presentation never replace data or make research decisions", () 
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);
 });
 
-
 test("home and the dedicated floor keep distinct navigation while legacy room bookmarks survive", () => {
   const { sitePathActive } = navigation();
   assert.equal(sitePathActive("/", "/"), true);
@@ -85,6 +85,7 @@ test("home and the dedicated floor keep distinct navigation while legacy room bo
   assert.equal(sitePathActive("/", "/", "?tab=satoshi"), false);
   assert.equal(sitePathActive("/desk", "/?tab=structure", "?tab=tape"), true);
   assert.equal(sitePathActive("/desk", "/?tab=atelier", "?tab=atelier&room=streamer"), true);
+  assert.equal(sitePathActive("/desk", "/gallery", "?tab=atelier&room=streamer"), true);
   assert.equal(sitePathActive("/", "/", "?view=guided"), false);
   assert.equal(sitePathActive("/desk", "https://satoshis-council-shop.fourthwall.com/"), false);
 });
