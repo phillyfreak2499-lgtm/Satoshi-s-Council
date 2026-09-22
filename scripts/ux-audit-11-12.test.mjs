@@ -16,7 +16,7 @@ function load(rel) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(js, { exports });
+  vm.runInNewContext(js, { exports, URLSearchParams });
   return exports;
 }
 
