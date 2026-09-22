@@ -8,7 +8,7 @@ import "./interface-polish.css";
 import "./company-design.css";
 
 export type HeaderAction = { label: string; hint?: string; onSelect: () => void };
-const PRIMARY: readonly SiteHref[] = ["/desk", "/books", "/chamber", "/lab", SHOP_URL];
+const PRIMARY: readonly SiteHref[] = ["/desk", "/books", "/training", "/lab", "/about"];
 const SHORTCUTS = PRIMARY;
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 
@@ -33,7 +33,7 @@ export function CouncilNavigation({ pathname, search = "", action, tour, preview
   const links = (paths: readonly SiteHref[]) => paths.map(path => {
     const item = SITE_DESTINATIONS.find(candidate => candidate.href === path)!;
     return <a key={path} {...linkProps(path)} aria-current={active(path) ? "page" : undefined}
-      className={cn(linkClass, active(path) ? "bg-surface-2 text-fg" : path === SHOP_URL ? "text-gold hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg")}>{item.label}{item.external ? <span aria-hidden="true">↗</span> : null}</a>;
+      className={cn(linkClass, active(path) ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg")}>{item.label}{item.external ? <span aria-hidden="true">↗</span> : null}</a>;
   });
   return <SiteHeader fold="xl" tour={tour} menu={menu} brandHref={preview ? "/" : undefined} controls={controls}
     shortcuts={<nav aria-label="Quick access" className="council-site-shortcuts">{links(SHORTCUTS)}</nav>}

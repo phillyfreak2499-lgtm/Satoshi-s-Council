@@ -35,7 +35,9 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
     return `${seats(n)} lean ${lean} and ${sideOf(lean)} at ${ask.toFixed(0)}¢ clears the floor, so the book fills on the next tick.`;
   }
 
-  if (up + down === 0) return "Nobody on the floor is speaking, so the desk waits.";
+  if (up + down === 0) {
+    return "WAIT is the call. No seat has a directional read strong enough to speak, so nothing is booked. That is not an outage.";
+  }
   const tally = `${seats(up)} lean UP and ${seats(down)} lean DOWN`;
   const fail = chair.gates.find((g) => g.hard && !g.pass);
   switch (fail?.id) {
