@@ -38,6 +38,7 @@ import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
 import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
 import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
 import { JUMP_VETO, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
+import { shouldWriteSitReceipt } from "./shadow-sit.ts";
 import { INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 import { SHADOW_FEE_FINGERPRINT, receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import { attributionHealth, blankAttributionTracker, observeSelectorAttribution, settleAttributionRows, type AttributionTracker } from "./selector-attribution.server.ts";
@@ -367,6 +368,14 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       const filled = d.eligible && d.confirmed && side != null;
       if (filled) once(receipt(E1, p.arm, snap, "fill", side, ask, size, ask - bid, true, "confirmed"), { ...payload, execution_qualified: true });
       if (p.arm === "PKG_85" && side) pkg85 = { side, ask, size, spread: ask - bid, filled, intent: d.eligible };
+      // T-3 sit: WAIT must still leave a pairable no_fill row (shadow-sit.ts).
+      const pkgAlready = (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+        const k = `${E1}|${p.arm}|${windowKey}|${kind}`;
+        return a.decided.has(k) || pending.has(k);
+      });
+      if (shouldWriteSitReceipt(secs, pkgAlready)) {
+        once(receipt(E1, p.arm, snap, "no_fill", null, null, null, null, null, "sit at T-3"), { secs_left: secs, checkpoint: 180 });
+      }
     }
 
     // E2 and E3 derive from the PKG_85 stream on the same tick.
@@ -383,6 +392,28 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
         const edge = edgeUnderBasis(snap, base.side, bps);
         if (base.filled && edge >= 3) once(receipt(E3, arm, snap, "fill", base.side, base.ask, base.size, base.spread, true, `edge ${edge.toFixed(1)}¢ at ${bps}bps`), { basis_bps: bps, edge_cents: edge, execution_qualified: true, secs_left: secs });
         else if (base.filled) once(receipt(E3, arm, snap, "no_fill", base.side, base.ask, base.size, base.spread, true, `edge ${edge.toFixed(1)}¢ at ${bps}bps blocks`), { basis_bps: bps, edge_cents: edge, secs_left: secs });
+      }
+    } else {
+      // No PKG_85 side: E2/E3 derived arms sit at T-3 so the window stays pairable.
+      for (const arm of ["BASE_NO_VETO", "VETO_8S", "VETO_15S", "VETO_30S"] as const) {
+        const a = armState(`${E2}|${arm}`);
+        const already = (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+          const k = `${E2}|${arm}|${windowKey}|${kind}`;
+          return a.decided.has(k) || pending.has(k);
+        });
+        if (shouldWriteSitReceipt(secs, already)) {
+          once(receipt(E2, arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; no PKG_85 side"), { secs_left: secs, checkpoint: 180 });
+        }
+      }
+      for (const arm of ["BASIS_LIVE_2BPS", "BASIS_5BPS", "BASIS_7BPS", "BASIS_9BPS"] as const) {
+        const a = armState(`${E3}|${arm}`);
+        const already = (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+          const k = `${E3}|${arm}|${windowKey}|${kind}`;
+          return a.decided.has(k) || pending.has(k);
+        });
+        if (shouldWriteSitReceipt(secs, already)) {
+          once(receipt(E3, arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; no PKG_85 side"), { secs_left: secs, checkpoint: 180 });
+        }
       }
     }
     await Promise.all(writes);
