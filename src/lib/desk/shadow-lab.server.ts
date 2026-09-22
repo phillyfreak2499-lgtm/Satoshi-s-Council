@@ -323,11 +323,13 @@ export function ensureShadowLabObserver(env: Record<string, string | undefined> 
   const st = state();
   if (st.timer || st.starting) return "already";
   st.starting = true;
-  st.activatedAt = Date.now();
 
   void getSql()
     .then(async (sql) => {
       await registerShadowManifests(sql);
+      // Stamp the boundary only after registration succeeds, immediately before
+      // the guarded activation statement and before any collection timer exists.
+      st.activatedAt = Date.now();
       await activateInitialShadowCollection(sql, st.activatedAt);
       // The env may have been removed while the bootstrap was in flight.
       if (!shadowLabEnabled(process.env)) return;
