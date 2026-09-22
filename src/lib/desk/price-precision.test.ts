@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { FEE_PROVENANCE, feeForContracts, feeCents } from "./fee-engine.ts";
 import { PRICE_PRECISION_CONTRACT, deciCentEconomics, describeStoredPrecision, onTickGrid, storedAskUncertaintyCents } from "./price-precision.ts";
 import { interpretKalshiBook } from "./kalshi-book.ts";
@@ -122,4 +123,25 @@ test("unavailable exact sentinels fall back to the executable legacy quote inste
   assert.equal(q.yes_ask_exact, 85);
   assert.equal(q.no_bid_exact, 15);
   assert.equal(q.no_ask_exact, 16);
+});
+
+
+test("exact quote fields are measurement-only and never read by production decision modules", () => {
+  const protectedFiles = [
+    "chair.ts",
+    "gate-vector.ts",
+    "selective-entry.ts",
+    "book-floor.ts",
+    "learner.ts",
+    "engine.ts",
+    "server-engine.ts",
+  ];
+  for (const file of protectedFiles) {
+    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(
+      src,
+      /\b(?:yes|no)_(?:bid|ask)(?:_size)?_exact\b/,
+      `${file} must not consume the exact measurement lane`,
+    );
+  }
 });
