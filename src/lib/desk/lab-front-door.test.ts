@@ -150,10 +150,12 @@ test("the same purpose wording is produced from a live row and from a frozen spe
   assert.equal(whyItMatters(spec), whyItMatters({ purpose: spec.purpose, cadence: spec.cadence }));
 });
 
-test("quiet-floor notice is measurement copy and stays off Lab/Training", () => {
+test("retired quiet-floor notice keeps its measurement copy but stays hidden everywhere", () => {
   assert.match(RESEARCH_QUIET_NOTICE.body, /WAIT/);
   assert.match(RESEARCH_QUIET_NOTICE.body, /Paper only/);
   assert.equal(researchQuietNoticeHiddenOn("/lab"), true);
   assert.equal(researchQuietNoticeHiddenOn("/training"), true);
-  assert.equal(researchQuietNoticeHiddenOn("/"), false);
+  assert.equal(researchQuietNoticeHiddenOn("/"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/desk"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/books"), true);
 });
