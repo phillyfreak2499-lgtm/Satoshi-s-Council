@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { takerOutcomeSide } from "./kalshi-wire";
 import { selectOpenKalshiMarket } from "./kalshi-market";
 import { asMs, uniqueByT, valuesOf, type HistPoint } from "./hist";
-import { interpretKalshiBook, readSeq } from "./kalshi-book";
+import { exactKalshiCents, interpretKalshiBook, readSeq } from "./kalshi-book";
 import { candleTs, emptyTally, tally } from "./candle-time";
 import { applyInstrument, funding8h, notionalUsd, pickPrimaryVenue, specTag, volumeUsd } from "./units";
 import type { PathPoint } from "./path-time";
@@ -222,8 +222,14 @@ async function kalshi(): Promise<KalshiPack | null> {
       let yes_ask = cents(m.yes_ask_dollars ?? m.yes_ask);
       let no_bid = cents(m.no_bid_dollars ?? m.no_bid);
       let no_ask = cents(m.no_ask_dollars ?? m.no_ask);
+      let yes_bid_exact = exactKalshiCents(m.yes_bid_dollars ?? m.yes_bid) || yes_bid;
+      let yes_ask_exact = exactKalshiCents(m.yes_ask_dollars ?? m.yes_ask) || yes_ask;
+      let no_bid_exact = exactKalshiCents(m.no_bid_dollars ?? m.no_bid) || no_bid;
+      let no_ask_exact = exactKalshiCents(m.no_ask_dollars ?? m.no_ask) || no_ask;
       let yes_bid_size = 0;
       let no_bid_size = 0;
+      let yes_bid_size_exact = 0;
+      let no_bid_size_exact = 0;
 
       const nowSec = Math.floor(Date.now() / 1000);
       const extras = await Promise.allSettled([
@@ -238,13 +244,22 @@ async function kalshi(): Promise<KalshiPack | null> {
       ]);
 
       const bookMeta = extras[0].status === "fulfilled" ? extras[0].value : null;
-      const quote = interpretKalshiBook(bookMeta?.json ?? null, { yes_bid, yes_ask, no_bid, no_ask });
+      const quote = interpretKalshiBook(bookMeta?.json ?? null, {
+        yes_bid, yes_ask, no_bid, no_ask,
+        yes_bid_exact, yes_ask_exact, no_bid_exact, no_ask_exact,
+      });
       yes_bid = quote.yes_bid;
       yes_ask = quote.yes_ask;
       no_bid = quote.no_bid;
       no_ask = quote.no_ask;
+      yes_bid_exact = quote.yes_bid_exact ?? yes_bid;
+      yes_ask_exact = quote.yes_ask_exact ?? yes_ask;
+      no_bid_exact = quote.no_bid_exact ?? no_bid;
+      no_ask_exact = quote.no_ask_exact ?? no_ask;
       yes_bid_size = quote.yes_bid_size;
       no_bid_size = quote.no_bid_size;
+      yes_bid_size_exact = quote.yes_bid_size_exact ?? yes_bid_size;
+      no_bid_size_exact = quote.no_bid_size_exact ?? no_bid_size;
 
       let trade_n = 0;
       let taker_yes = 0.5;
@@ -332,8 +347,15 @@ async function kalshi(): Promise<KalshiPack | null> {
         yes_ask,
         no_bid,
         no_ask,
+        // Measurement-only exact venue lane. The Chair still reads the whole-cent fields above.
+        yes_bid_exact,
+        yes_ask_exact,
+        no_bid_exact,
+        no_ask_exact,
         yes_bid_size,
         no_bid_size,
+        yes_bid_size_exact,
+        no_bid_size_exact,
         quote_age_s,
         quote_ts,
         quote_seq,
