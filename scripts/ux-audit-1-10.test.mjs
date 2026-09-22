@@ -107,6 +107,6 @@ test("Books page leads with one collapsed summary and dated missing closes", () 
   assert.match(summary, /Show missing closes/);
   assert.match(summary, /datedClose/);
   assert.match(summary, /data-label="Close"/);
-  assert.match(summary, />replay</);
+  assert.match(summary, />\s*replay\s*</);
   assert.doesNotMatch(legacy, /id="books-windows"|windowRows|missingWindowsLine/);
 });
