@@ -21,7 +21,7 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "How is the paper book doing?",
-    a: "Open the Books at /books. The canonical paper record is the live 80¢ book: calls, W–L, net after fees, average per call, max drawdown, and a 95% interval, with the scope printed on the block. Today, this week, Arena, shadow Chair v2, and the 70¢ comparison are different scopes. It is a record, not a promised edge.",
+    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the archived 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. The canonical paper record on that page prints calls, W–L, net after fees, average per call, max drawdown, and a 95% interval with the scope on the block. Arena and shadow Chair v2 are different scopes. It is a record, not a promised edge.",
   },
   {
     q: "What does selective mode require?",
@@ -77,7 +77,7 @@ function Faq() {
                 </span>
               </Accordion.Trigger>
             </Accordion.Header>
-            <Accordion.Content forceMount className="px-4 pb-3 font-sans text-body leading-relaxed text-muted data-[state-closed]:hidden data-[state=closed]:hidden">{item.a}</Accordion.Content>
+            <Accordion.Content forceMount className="px-4 pb-3 font-sans text-body leading-relaxed text-muted data-[state=closed]:hidden">{item.a}</Accordion.Content>
           </Accordion.Item>
         ))}
       </Accordion.Root>
