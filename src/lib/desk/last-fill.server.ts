@@ -19,7 +19,7 @@ export async function lastFilledWindow(): Promise<BooksWindow | null> {
   if (hit) return hit;
   try {
     const { getSql } = await import("@/lib/db");
-    const db = getSql();
+    const db = await getSql();
     const [r] = await db<{
       ticker: string;
       close_time: Date | string;
