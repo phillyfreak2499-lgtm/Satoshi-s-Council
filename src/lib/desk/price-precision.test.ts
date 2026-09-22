@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { FEE_PROVENANCE, feeForContracts, feeCents } from "./fee-engine.ts";
 import { PRICE_PRECISION_CONTRACT, deciCentEconomics, describeStoredPrecision, onTickGrid, storedAskUncertaintyCents } from "./price-precision.ts";
+import { interpretKalshiBook } from "./kalshi-book.ts";
 
 test("one contract is NOT 1¢ at every price: the charged fee is 2¢ from 18¢ to 82¢ and 1¢ elsewhere; 100 contracts pay ~7·p(1−p)¢ each", () => {
   const prices = [50, 70, 75, 80, 81, 82, 83, 85, 90, 92, 95, 99];
@@ -44,4 +45,33 @@ test("stored precision is named honestly: whole-cent stores are UNKNOWN to ±0.5
   assert.equal(storedAskUncertaintyCents(92), 0.5);
   assert.equal(storedAskUncertaintyCents(85), 0);
   assert.ok(PRICE_PRECISION_CONTRACT.coercion_sites.some((s) => s.includes("server-feeds.ts")));
+});
+
+
+test("exact quote lane preserves deci-cent top/depth without changing legacy whole-cent production quote", () => {
+  const q = interpretKalshiBook(
+    {
+      orderbook_fp: {
+        yes_dollars: [["0.901", 4], ["0.904", 7]],
+        no_dollars: [["0.096", 3], ["0.099", 5]],
+      },
+    },
+    { yes_bid: 90, yes_ask: 90, no_bid: 10, no_ask: 10, yes_bid_exact: 90.4, yes_ask_exact: 90.1, no_bid_exact: 9.9, no_ask_exact: 9.6 },
+  );
+
+  // Legacy chooser compares rounded cents, so production behavior is preserved.
+  assert.equal(q.yes_bid, 90);
+  assert.equal(q.no_bid, 10);
+  assert.equal(q.yes_ask, 90);
+  assert.equal(q.no_ask, 10);
+  assert.equal(q.yes_bid_size, 4);
+  assert.equal(q.no_bid_size, 3);
+
+  // Measurement chooser sees the actual top level and its depth.
+  assert.equal(q.yes_bid_exact, 90.4);
+  assert.equal(q.no_bid_exact, 9.9);
+  assert.equal(q.yes_ask_exact, 90.1);
+  assert.equal(q.no_ask_exact, 9.6);
+  assert.equal(q.yes_bid_size_exact, 7);
+  assert.equal(q.no_bid_size_exact, 5);
 });
