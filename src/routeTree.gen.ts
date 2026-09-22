@@ -18,6 +18,7 @@ import { Route as ChamberRouteImport } from './routes/chamber'
 import { Route as DeskRouteImport } from './routes/desk'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as FloorRouteImport } from './routes/floor'
+import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as HourRouteImport } from './routes/hour'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as LegalRouteImport } from './routes/legal'
@@ -71,6 +72,11 @@ const FaqRoute = FaqRouteImport.update({
 const FloorRoute = FloorRouteImport.update({
   id: '/floor',
   path: '/floor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GalleryRoute = GalleryRouteImport.update({
+  id: '/gallery',
+  path: '/gallery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HourRoute = HourRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/floor': typeof FloorRoute
+  '/gallery': typeof GalleryRoute
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/floor': typeof FloorRoute
+  '/gallery': typeof GalleryRoute
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   '/desk': typeof DeskRoute
   '/faq': typeof FaqRoute
   '/floor': typeof FloorRoute
+  '/gallery': typeof GalleryRoute
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/faq'
     | '/floor'
+    | '/gallery'
     | '/hour'
     | '/lab'
     | '/legal'
@@ -211,6 +221,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/faq'
     | '/floor'
+    | '/gallery'
     | '/hour'
     | '/lab'
     | '/legal'
@@ -230,6 +241,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/faq'
     | '/floor'
+    | '/gallery'
     | '/hour'
     | '/lab'
     | '/legal'
@@ -251,6 +263,7 @@ export interface RootRouteChildren {
   DeskRoute: typeof DeskRoute
   FaqRoute: typeof FaqRoute
   FloorRoute: typeof FloorRoute
+  GalleryRoute: typeof GalleryRoute
   HourRoute: typeof HourRoute
   LabRoute: typeof LabRoute
   LegalRoute: typeof LegalRoute
@@ -323,6 +336,13 @@ declare module '@tanstack/react-router' {
       path: '/floor'
       fullPath: '/floor'
       preLoaderRoute: typeof FloorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gallery': {
+      id: '/gallery'
+      path: '/gallery'
+      fullPath: '/gallery'
+      preLoaderRoute: typeof GalleryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/hour': {
@@ -415,6 +435,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeskRoute: DeskRoute,
   FaqRoute: FaqRoute,
   FloorRoute: FloorRoute,
+  GalleryRoute: GalleryRoute,
   HourRoute: HourRoute,
   LabRoute: LabRoute,
   LegalRoute: LegalRoute,
