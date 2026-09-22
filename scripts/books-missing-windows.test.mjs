@@ -34,18 +34,14 @@ test("one sentence, singular and plural, empty when there is no gap", () => {
   for (const n of [1, 2, 12]) assert.doesNotMatch(missingWindowsLine(n), /\bWAIT\b|\bwins?\b|\bloss\b|0¢|—/);
 });
 
-test("the Books banner is one calm line with the closes collapsed, and no error tint", () => {
-  const src = read("src/components/desk/BooksTab.tsx");
-  const banner = src.slice(src.indexOf('aria-label="Missing ledger windows"'), src.indexOf('id="books-overview"'));
-  assert.match(banner, /\{missingWindowsLine\(missing\.length\)\}/, "the shared sentence");
-  assert.doesNotMatch(banner, /missing \{missing\.length === 1|of recorded coverage|not WAITs, wins, losses|zero-profit/, "old banner copy is gone");
-  assert.doesNotMatch(banner, /border-wait|bg-wait|text-wait|text-down|text-up/, "no amber or error tint");
-  assert.match(banner, /<details[^>]*>\s*<summary[^>]*>Show missing closes · \{tz\}<\/summary>/, "closes stay behind the summary");
-  assert.match(banner, /· no recorded result<\/li>/);
-  assert.equal((banner.match(/<p className/g) ?? []).length, 1, "one line above the details");
-  const row = src.slice(src.indexOf('"missing" in w ? ('), src.indexOf(") : (", src.indexOf('"missing" in w ? (')));
-  assert.match(row, /No recorded result · an outage, not a sit · not in the totals/);
-  assert.doesNotMatch(row, /border-wait|bg-wait|text-wait|WAIT|0\.0¢|—/);
+test("the Books summary keeps one calm outage sentence with dated closes collapsed", () => {
+  const src = read("src/components/desk/BooksRecentWindows.tsx");
+  assert.match(src, /\{missingWindowsLine\(missing\.length\)\}/, "the shared sentence");
+  assert.doesNotMatch(src, /border-wait|bg-wait|text-wait|text-down|text-up/, "no amber or error tint");
+  assert.match(src, /Show missing closes · \{missing\.length\} dated outages/, "closes stay behind the summary");
+  assert.match(src, /· no recorded result/);
+  assert.match(src, /datedClose\(close, tz\)/, "every missing close is dated");
+  assert.match(src, /const rows = collapseWindowLog\(windows\)/, "only graded windows enter the collapsed log");
 });
 
 test("the Record room and the copy block say the same sentence and still link to the books", () => {
@@ -62,8 +58,10 @@ test("gaps are derived from ledger coverage and never enter the windows or the t
   assert.match(server, /const missingWindows = ledgerGaps\(coverage\.map\(\(r\) => Number\(r\.ms\)\), \{ maxReport: 10_000 \}\)/);
   assert.match(server, /missing_windows: missingWindows,/);
   assert.doesNotMatch(server, /windows\.push|insert into desk_ledger/, "the books never write a gap into the ledger");
-  const tab = read("src/components/desk/BooksTab.tsx");
-  assert.match(tab, /missing\.filter\(\(close\) => oldest && newest && close >= oldest && close <= newest\)\.map\(\(close_time\) => \(\{ close_time, missing: true as const \}\)\)/, "gap rows are display-only markers");
+  const summary = read("src/components/desk/BooksRecentWindows.tsx");
+  assert.match(summary, /collapseWindowLog\(windows\)/, "graded windows are collapsed independently");
+  assert.match(summary, /missing\.slice\(-100\)\.reverse\(\)\.map/, "gaps render from the separate missing list");
+  assert.doesNotMatch(summary, /collapseWindowLog\([^)]*missing/, "gaps never enter the graded window log");
   const record = read("src/lib/desk/record.server.ts");
   assert.match(record, /missing_windows: \(books\.missing_windows \?\? \[\]\)\.length,/, "the record counts them, never grades them");
 });
