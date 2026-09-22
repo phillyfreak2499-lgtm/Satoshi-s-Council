@@ -112,7 +112,6 @@ test("each arm carries its own causal day state; pending fills reserve their ful
 });
 
 test("the four manifests are frozen, CANDIDATE or CANDIDATE_NOT_COLLECTING, authority none, with null prospective start and pinned fingerprints", () => {
-  console.log("SHADOW_MANIFEST_FINGERPRINTS_FINAL", JSON.stringify(SHADOW_MANIFEST_FINGERPRINTS));
   assert.equal(SHADOW_MANIFESTS.length, 4);
   for (const m of SHADOW_MANIFESTS) {
     assert.ok(m.status === "CANDIDATE" || m.status === "CANDIDATE_NOT_COLLECTING");
@@ -130,11 +129,11 @@ test("the four manifests are frozen, CANDIDATE or CANDIDATE_NOT_COLLECTING, auth
     SETTLE_BASIS_MEASURED_V1: manifestFingerprint(E3_SETTLE_BASIS_MEASURED_V1),
     MIRROR_35_V1: manifestFingerprint(E4_MIRROR_35_V1),
   });
-  // Pinned: a changed parameter must change the fingerprint and thus this test.
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1!, /^UNMUTE_DEDUP_SHELF_V1\|v1\|[0-9a-f]{8}\|8arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.WARDEN_JUMP_VETO_V1!, /^WARDEN_JUMP_VETO_V1\|v1\|[0-9a-f]{8}\|5arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.SETTLE_BASIS_MEASURED_V1!, /^SETTLE_BASIS_MEASURED_V1\|v1\|[0-9a-f]{8}\|4arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.MIRROR_35_V1!, /^MIRROR_35_V1\|v1\|[0-9a-f]{8}\|3arms$/);
+  // Pinned exactly: fee provenance or any frozen parameter/time change is a new fingerprint.
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1, "UNMUTE_DEDUP_SHELF_V1|v1|612f23b9|8arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.WARDEN_JUMP_VETO_V1, "WARDEN_JUMP_VETO_V1|v1|ae4a57cc|5arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.SETTLE_BASIS_MEASURED_V1, "SETTLE_BASIS_MEASURED_V1|v1|e1c9d3b1|4arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.MIRROR_35_V1, "MIRROR_35_V1|v1|15d0f9d4|3arms");
   assert.notEqual(manifestFingerprint({ ...E1_UNMUTE_DEDUP_SHELF_V1, arms: E1_UNMUTE_DEDUP_SHELF_V1.arms.map((a) => a.id === "PKG_85" ? { ...a, params: { ...a.params, floor_cents: 86 } } : a) }), SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1);
 });
 
