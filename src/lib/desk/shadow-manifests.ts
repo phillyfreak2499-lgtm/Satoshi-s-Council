@@ -113,6 +113,17 @@ export const E4_MIRROR_35_V1: ShadowManifest = freeze({
 
 export const SHADOW_MANIFESTS: readonly ShadowManifest[] = Object.freeze([E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1]);
 
+/**
+ * The only manifests allowed to begin the first prospective collection epoch.
+ * Kept explicit instead of "all CANDIDATE" so adding a future candidate cannot
+ * silently start collecting on the next deploy. MIRROR-35 is intentionally absent.
+ */
+export const INITIAL_SHADOW_COLLECTION_IDS: readonly string[] = Object.freeze([
+  E1_UNMUTE_DEDUP_SHELF_V1.id,
+  E2_WARDEN_JUMP_VETO_V1.id,
+  E3_SETTLE_BASIS_MEASURED_V1.id,
+]);
+
 /** The three-active rule, checked over the registry. */
 export function activeShadowCount(manifests: readonly ShadowManifest[] = SHADOW_MANIFESTS): number {
   return manifests.filter((m) => countsAgainstCap(m.status)).length;
