@@ -1,0 +1,95 @@
+/**
+ * The three frozen shadow manifests. Hand-written; nothing may append to this
+ * at runtime. A parameter change is a new experiment version with zero
+ * evidence, never an edit. `prospective_start_at` is null here by design: it
+ * is set by an owner-approved activation in the database, at the actual
+ * activation instant, and never backdated.
+ */
+import { SELECTIVE_ENTRY_ID, ENTRY_SELECTIVE_V3, fingerprint } from "./floor-policy.ts";
+import { COMPONENT_MIN, ECONOMIC } from "./promotion-gates.ts";
+import { E1_ROSTER_CARDS, JUMP_VETO, NULL_FAV_SCHEDULE_SECS, SETTLE_BASIS_CANDIDATES_BPS, SETTLE_BASIS_ROLE } from "./shadow-arms.ts";
+import { SHADOW_FEE_FINGERPRINT, SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, SHADOW_LAB_VERSION, SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, SHADOW_OPERATOR_ALERT_DD_CENTS, manifestFingerprint, type ShadowManifest } from "./shadow-lab.ts";
+
+const FROZEN_AT = "2026-09-22T06:00:00.000Z";
+const SOURCE_SHA = "11fab5b5bc73020941fd05fee04eed2174314d28";
+const POLICY = fingerprint(ENTRY_SELECTIVE_V3);
+
+const gates = { min_fills: COMPONENT_MIN.fills, min_days: COMPONENT_MIN.days, min_paired_control_losses: COMPONENT_MIN.paired_control_losses, futility_look_fills: SHADOW_FUTILITY_LOOK_FILLS, min_paired_delta_cents: ECONOMIC.min_paired_delta_cents, confidence: ECONOMIC.confidence } as const;
+const risk = { hard_dd_stop_cents: SHADOW_HARD_DD_STOP_CENTS, max_dd_worse_than_control_cents: SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, operator_alert_dd_cents: SHADOW_OPERATOR_ALERT_DD_CENTS } as const;
+
+const freeze = (m: ShadowManifest): ShadowManifest => Object.freeze({ ...m, arms: Object.freeze(m.arms.map((a) => Object.freeze({ ...a, params: Object.freeze({ ...a.params }) }))) });
+
+export const E1_UNMUTE_DEDUP_SHELF_V1: ShadowManifest = freeze({
+  version: SHADOW_LAB_VERSION, id: "UNMUTE_DEDUP_SHELF_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  hypothesis: "A verified reconstruction of the era-B mid-window speaking package, under explicit selective gates with duplicate influence controlled and a valid MID review, adds after-fee net beyond a simple price-favourite benchmark at the same floor.",
+  fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "CHAIR_V1 runChair with E1_UNMUTE twins; no fitted model", roster: `E1_ROSTER_CARDS=${E1_ROSTER_CARDS.join(",")}; family override STREAK->book`, source_sha: SOURCE_SHA },
+  arms: [
+    { id: "PKG_85", role: "candidate", description: "reconstructed package, 85¢ floor, deployed 2-of-2 quorum with STREAK counted as book, CARRY/CHAIN one derivs group", decision_schedule_secs: [600, 180], params: { floor_cents: 85, min_speaking: 2, min_families: 2, roster: E1_ROSTER_CARDS }, promotable: true },
+    { id: "NULL_FAV_85", role: "control", description: "buy the ≥85¢ favourite at T−7:30, T−5 frozen fallback; spread ≤2, size ≥1, fresh feeds; no Council, no model edge", decision_schedule_secs: NULL_FAV_SCHEDULE_SECS, params: { floor_cents: 85 }, promotable: false },
+    { id: "PKG_80", role: "secondary", description: "same package at the live 80¢ floor", decision_schedule_secs: [600, 180], params: { floor_cents: 80, min_speaking: 2, min_families: 2, roster: E1_ROSTER_CARDS }, promotable: true },
+    { id: "NULL_FAV_80", role: "control", description: "favourite benchmark at 80¢", decision_schedule_secs: NULL_FAV_SCHEDULE_SECS, params: { floor_cents: 80 }, promotable: false },
+    { id: "PKG_88", role: "secondary", description: "same package at an 88¢ floor", decision_schedule_secs: [600, 180], params: { floor_cents: 88, min_speaking: 2, min_families: 2, roster: E1_ROSTER_CARDS }, promotable: true },
+    { id: "NULL_FAV_88", role: "control", description: "favourite benchmark at 88¢", decision_schedule_secs: NULL_FAV_SCHEDULE_SECS, params: { floor_cents: 88 }, promotable: false },
+    { id: "PKG_85_OWNER3", role: "reference", description: "the package under the owner-reference 3-of-2 quorum; labelled, never relabelled as the deployed policy", decision_schedule_secs: [600, 180], params: { floor_cents: 85, min_speaking: 3, min_families: 2, roster: E1_ROSTER_CARDS }, promotable: false },
+    { id: "LIVE_MUTED_BOOK", role: "reference", description: "the production paper book as observed (≈0 fills): the second reference, never edited", decision_schedule_secs: [], params: {}, promotable: false },
+  ],
+  primary_contrast: { candidate: "PKG_85", control: "NULL_FAV_85", metric: "paired_net_per_100_windows_and_per_week" },
+  secondary_contrasts: [{ candidate: "PKG_80", control: "NULL_FAV_80", label: "80¢ floor" }, { candidate: "PKG_88", control: "NULL_FAV_88", label: "88¢ floor" }],
+  eligible_population: "every KXBTC15M window closing after activation with an official result and research_quality = valid; both arms priced at their own decision ticks",
+  training_cutoff: null, pairing: "window",
+  latency_assumption: "an intention is a fill only if the ask survives 150 ms in the lag capture; 500 ms reported; missing resolution = UNKNOWN, never a fill",
+  size: { contracts: 1 }, risk, gates, multiplicity: { method: "bonferroni", contrasts: 3 },
+  kill_criteria: ["futility at 150 qualified fills: mean paired delta ≤ 0 benches the candidate", "candidate drawdown ≤ −258¢ or > 50¢ worse than control invalidates", "> 25 shadow fills per 100 windows triggers investigation, not a quota", "improvement confined to one regime, a cheap shelf or stale quotes is not promotable", "any authority contamination, mid-price fill or broken pairing invalidates the specimen"],
+  authority: "none",
+});
+
+export const E2_WARDEN_JUMP_VETO_V1: ShadowManifest = freeze({
+  version: SHADOW_LAB_VERSION, id: "WARDEN_JUMP_VETO_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  hypothesis: "A fixed cooldown after a qualifying ask shock improves net on opportunities the frozen base policy would actually book.",
+  fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "none", roster: "base = E1 PKG_85 intention stream", source_sha: SOURCE_SHA },
+  arms: [
+    { id: "BASE_NO_VETO", role: "control", description: "the frozen base policy (E1 PKG_85) without any cooldown", decision_schedule_secs: [600, 180], params: {}, promotable: false },
+    { id: "VETO_8S", role: "candidate", description: `8 s cooldown after |Δask| ≥ ${JUMP_VETO.threshold_cents}¢ on either side; re-entry only through the base schedule with new inputs`, decision_schedule_secs: [600, 180], params: { threshold_cents: JUMP_VETO.threshold_cents, cooldown_ms: JUMP_VETO.primary_cooldown_ms }, promotable: true },
+    { id: "VETO_15S", role: "secondary", description: "15 s cooldown sensitivity", decision_schedule_secs: [600, 180], params: { threshold_cents: JUMP_VETO.threshold_cents, cooldown_ms: 15_000 }, promotable: false },
+    { id: "VETO_30S", role: "secondary", description: "30 s cooldown sensitivity", decision_schedule_secs: [600, 180], params: { threshold_cents: JUMP_VETO.threshold_cents, cooldown_ms: 30_000 }, promotable: false },
+    { id: "CURRENT_CHAIR", role: "reference", description: "the production Chair's qualified entries (≈0): reported separately; no benefit is claimed from the shock population", decision_schedule_secs: [], params: {}, promotable: false },
+  ],
+  primary_contrast: { candidate: "VETO_8S", control: "BASE_NO_VETO", metric: "paired_net_per_100_windows_and_per_week" },
+  secondary_contrasts: [{ candidate: "VETO_15S", control: "BASE_NO_VETO", label: "15 s" }, { candidate: "VETO_30S", control: "BASE_NO_VETO", label: "30 s" }],
+  eligible_population: "windows where BASE_NO_VETO had an intention; shocks scored one first-opportunity per window; feed-flap annotations kept apart",
+  training_cutoff: null, pairing: "window",
+  latency_assumption: "shock time from the lag capture's receipt clock; a veto is never a fill; delayed replacement entries are counted",
+  size: { contracts: 1 }, risk, gates, multiplicity: { method: "bonferroni", contrasts: 3 },
+  kill_criteria: ["the vetoed subset is economically beneficial", "adjusted strategy net deteriorates", "the only positive slice disappears", "timestamp resolution insufficient for the mechanism", "frozen risk or integrity gates fail"],
+  authority: "none",
+});
+
+export const E3_SETTLE_BASIS_MEASURED_V1: ShadowManifest = freeze({
+  version: SHADOW_LAB_VERSION, id: "SETTLE_BASIS_MEASURED_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  hypothesis: "The 2 bps settlement-basis allowance (a 1σ term added to σ in quadrature) understates the measured spot-to-index noise and admits marginal negative-net entries near the strike.",
+  fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: `fairYesCentsWithBasis; role=${SETTLE_BASIS_ROLE}; live=${SETTLE_BASIS_CANDIDATES_BPS.live}bps`, roster: "base = E1 PKG_85 intention stream", source_sha: SOURCE_SHA },
+  arms: [
+    { id: "BASIS_LIVE_2BPS", role: "control", description: "the E1 base specimen with the live 2 bps basis", decision_schedule_secs: [600, 180], params: { basis_bps: SETTLE_BASIS_CANDIDATES_BPS.live }, promotable: false },
+    { id: "BASIS_7BPS", role: "candidate", description: "7 bps as a conservative 1σ buffer (measured σ ≈ 4.2–4.5 bps from p50/p95 |basis| of 2.8/8.8 bps; 7 ≈ 1.6σ)", decision_schedule_secs: [600, 180], params: { basis_bps: SETTLE_BASIS_CANDIDATES_BPS.primary }, promotable: true },
+    { id: "BASIS_5BPS", role: "secondary", description: "5 bps sensitivity", decision_schedule_secs: [600, 180], params: { basis_bps: 5 }, promotable: false },
+    { id: "BASIS_9BPS", role: "secondary", description: "9 bps sensitivity", decision_schedule_secs: [600, 180], params: { basis_bps: 9 }, promotable: false },
+  ],
+  primary_contrast: { candidate: "BASIS_7BPS", control: "BASIS_LIVE_2BPS", metric: "paired_net_per_100_windows_and_per_week" },
+  secondary_contrasts: [{ candidate: "BASIS_5BPS", control: "BASIS_LIVE_2BPS", label: "5 bps" }, { candidate: "BASIS_9BPS", control: "BASIS_LIVE_2BPS", label: "9 bps" }],
+  eligible_population: "windows where BASIS_LIVE_2BPS had an intention; identical known-at-time spot, strike, ATR, time, asks and fees; the final-minute partial average is collected but never enters an entry",
+  training_cutoff: null, pairing: "window",
+  latency_assumption: "as E1",
+  size: { contracts: 1 }, risk, gates, multiplicity: { method: "bonferroni", contrasts: 3 },
+  kill_criteria: ["at the 150-fill look: improvement < +0.5¢/fill or ≥ 30% of control wins blocked, judged with total paired net", "no retuning to rescue a failed arm", "frozen risk or integrity gates fail"],
+  authority: "none",
+});
+
+export const SHADOW_MANIFESTS: readonly ShadowManifest[] = Object.freeze([E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1]);
+
+export function manifestById(id: string): ShadowManifest | null {
+  return SHADOW_MANIFESTS.find((m) => m.id === id) ?? null;
+}
+
+export const SHADOW_MANIFEST_FINGERPRINTS: Readonly<Record<string, string>> = Object.freeze(Object.fromEntries(SHADOW_MANIFESTS.map((m) => [m.id, manifestFingerprint(m)])));
+
+export { SELECTIVE_ENTRY_ID as SHADOW_BASE_POLICY_ID };
