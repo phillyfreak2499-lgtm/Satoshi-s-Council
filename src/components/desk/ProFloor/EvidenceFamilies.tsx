@@ -9,6 +9,7 @@
  * Tapping a family jumps to its existing specialist desk.
  */
 import { cn } from "@/lib/utils";
+import { COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type FamilyFacts, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
 import type { SeatId, SeatTab } from "@/lib/desk/types";
 import { Chip, Panel } from "./panels";
@@ -41,10 +42,8 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
         aria-label={`${s.seat}: ${VOICE_LABEL[s.voice]}${speaking ? `, ${s.final_lean}` : ""}. Open the ${s.family} desk.`}
       >
         <span className="w-[4.5rem] shrink-0 font-mono text-micro text-fg">{s.seat}</span>
-        {/* Wide enough for "(DOWN 44)" on one line: a raw read that wraps reads
-            as two facts when it is one. */}
         <span className={cn("w-[5.25rem] shrink-0 whitespace-nowrap font-mono text-micro tabular", tone)}>
-          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : "WAIT"}
+          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : s.aggregated ? "WAIT" : VOICE_LABEL[s.voice]}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-micro text-subtle">
           {suppressed
@@ -60,9 +59,6 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
 
 function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat: SeatId) => void }) {
   const suppressed = f.suppressed_up + f.suppressed_down;
-  // One list, so a family with only STALE speakers still gets its note. The
-  // earlier version gated the whole line on suppressed/unhealthy counts, which
-  // silently dropped the STALE-speaker warning.
   const notes = [
     suppressed > 0 ? `${suppressed} suppressed directional (${f.suppressed_up} UP · ${f.suppressed_down} DOWN)` : null,
     f.unhealthy > 0 ? `${f.unhealthy} silenced by their feed` : null,
@@ -76,16 +72,12 @@ function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat
         {f.split ? <Chip tone="wait">split</Chip> : null}
       </div>
       <p className="mt-0.5 font-mono text-micro text-subtle">{f.eyes}</p>
-
       <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-data tabular">
         <span className="text-up">{f.up} UP</span>
         <span className="text-down">{f.down} DOWN</span>
         <span className="text-wait">{f.wait} WAIT</span>
       </div>
-      {notes.length ? (
-        <div className="mt-1 font-mono text-micro text-subtle">{notes.join(" · ")}</div>
-      ) : null}
-
+      {notes.length ? <div className="mt-1 font-mono text-micro text-subtle">{notes.join(" · ")}</div> : null}
       <ul className="mt-2 border-t border-border pt-1">
         {[...f.seats].sort(order).map((s) => (
           <SeatLine key={s.seat} s={s} onJump={(seat) => onJump(f.family, seat)} />
@@ -103,14 +95,15 @@ export function EvidenceFamilies({
   onJump: (seat: SeatId) => void;
 }) {
   const b = facts.balance;
+  const votingWait = facts.families.reduce((n, f) => n + f.wait, 0);
   return (
     <Panel
       id="families"
       title="What the desk sees"
-      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did."
+      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did. WAIT counts only the 15 currently voting specialists."
       right={
         <span className="font-mono text-micro text-subtle">
-          {b.aggregated} of {facts.seats.length} seats aggregated
+          {b.aggregated} currently voting · {facts.seats.length} seats
         </span>
       }
     >
@@ -123,15 +116,17 @@ export function EvidenceFamilies({
             <span className="text-subtle"> · </span>
             <span className="text-down">{b.speaking.down} DOWN</span>
             <span className="text-subtle"> · </span>
-            <span className="text-wait">{b.speaking.wait} WAIT</span>
+            <span className="text-wait">{votingWait} WAIT</span>
           </span>
           <span className="font-mono text-data tabular text-subtle">
             suppressed directional {b.suppressed.up} UP · {b.suppressed.down} DOWN
           </span>
         </div>
         <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">{b.disclaimer}</p>
+        <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
+          {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
+        </p>
       </div>
-
       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {facts.families.map((f) => (
           <FamilyCard key={f.family} f={f} onJump={(_, seat) => onJump(seat)} />
