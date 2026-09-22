@@ -75,3 +75,30 @@ test("exact quote lane preserves deci-cent top/depth without changing legacy who
   assert.equal(q.yes_bid_size_exact, 7);
   assert.equal(q.no_bid_size_exact, 5);
 });
+
+
+test("exact lane retains sub-cent and 99.x venue levels that legacy rounding intentionally rejects", () => {
+  const q = interpretKalshiBook(
+    {
+      orderbook_fp: {
+        yes_dollars: [["0.004", 2], ["0.999", 8]],
+        no_dollars: [["0.006", 3], ["0.995", 9]],
+      },
+    },
+    { yes_bid: 0, yes_ask: 0, no_bid: 0, no_ask: 0 },
+  );
+
+  // Old production parser rejected levels rounding outside 1..99; keep that.
+  assert.equal(q.yes_bid, 0);
+  assert.equal(q.no_bid, 0);
+  assert.equal(q.yes_bid_size, 0);
+  assert.equal(q.no_bid_size, 0);
+
+  // Measurement lane keeps the true venue top and corresponding ask.
+  assert.equal(q.yes_bid_exact, 99.9);
+  assert.equal(q.no_bid_exact, 99.5);
+  assert.equal(q.yes_bid_size_exact, 8);
+  assert.equal(q.no_bid_size_exact, 9);
+  assert.equal(q.yes_ask_exact, 0.5);
+  assert.equal(q.no_ask_exact, 0.1);
+});
