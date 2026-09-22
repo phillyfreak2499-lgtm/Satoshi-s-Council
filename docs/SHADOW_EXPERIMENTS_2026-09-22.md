@@ -8,10 +8,10 @@ counted over SHADOW and PAUSED manifests. Nothing collects until an owner sets
 
 | id | fingerprint | status | counts against cap | arms | primary contrast |
 |---|---|---|---|---|---|
-| UNMUTE_DEDUP_SHELF_V1 | `…|1568deb2|8arms` | CANDIDATE | no (not active) | NULL_FAV_80/85/88, PKG_80/85/88, PKG_85_OWNER3 | PKG_85 vs NULL_FAV_85 |
-| WARDEN_JUMP_VETO_V1 | `…|4b54b5e5|5arms` | CANDIDATE | no | BASE_NO_VETO, VETO_8S/15S/30S | VETO_8S vs BASE |
-| SETTLE_BASIS_MEASURED_V1 | `…|8e3cf22a|4arms` | CANDIDATE | no | BASIS_LIVE_2BPS, BASIS_5/7/9BPS | BASIS_7 vs LIVE |
-| **MIRROR_35_V1** | `MIRROR_35_V1|v1|dfbc2bad|3arms` | **CANDIDATE_NOT_COLLECTING** | **never** | MIRROR_35, NO_TRADE (control), MIRROR_35_EXEC | MIRROR_35 vs NO_TRADE |
+| UNMUTE_DEDUP_SHELF_V1 | `…|612f23b9|8arms` | CANDIDATE | no (not active) | NULL_FAV_80/85/88, PKG_80/85/88, PKG_85_OWNER3 | PKG_85 vs NULL_FAV_85 |
+| WARDEN_JUMP_VETO_V1 | `…|ae4a57cc|5arms` | CANDIDATE | no | BASE_NO_VETO, VETO_8S/15S/30S | VETO_8S vs BASE |
+| SETTLE_BASIS_MEASURED_V1 | `…|e1c9d3b1|4arms` | CANDIDATE | no | BASIS_LIVE_2BPS, BASIS_5/7/9BPS | BASIS_7 vs LIVE |
+| **MIRROR_35_V1** | `MIRROR_35_V1|v1|15d0f9d4|3arms` | **CANDIDATE_NOT_COLLECTING** | **never** | MIRROR_35, NO_TRADE (control), MIRROR_35_EXEC | MIRROR_35 vs NO_TRADE |
 
 Migration `0058` adds `CANDIDATE_NOT_COLLECTING` to the manifest status check.
 `capRespected()` and `activeShadowCount()` are pinned by `mirror35.test.ts`.
