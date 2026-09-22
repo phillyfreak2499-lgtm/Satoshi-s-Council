@@ -11,14 +11,15 @@ import { CouncilGuides } from "./CouncilExperience";
 import { LiveConnectionNotice } from "./LiveConnectionNotice";
 import { HomeStill } from "./HomeStill";
 import { PaperDisclaimer } from "./PaperDisclaimer";
+import { CanonicalRecord } from "./CanonicalRecord";
 import { applyDisplayPrefs } from "./prefs";
 import { utcStamp } from "@/lib/desk/display-evidence";
-import type { BooksWindow } from "@/lib/desk/books";
+import type { Books, BooksWindow } from "@/lib/desk/books";
 import { lastWindowFact } from "@/lib/desk/home-still";
 import "./hero-chip.css";
 
 /** The public introduction reads the same shared frame as the full desk. */
-export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
+export function CouncilHome({ last = null, books = null }: { last?: BooksWindow | null; books?: Books | null }) {
   const frame = useDesk();
   const { snap, chair } = frame;
   const ticking = useCountdownText(snap?.close_time ?? 0);
@@ -67,6 +68,7 @@ export function CouncilHome({ last = null }: { last?: BooksWindow | null }) {
             <p className="company-muted">Waiting for the next window. The feed reconnects on its own.</p>
           )}
         </section>
+        <div className="mt-4"><CanonicalRecord books={books} compact /></div>
         <p className="company-snapshot">
           {snap ? <>{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · </> : null}
           {last && !still ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · paper ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}

@@ -1,10 +1,13 @@
 import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { H2, P, Page } from "@/components/desk/Page";
-import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT, COUNCIL_TOTAL_SEATS, COUNCIL_VOTING_SEATS, COUNCIL_PIT_CREW_SEATS } from "@/lib/desk/council-public";
+import { CanonicalRecord } from "@/components/desk/CanonicalRecord";
+import { publicBooksSnapshot } from "@/lib/desk/books-public";
+import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT, COUNCIL_TOTAL_SEATS, COUNCIL_VOTING_SEATS, COUNCIL_RETIRED_SEATS, COUNCIL_PIT_CREW_SEATS, COUNCIL_RETIRED_MEANS } from "@/lib/desk/council-public";
 
 export const Route = createFileRoute("/about")({
-  head: () => pageHead("/about", "About · Satoshi's Council", "Meet the Council: 21 seats total, with 18 voting specialists and 3 non-voting pit-crew seats. Paper-only Bitcoin research."),
+  loader: () => publicBooksSnapshot().catch(() => null),
+  head: () => pageHead("/about", "About · Satoshi's Council", "Meet the Council: 21 seats, 15 currently voting, 3 retired from votes, 3 non-voting pit crew. Paper-only Bitcoin research."),
   component: About,
 });
 
@@ -17,7 +20,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "2",
     title: "Vote",
-    body: "Only the 18 voting specialists cast UP, DOWN or WAIT votes. WARDEN, ORBIT and WIRE never count as votes; they provide guard and context signals to the Chair. A voting specialist that is not sure enough sits. SATOSHI weighs the eligible voting seats by their graded record and agreement. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.",
+    body: `Only the 15 currently voting specialists cast UP, DOWN or WAIT votes. WARDEN, ORBIT and WIRE never count as votes; they provide guard and context signals to the Chair. ODDS, CHEAP and FADE are retired from votes — ${COUNCIL_RETIRED_MEANS} A voting specialist that is not sure enough sits. SATOSHI weighs the eligible voting seats by their graded record and agreement. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.`,
   },
   {
     n: "3",
@@ -27,17 +30,23 @@ const STEPS: { n: string; title: string; body: string }[] = [
 ];
 
 function About() {
+  const books = Route.useLoaderData();
   return (
-    <Page title="How the desk works" lede="A paper-only Bitcoin research desk. The Council has 21 seats: 18 voting specialists and 3 non-voting pit-crew seats. SATOSHI chairs the vote.">
+    <Page title="How the desk works" lede={`${COUNCIL_STRUCTURE_SENTENCE} SATOSHI chairs the vote.`}>
       <section className="mb-4 rounded-md border border-border bg-surface p-4" aria-label="Council structure">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Council structure</div>
-        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
           <div><div className="font-mono text-title tabular text-fg">{COUNCIL_TOTAL_SEATS}</div><div className="font-sans text-ui text-muted">seats total</div></div>
-          <div><div className="font-mono text-title tabular text-fg">{COUNCIL_VOTING_SEATS}</div><div className="font-sans text-ui text-muted">vote</div></div>
+          <div><div className="font-mono text-title tabular text-fg">{COUNCIL_VOTING_SEATS}</div><div className="font-sans text-ui text-muted">currently vote</div></div>
+          <div><div className="font-mono text-title tabular text-fg">{COUNCIL_RETIRED_SEATS}</div><div className="font-sans text-ui text-muted">retired from votes</div></div>
           <div><div className="font-mono text-title tabular text-fg">{COUNCIL_PIT_CREW_SEATS}</div><div className="font-sans text-ui text-muted">pit crew</div></div>
         </div>
         <p className="mt-2 text-center font-mono text-micro text-subtle">{COUNCIL_STRUCTURE_SHORT}</p>
+        <p className="mt-1 text-center font-sans text-ui text-muted">{COUNCIL_RETIRED_MEANS}</p>
       </section>
+      <div className="mb-4">
+        <CanonicalRecord books={books} compact />
+      </div>
       <ol className="grid gap-3">
         {STEPS.map((s) => (
           <li key={s.n} className="rounded-md border border-border bg-surface p-4">
@@ -52,7 +61,7 @@ function About() {
       </P>
       <H2>What the words mean</H2>
       <P>
-        A <strong className="text-fg">Council seat</strong> is one specialist role with one job. Eighteen are voting specialists; three are non-voting pit crew. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs eligible voting seats and makes the
+        A <strong className="text-fg">Council seat</strong> is one specialist role with one job. Fifteen currently vote; three are retired from votes; three are non-voting pit crew. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs eligible voting seats and makes the
         call. A <strong className="text-fg">window</strong> is one 15-minute Kalshi market on Bitcoin: will the final-minute average finish above the strike or
         not. <strong className="text-fg">Paper</strong> means the desk books every call at the real ask, pays the real fee, and settles on the real result, without ever sending an
         order.
@@ -60,7 +69,7 @@ function About() {
       <H2>What it is not</H2>
       <P>
         It is not a trading bot, a signal service or advice. There is no account, no deposit and no live-trading arm. It is not affiliated with Kalshi; the
-        desk reads Kalshi&apos;s public prices and official settlement values. It is Bitcoin only.
+        desk reads Kalshi's public prices and official settlement values. It is Bitcoin only.
       </P>
       <H2>Why watch it</H2>
       <P>
@@ -69,7 +78,7 @@ function About() {
       </P>
       <H2>Follow the evidence</H2>
       <nav className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Evidence rooms">
-        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&amp;L and window replays</span></a>
+        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&L and window replays</span></a>
         <a href="/board" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Board</strong><span className="block font-mono text-micro text-muted">desk updates and public feedback</span></a>
         <a href="/chamber" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Chamber</strong><span className="block font-mono text-micro text-muted">evidence-backed desk speech</span></a>
         <a href="/lab" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Lab</strong><span className="block font-mono text-micro text-muted">frozen rules and live samples</span></a>

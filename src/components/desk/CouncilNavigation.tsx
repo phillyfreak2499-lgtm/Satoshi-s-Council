@@ -8,7 +8,7 @@ import "./interface-polish.css";
 import "./company-design.css";
 
 export type HeaderAction = { label: string; hint?: string; onSelect: () => void };
-const PRIMARY: readonly SiteHref[] = ["/desk", "/books", "/training", "/lab", "/about"];
+const PRIMARY: readonly SiteHref[] = ["/desk", "/books", "/training", "/lab", "/board", "/about"];
 const SHORTCUTS = PRIMARY;
 const linkClass = "council-site-link flex min-h-11 items-center gap-1 rounded-md px-3 font-mono text-micro tracking-wide";
 

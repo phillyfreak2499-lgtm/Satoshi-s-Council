@@ -13,8 +13,8 @@ const surfaces = [
   ["/training/tape", ["TAPE"]],
   ["/training/drift", ["DRIFT"]],
   ["/legal", ["Paper only, in plain words", "Questions about the desk"]],
-  ["/about", ["How the desk works", "21 Council seats", "18 voting specialists", "3 non-voting pit crew"]],
-  ["/faq", ["Questions people ask", "How many Council seats actually vote?", "18 voting specialists", "3 non-voting pit crew"]],
+  ["/about", ["How the desk works", "15 currently voting", "3 retired from votes", "3 non-voting pit crew"]],
+  ["/faq", ["Questions people ask", "How many Council seats actually vote?", "15 currently voting", "3 non-voting pit crew"]],
 ];
 
 let failed = false;

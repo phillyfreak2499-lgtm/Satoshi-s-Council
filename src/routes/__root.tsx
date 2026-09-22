@@ -15,7 +15,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "A paper-only Bitcoin 15-minute research desk. The Council has 21 seats: 18 voting specialists and 3 non-voting pit crew; SATOSHI chairs. Nothing here places a live trade. Not financial advice.",
+          "A paper-only Bitcoin 15-minute research desk. The Council has 21 seats: 15 currently voting, 3 retired from votes, and 3 non-voting pit crew; SATOSHI chairs. Nothing here places a live trade. Not financial advice.",
       },
       { name: "theme-color", content: "#0b0c10" },
     ],

@@ -20,8 +20,8 @@ test("the Observatory adds wayfinding without dropping any existing destination"
     assert.equal(paths.filter(path => path === href).length, 1, `${href} remains reachable exactly once in the canonical map`);
   }
   const shared = read("src/components/desk/CouncilNavigation.tsx");
-  assert.match(shared, /const PRIMARY[^;]*"\/desk"[^;]*"\/books"[^;]*"\/chamber"[^;]*"\/lab"[^;]*SHOP_URL/);
-  assert.match(shared, /const PRIMARY[^;]*"\/books"[^;]*"\/chamber"/);
+  assert.match(shared, /const PRIMARY[^;]*"\/desk"[^;]*"\/books"[^;]*"\/training"[^;]*"\/lab"[^;]*"\/board"[^;]*"\/about"/);
+  assert.doesNotMatch(shared, /PRIMARY[^;]*SHOP_URL/);
   assert.match(shared, /const SHORTCUTS = PRIMARY;/);
   assert.ok(paths.includes("/?tab=settings"));
   assert.match(shared, /const menu: MenuItem\[\] = SITE_DESTINATIONS\.map/);
