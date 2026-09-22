@@ -7,7 +7,7 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
 
 const guides = [
   { name: "Satoshi", title: "The considered call.", image: "satoshi", role: "The Chair", text: "One place to read the decision, its price, and the reasoning behind it.", detail: "The Chair brings the voting seats together. A directional read is not the same as a booked paper position: the price, rules and recorded fill still matter." },
-  { name: "Wick", title: "Context, made clear.", image: "wick", role: "The guide", text: "Learn what the market is showing, without decoding an entire trading terminal.", detail: "The guided floor explains the current window in plain language. Open the evidence when you want the underlying prices, timestamps and calculation instead." },
+  { name: "Wick", title: "Context, made clear.", image: "wick", role: "Candle seat · trainer", text: "WICK reads candles on the floor and teaches the same read in training.", detail: "The guided floor explains the current window in plain language. Open training to learn the same closed-candle read WICK votes with on the live floor." },
   { name: "The Warden", title: "Restraint is a decision.", image: "warden", role: "The guardrails", text: "Fresh inputs. Clear rules. And the discipline to say WAIT when the case is not there.", detail: "Data quality, market quotes and safety gates can prevent a paper call. Those checks reduce avoidable errors; they cannot eliminate losses or make a forecast certain." },
 ];
 
