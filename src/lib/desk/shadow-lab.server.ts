@@ -108,6 +108,18 @@ const armState = (id: string): ArmState => { const st = state(); const cur = st.
 
 const E1 = "UNMUTE_DEDUP_SHELF_V1", E2 = "WARDEN_JUMP_VETO_V1", E3 = "SETTLE_BASIS_MEASURED_V1";
 
+function exactSideQuote(snap: Snapshot, side: "UP" | "DOWN") {
+  const up = side === "UP";
+  const decisionAsk = up ? snap.yes_ask : snap.no_ask;
+  const decisionBid = up ? snap.yes_bid : snap.no_bid;
+  const decisionSize = up ? snap.no_bid_size : snap.yes_bid_size;
+  const exactAsk = up ? (snap.yes_ask_exact ?? decisionAsk) : (snap.no_ask_exact ?? decisionAsk);
+  const exactBid = up ? (snap.yes_bid_exact ?? decisionBid) : (snap.no_bid_exact ?? decisionBid);
+  // YES ask depth lives on the NO bid; DOWN/NO ask depth lives on the YES bid.
+  const exactSize = up ? (snap.no_bid_size_exact ?? decisionSize) : (snap.yes_bid_size_exact ?? decisionSize);
+  return { decisionAsk, decisionBid, decisionSize, exactAsk, exactBid, exactSize };
+}
+
 const receipt = (experiment: string, arm: string, snap: Snapshot, kind: ShadowReceipt["kind"], side: "UP" | "DOWN" | null, ask: number | null, size: number | null, spread: number | null, feedsOk: boolean | null, note: string | null): ShadowReceipt => ({
   experiment, arm, ticker: snap.ticker, close_ms: snap.close_time, kind, decided_ms: snap.as_of, side, ask_cents: ask, fee_engine: DEFAULT_FEE_ENGINE,
   fee_cents: ask != null && realAskCents(ask) ? feeCents(ask) : null, size_at_ask: size, spread_cents: spread, feeds_ok: feedsOk, hittable_150ms: null, hittable_500ms: null,
@@ -190,7 +202,13 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       const a = armState(`${E1}|${arm}`);
       if (cp != null && !a.decided.has(`${E1}|${arm}|${windowKey}|fill`)) {
         const i = nullFavIntention(snap, floor);
-        if (i) once(receipt(E1, arm, snap, "fill", i.side, i.ask_cents, i.size_at_ask, i.spread_cents, i.feeds_ok, `checkpoint ${cp}s`), { checkpoint: cp, secs_left: secs, execution_qualified: true, hittability: "UNKNOWN at 2s poll" });
+        if (i) {
+          const q = exactSideQuote(snap, i.side);
+          once(receipt(E1, arm, snap, "fill", i.side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, i.feeds_ok, `checkpoint ${cp}s`), {
+            checkpoint: cp, secs_left: secs, execution_qualified: true, hittability: "UNKNOWN at 2s poll",
+            qualification_ask_cents: i.ask_cents, exact_ask_cents: q.exactAsk, price_lane: "exact_measurement",
+          });
+        }
         else if (cp === 300) once(receipt(E1, arm, snap, "no_fill", null, null, null, null, null, "no eligible favourite at 450s or 300s"), { checkpoint: cp });
       }
     }
@@ -209,10 +227,19 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       const calls = await armCalls(sql, E1, p.arm, snap.as_of);
       const d = packageDecision(snap, chair, calls, a, armPolicy(p.base, p.floor, p.min), st.activatedAt);
       const side = d.side;
-      const ask = side === "UP" ? snap.yes_ask : side === "DOWN" ? snap.no_ask : NaN;
-      const bid = side === "UP" ? snap.yes_bid : side === "DOWN" ? snap.no_bid : NaN;
-      const size = side === "UP" ? snap.no_bid_size : side === "DOWN" ? snap.yes_bid_size : NaN;
-      const payload = { released: unmuted.released, missing: unmuted.missing, vector: d.vector.checks.map((k) => ({ id: k.id, pass: k.pass })), binding: d.vector.binding_reason, families_ok: d.familiesOk, secs_left: secs, hittability: "UNKNOWN at 2s poll" };
+      const q = side ? exactSideQuote(snap, side) : null;
+      const ask = q?.exactAsk ?? NaN;
+      const bid = q?.exactBid ?? NaN;
+      const size = q?.exactSize ?? NaN;
+      const payload = {
+        released: unmuted.released, missing: unmuted.missing,
+        vector: d.vector.checks.map((k) => ({ id: k.id, pass: k.pass })),
+        binding: d.vector.binding_reason, families_ok: d.familiesOk, secs_left: secs,
+        hittability: "UNKNOWN at 2s poll",
+        qualification_ask_cents: q?.decisionAsk ?? null,
+        exact_ask_cents: q?.exactAsk ?? null,
+        price_lane: "exact_measurement",
+      };
       if (d.eligible && side) once(receipt(E1, p.arm, snap, "intention", side, ask, size, ask - bid, true, "first eligible tick"), payload);
       const filled = d.eligible && d.confirmed && side != null;
       if (filled) once(receipt(E1, p.arm, snap, "fill", side, ask, size, ask - bid, true, "confirmed"), { ...payload, execution_qualified: true });
