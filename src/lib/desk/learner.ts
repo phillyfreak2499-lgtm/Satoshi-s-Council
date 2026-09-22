@@ -464,7 +464,7 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
  * production status-writer change, so it stays false until the owner activates
  * it; the rail test pins the default.
  */
-export const SEAT_REVIEW_DEMOTION_FROZEN = false;
+export const SEAT_REVIEW_DEMOTION_FROZEN = true;
 
 /** Every 500 calls after 700: keep 15¢ avg or lose calibration and swap the play. */
 export function reviewSeats(learner: Learner, opts: { frozen?: boolean } = {}): string[] {
