@@ -40,8 +40,15 @@ export function bundleToSnapshot(
   let yes_ask = kalshi?.yes_ask ?? 0;
   let no_bid = kalshi?.no_bid ?? 0;
   let no_ask = kalshi?.no_ask ?? 0;
+  // Additive measurement lane; production decisions continue to use the four fields above.
+  let yes_bid_exact = kalshi?.yes_bid_exact ?? yes_bid;
+  let yes_ask_exact = kalshi?.yes_ask_exact ?? yes_ask;
+  let no_bid_exact = kalshi?.no_bid_exact ?? no_bid;
+  let no_ask_exact = kalshi?.no_ask_exact ?? no_ask;
   let yes_bid_size = kalshi?.yes_bid_size ?? 0;
   let no_bid_size = kalshi?.no_bid_size ?? 0;
+  let yes_bid_size_exact = kalshi?.yes_bid_size_exact ?? yes_bid_size;
+  let no_bid_size_exact = kalshi?.no_bid_size_exact ?? no_bid_size;
   let quote_ts = kalshi?.quote_ts ?? 0;
   let quote_seq = kalshi?.quote_seq ?? 0;
   let quote_age_s = kalshi?.quote_age_s ?? 999;
@@ -60,8 +67,14 @@ export function bundleToSnapshot(
     yes_ask = prev.yes_ask;
     no_bid = prev.no_bid;
     no_ask = prev.no_ask;
+    yes_bid_exact = prev.yes_bid_exact ?? prev.yes_bid;
+    yes_ask_exact = prev.yes_ask_exact ?? prev.yes_ask;
+    no_bid_exact = prev.no_bid_exact ?? prev.no_bid;
+    no_ask_exact = prev.no_ask_exact ?? prev.no_ask;
     yes_bid_size = prev.yes_bid_size;
     no_bid_size = prev.no_bid_size;
+    yes_bid_size_exact = prev.yes_bid_size_exact ?? prev.yes_bid_size;
+    no_bid_size_exact = prev.no_bid_size_exact ?? prev.no_bid_size;
     quote_ts = prev.quote_ts;
     quote_seq = prev.quote_seq;
   }
@@ -182,6 +195,12 @@ export function bundleToSnapshot(
     yes_ask,
     no_bid,
     no_ask,
+    yes_bid_exact,
+    yes_ask_exact,
+    no_bid_exact,
+    no_ask_exact,
+    yes_bid_size_exact,
+    no_bid_size_exact,
     leftover_cents: 0,
     combined_ask_cents: 0,
     spread_cents: 0,
