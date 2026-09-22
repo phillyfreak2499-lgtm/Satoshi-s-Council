@@ -2,8 +2,9 @@
  * The legal stack stays one page and answers three stranger questions:
  * what "paper only" means, how data is used, and how to reach the desk.
  *
- * The domain publishes no mail exchanger, so no address is printed: the
- * Board is the only contact and the page says so. The shared footer on the
+ * The domain publishes no mail exchanger, so no address is printed. Public
+ * questions use the Board; exact legal/trademark/security markers use the same
+ * form but are hidden on submission. The shared footer on the
  * homepage and the Live Floor carries the "Paper only · FAQ · Legal" chrome
  * with links to /legal, /faq and /board.
  */
@@ -35,10 +36,12 @@ test("/legal keeps every paper-only paragraph and adds contact and cookies in pl
   }
   assert.doesNotMatch(legal, /<H2>Analytics and fonts<\/H2>/, "renamed, not duplicated");
   assert.match(legal, /Google Analytics 4 for aggregate visits and Google Fonts for Geist and IBM Plex Mono\. Ordinary request details \(IP, browser, page\) go to\s+those providers\. There is no advertising cookie wall and no account\./);
-  assert.match(legal, /Questions about the desk: post on the Board at <a href="\/board"[^>]*>\/board<\/a>\. The Board is the\s+only contact\./);
+  assert.match(legal, /Public questions about the desk stay on the Board at <a href="\/board"[^>]*>\/board<\/a>/);
+  assert.match(legal, /first line is exactly LEGAL, TRADEMARK or SECURITY/);
+  assert.match(legal, /hidden from the public Board on submission/);
   assert.doesNotMatch(legal, /mailto:|@satoshiscouncil\.com|@gmail\.com/, "no unconfirmed inbox is printed");
   assert.match(legal, /The desk can hide a callsign that breaks house rules\. Paper results\s+stay on the private record\./, "Arena house rule kept");
-  assert.match(legal, /Last updated September 18, 2026/);
+  assert.match(legal, /Last updated September 22, 2026/);
 });
 
 test("the shared footer prints Paper only · FAQ · Legal and links /legal, /faq and /board", () => {
