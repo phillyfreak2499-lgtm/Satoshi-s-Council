@@ -1,6 +1,6 @@
 /**
- * Shadow-lab rails: the observer is not wired, cannot start without the env
- * flag, writes only its own two tables, reaches no production actuator, and
+ * Shadow-lab rails: the observer is wired from healthz only, cannot start
+ * without the env flag, writes only its own two tables, reaches no production actuator, and
  * its receipts are idempotent and settle from the official ledger with the fee
  * the receipt recorded.
  */
@@ -35,7 +35,7 @@ function loader(deps = {}, globals = {}) {
 
 async function database() {
   const pg = new PGlite();
-  for (const f of ["0005_desk_ledger.sql", "0024_desk_ledger_quality.sql", "0057_desk_shadow_lab.sql"]) await pg.exec(read(`migrations/${f}`));
+  for (const f of ["0005_desk_ledger.sql", "0024_desk_ledger_quality.sql", "0057_desk_shadow_lab.sql", "0058_desk_shadow_manifest_candidate_not_collecting.sql"]) await pg.exec(read(`migrations/${f}`));
   const sql = async (strings, ...values) => (await pg.query(strings.reduce((s, part, i) => s + (i ? `$${i}` : "") + part, ""), values)).rows;
   sql.query = async (text, params) => (await pg.query(text, params)).rows;
   return { pg, sql };
@@ -43,9 +43,10 @@ async function database() {
 
 const server = codeOf("src/lib/desk/shadow-lab.server.ts");
 
-test("the observer is NOT wired: healthz does not import it and nothing else does", () => {
-  assert.doesNotMatch(read("server/routes/healthz.get.ts"), /shadow-lab/);
-  const importers = ["src/lib/desk/server-engine.ts", "server/plugins/desk-runtime.ts", "src/lib/desk/runtime-bootstrap.server.ts"].filter((f) => { try { return read(f).includes("shadow-lab.server"); } catch { return false; } });
+test("the observer is wired only from healthz, fire-and-forget, and nothing in the decision path imports it", () => {
+  const healthz = read("server/routes/healthz.get.ts");
+  assert.match(healthz, /void import\("\.\.\/\.\.\/src\/lib\/desk\/shadow-lab\.server"\)\s*\.then\(\(m\) => m\.ensureShadowLabObserver\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  const importers = ["src/lib/desk/server-engine.ts", "src/lib/desk/engine.ts", "src/lib/desk/chair.ts", "src/lib/desk/selective-entry.ts", "src/lib/desk/book-floor.ts", "server/plugins/desk-runtime.ts", "src/lib/desk/runtime-bootstrap.server.ts"].filter((f) => { try { return read(f).includes("shadow-lab"); } catch { return false; } });
   assert.deepEqual(importers, []);
 });
 
@@ -82,10 +83,10 @@ test("receipts are idempotent on their key, manifests register once without a st
     assert.equal((await pg.query("select count(*)::int as n, min(ask_cents) as ask from desk_shadow_receipts")).rows[0].n, 1);
     assert.equal((await pg.query("select ask_cents from desk_shadow_receipts")).rows[0].ask_cents, 85, "the first receipt is the record");
 
-    assert.equal(await mod.registerShadowManifests(sql), 3);
+    assert.equal(await mod.registerShadowManifests(sql), 4);
     assert.equal(await mod.registerShadowManifests(sql), 0);
     const m = (await pg.query("select experiment, status, prospective_start_at from desk_shadow_manifests order by 1")).rows;
-    assert.deepEqual(m.map((x) => x.status), ["CANDIDATE", "CANDIDATE", "CANDIDATE"]);
+    assert.deepEqual(m.map((x) => x.status), ["CANDIDATE_NOT_COLLECTING", "CANDIDATE", "CANDIDATE", "CANDIDATE"]);
     assert.ok(m.every((x) => x.prospective_start_at == null));
 
     assert.equal(await mod.settleShadowReceipts(sql), 0, "no ledger row yet: nothing settles");
@@ -103,8 +104,10 @@ test("receipts are idempotent on their key, manifests register once without a st
 test("the migration is additive and idempotent, and the receipt key is the primary key", async () => {
   const pg = new PGlite();
   try {
-    const sqlText = read("migrations/0057_desk_shadow_lab.sql");
+    const sqlText = read("migrations/0057_desk_shadow_lab.sql") + read("migrations/0058_desk_shadow_manifest_candidate_not_collecting.sql");
     await pg.exec(sqlText); await pg.exec(sqlText);
+    await pg.query("insert into desk_shadow_manifests (experiment, experiment_version, fingerprint, manifest, frozen_at, status) values ('M', 1, 'f', '{}'::jsonb, now(), 'CANDIDATE_NOT_COLLECTING')");
+    await assert.rejects(pg.query("insert into desk_shadow_manifests (experiment, experiment_version, fingerprint, manifest, frozen_at, status) values ('N', 1, 'f', '{}'::jsonb, now(), 'LIVE')"), /check/i);
     const cols = (await pg.query("select column_name from information_schema.columns where table_name = 'desk_shadow_receipts' order by ordinal_position")).rows.map((r) => r.column_name);
     for (const c of ["experiment", "arm", "ticker", "close_time", "kind", "fee_engine", "hittable_150ms", "official_winner", "net_cents", "payload"]) assert.ok(cols.includes(c), c);
     const pk = (await pg.query("select a.attname from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey) where i.indrelid = 'desk_shadow_receipts'::regclass and i.indisprimary order by a.attnum")).rows.map((r) => r.attname);

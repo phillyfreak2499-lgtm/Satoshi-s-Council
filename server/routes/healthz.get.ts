@@ -46,6 +46,19 @@ export default function healthz() {
   void import("../../src/lib/desk/hour-research.server")
     .then((m) => m.ensureHourResearchObserver())
     .catch(() => {});
+  // Shadow lab (E1–E3 receipts): env-gated, default OFF. ensureShadowLabObserver
+  // returns "disabled" unless SHADOW_LAB_ENABLED=true; it reads a cloned frame,
+  // writes only desk_shadow_receipts / desk_shadow_manifests, and has no path
+  // into the Chair, the gate, the paper book or the learner.
+  void import("../../src/lib/desk/shadow-lab.server")
+    .then((m) => m.ensureShadowLabObserver())
+    .catch(() => {});
+  // Skill-status transition log: drains the engine's in-memory transition
+  // buffer into insert-once system events. Telemetry only; kill switch
+  // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.
+  void import("../../src/lib/desk/status-transitions.server")
+    .then((m) => m.ensureStatusTransitionLog())
+    .catch(() => {});
   return new Response("ok", {
     status: 200,
     headers: {
