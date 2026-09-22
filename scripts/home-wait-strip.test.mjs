@@ -5,6 +5,9 @@
  * window from the helper /books already uses. A missing window is an
  * omitted line, never a dash. No week net, no win rate, no needed rate:
  * the front door is not a scoreboard. The block is homepage-only.
+ *
+ * When the last grade sat, preferFilledFact surfaces the last recorded
+ * paper fill so a sit streak does not look like an empty book.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -38,7 +41,7 @@ function load(rel, extra = {}) {
   return run(join(process.cwd(), rel));
 }
 
-const { lastWindowFact } = load("src/lib/desk/home-still.ts");
+const { lastWindowFact, lastFilledFact, preferFilledFact } = load("src/lib/desk/home-still.ts");
 const { HomeStill } = load("src/components/desk/HomeStill.tsx");
 const text = (html) => html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, "");
 /** Values cross a vm realm; compare structure, not prototypes. */
@@ -60,6 +63,25 @@ test("the last window prints a sit or a graded paper fill, never an invented one
   assert.equal(lastWindowFact({ ...sat, winner: "TIE" }), null);
 });
 
+test("lastFilledFact skips sits and labels a recorded side as a paper fill", () => {
+  assert.equal(lastFilledFact(sat), null);
+  assert.equal(lastFilledFact(null), null);
+  assert.deepEqual(plain(lastFilledFact(filled)), {
+    label: "Last paper fill",
+    text: "2026-09-18 22:45 UTC · paper DOWN at 61¢, +34.6¢ after fee · settled DOWN",
+    href: "/window/KXBTC-26SEP1817-T115000",
+  });
+});
+
+test("preferFilledFact keeps a live fill, else shows the last recorded fill, else the sit", () => {
+  assert.equal(preferFilledFact(filled, sat).label, "Last window");
+  assert.equal(preferFilledFact(sat, filled).label, "Last paper fill");
+  assert.equal(preferFilledFact(sat, sat).label, "Last window");
+  assert.equal(preferFilledFact(sat, null).text, "2026-09-18 22:45 UTC · sat · settled UP");
+  assert.equal(preferFilledFact(null, filled).label, "Last paper fill");
+  assert.equal(preferFilledFact(null, null), null);
+});
+
 test("a missing window is an omitted line; a present one is a single linked line with no dash", () => {
   assert.equal(renderToString(React.createElement(HomeStill, { last: null })), "");
   const html = renderToString(React.createElement(HomeStill, { last: sat }));
@@ -67,6 +89,8 @@ test("a missing window is an omitted line; a present one is a single linked line
   assert.doesNotMatch(text(html), /—/);
   assert.match(html, /<a href="\/window\/KXBTC-26SEP1817-T115000">2026-09-18 22:45 UTC · sat · settled UP<\/a>/);
   assert.equal((html.match(/<a /g) ?? []).length, 1, "one link, no second CTA");
+  const preferred = renderToString(React.createElement(HomeStill, { last: sat, fill: filled }));
+  assert.equal(text(preferred), "Last paper fill · 2026-09-18 22:45 UTC · paper DOWN at 61¢, +34.6¢ after fee · settled DOWN");
 });
 
 test("no week P&L, win rate or needed rate reaches the homepage block", () => {
@@ -84,10 +108,25 @@ test("no week P&L, win rate or needed rate reaches the homepage block", () => {
 test("the strip is homepage-only, shows under an unbooked window, and keeps the reason and the /desk link", () => {
   const home = read("src/components/desk/CouncilHome.tsx");
   assert.match(home, /const still = book !== null && book\.kind !== "booked" && lastWindowFact\(last\) !== null;/);
-  assert.match(home, /\{still \? <HomeStill last=\{last\} \/> : null\}<a href="\/desk" className="company-text-link">Read the full decision/);
+  assert.match(home, /\{still \? <HomeStill last=\{last\} fill=\{fill\} \/> : null\}<a href="\/desk" className="company-text-link">Read the full decision/);
   assert.match(home, /plainLine\(chair, snap, book\)/, "the chair-words sentence stays");
   assert.match(home, /\{last && !still \? <>Last graded window ·/, "the small snapshot line does not repeat the fact");
-  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} \/>/);
+  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} fill=\{fill\} \/>/);
+  assert.match(read("src/routes/index.tsx"), /publicLastFill/);
+  assert.match(read("src/lib/desk/record-public.ts"), /export const publicLastFill/);
+  assert.match(read("src/lib/desk/last-fill.server.ts"), /export async function lastFilledWindow/);
   assert.doesNotMatch(read("src/components/desk/DeskApp.tsx"), /HomeStill|lastWindowFact/, "/desk is unchanged");
   assert.doesNotMatch(read("src/lib/desk/chair-words.ts"), /HomeStill|lastWindowFact/);
+});
+
+test("first-use glossary keys exist for the jargon the audits flagged", () => {
+  const { firstUseOf } = load("src/lib/desk/first-use-gloss.ts");
+  for (const k of ["term.window", "term.chair", "term.paper-fill", "term.directional-read", "term.sat", "term.wait", "term.confluence", "term.sit-mass", "term.gold", "term.sweep", "term.brier"]) {
+    assert.ok(firstUseOf(k), k);
+  }
+  const guided = read("src/components/desk/GuidedFloor.tsx");
+  assert.match(guided, /<Tip k="term.wait">/);
+  assert.match(guided, /<Tip k="term.window">/);
+  assert.match(guided, /<Tip k="term.chair">/);
+  assert.match(guided, /<Tip k="term.paper-fill">/);
 });
