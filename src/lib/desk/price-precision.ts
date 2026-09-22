@@ -7,9 +7,11 @@
  *   No fractional ask was ever observed between 10¢ and 90¢. The lag capture
  *   reads the raw order book and keeps the decimal.
  *
- * COERCED TO WHOLE CENTS before any snapshot, fill, fee or edge:
+ * PRODUCTION DECISION LANE remains coerced to whole cents:
  *   server-feeds.ts `cents()` → Math.round; kalshi-book.ts `clampC` → Math.round
- *   (bounded 1–99); replay.server.ts rounds the path to 0.1¢. So desk_ledger
+ *   (bounded 1–99). A separate exact quote lane is now carried prospectively
+ *   into Snapshot and the shadow observer; no Chair/seat/gate consumer reads it.
+ *   replay.server.ts rounds the path to 0.1¢. Historical desk_ledger
  *   (0 of 190 fills fractional), desk_decision_snapshots (0 of 1,086) and the
  *   call-quality receipts (0 of 1,193) hold whole cents only. For the 28
  *   historical fills booked at 90¢ or above the exact ask is UNKNOWN: it may
