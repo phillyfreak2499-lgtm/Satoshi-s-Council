@@ -48,7 +48,7 @@ export function lastCallLine(
   if (!Number.isFinite(Date.parse(fill.close_time))) return null;
   const side = fill.call.lean ?? "position";
   const net = fill.call.ev == null ? "not yet graded" : fmtCents(fill.call.ev);
-  const ago = windowsAgo(fill.close_time, latest?.close_time ?? fill.close_time);
+  const ago = windowsAgo(fill.close_time, latest?.close_time ?? null);
   const agoText = ago == null ? "" : ` — ${ago} ${ago === 1 ? "window" : "windows"} ago`;
   return {
     label: "Last call",
