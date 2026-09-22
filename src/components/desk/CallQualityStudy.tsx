@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SEAT_IDS } from "@/lib/desk/types";
 import type { CallQualitySnapshot } from "@/lib/desk/call-quality.server";
 import { sampleRate } from "@/lib/desk/display-evidence";
 
@@ -106,8 +107,11 @@ export function CallQualityStudy({ data }: { data: CallQualitySnapshot | null })
                 </button>
               </div>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2 font-mono text-micro text-muted">
-                {(showAllSeats ? g.seats : g.seats.filter((s) => s.n > 0)).map(s => <li key={s.seat}>{s.seat}: {sampleRate(s.hit_rate, s.n)} · market {s.n >= 20 ? percent(s.market_hit_rate) : "small sample"}</li>)}
-                {!(showAllSeats ? g.seats : g.seats.filter((s) => s.n > 0)).length ? <li>No observations for eligible seats at this checkpoint.</li> : null}
+                {(showAllSeats
+                  ? SEAT_IDS.map((seat) => g.seats.find((s) => s.seat === seat) ?? { seat, n: 0, hit_rate: null, market_hit_rate: null })
+                  : g.seats.filter((s) => s.n > 0)
+                ).map(s => <li key={s.seat}>{s.seat}: {sampleRate(s.hit_rate, s.n)} · market {s.n >= 20 ? percent(s.market_hit_rate) : "small sample"}</li>)}
+                {!showAllSeats && !g.seats.some((s) => s.n > 0) ? <li>No observations for eligible seats at this checkpoint.</li> : null}
               </ul>
             </details>
             <details className="mt-3 border-t border-border pt-3">
