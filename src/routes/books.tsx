@@ -1,6 +1,7 @@
 import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { BooksTab } from "@/components/desk/BooksTab";
+import { CanonicalRecord } from "@/components/desk/CanonicalRecord";
 import { Page } from "@/components/desk/Page";
 import { publicBooksSnapshot } from "@/lib/desk/books-public";
 
@@ -23,6 +24,9 @@ function BooksPage() {
       title="Results, on the record."
       lede="Explore the paper books: recorded positions, settlement outcomes, and fee-adjusted results. Every period is scoped and labeled."
     >
+      <div className="mb-4">
+        <CanonicalRecord books={initial} />
+      </div>
       <BooksTab tz={BOOK_TZ} initial={initial} />
     </Page>
   );

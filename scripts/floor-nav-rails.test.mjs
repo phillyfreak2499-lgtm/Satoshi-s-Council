@@ -192,7 +192,7 @@ test("an explicit link outranks the saved preference, so shared URLs open what t
 // ---------------------------------------------------------------------------
 
 test("Guided stays the simple view: no evidence tape, gates or diagnostics leak into it", () => {
-  const guided = codeOf("src/components/desk/GuidedFloor.tsx");
+  const guided = codeOf("src/components/desk/GuidedFloorView.tsx");
   for (const advanced of [
     "ProOverview",
     "CouncilEvidenceTape",

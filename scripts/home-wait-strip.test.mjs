@@ -109,7 +109,7 @@ test("the strip is homepage-only, shows under an unbooked window, and keeps the 
   assert.match(home, /\{still \? <HomeStill last=\{last\} fill=\{fill\} \/> : null\}<a href="\/desk" className="company-text-link">Read the full decision/);
   assert.match(home, /plainLine\(chair, snap, book\)/, "the chair-words sentence stays");
   assert.match(home, /\{last && !still \? <>Last graded window ·/, "the small snapshot line does not repeat the fact");
-  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} fill=\{fill\} \/>/);
+  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} books=\{books\} fill=\{fill\} \/>/);
   assert.match(read("src/routes/index.tsx"), /publicLastFill/);
   assert.match(read("src/lib/desk/record-public.ts"), /export const publicLastFill/);
   assert.match(read("src/lib/desk/last-fill.server.ts"), /export async function lastFilledWindow/);

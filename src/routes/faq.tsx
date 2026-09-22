@@ -2,7 +2,7 @@ import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Page } from "@/components/desk/Page";
-import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT, COUNCIL_RETIRED_MEANS } from "@/lib/desk/council-public";
 
 export const Route = createFileRoute("/faq")({
   head: () => pageHead("/faq", "Frequently asked questions · Satoshi's Council", "Understand paper calls, fees, settlement, research samples and the Council. Nothing here places a live order."),
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/faq")({
 const QA: { q: string; a: string }[] = [
   {
     q: "How many Council seats actually vote?",
-    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Only the 18 voting specialists can cast UP, DOWN or WAIT votes. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. SATOSHI chairs the vote.`,
+    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Only the 15 currently voting specialists can cast UP, DOWN or WAIT votes. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. ODDS, CHEAP and FADE are retired from votes. ${COUNCIL_RETIRED_MEANS} SATOSHI chairs the vote.`,
   },
   {
     q: "Why does the desk say WAIT so often?",
@@ -21,7 +21,7 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "How is the paper book doing?",
-    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the archived 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. It is a record, not a promised edge.",
+    a: "Open the Books at /books. Every result is labeled by scope: today, this week, the current floor era, or all-time. Net cents include the recorded entry and Kalshi fee, and the archived 80¢ floor trial is shown beside the 70¢ shadow book on the same windows. The canonical paper record on that page prints calls, W–L, net after fees, average per call, max drawdown, and a 95% interval with the scope on the block. Arena and shadow Chair v2 are different scopes. It is a record, not a promised edge.",
   },
   {
     q: "What does selective mode require?",
@@ -82,7 +82,7 @@ function Faq() {
         ))}
       </Accordion.Root>
       <nav className="mt-8 grid gap-2 sm:grid-cols-2" aria-label="Follow the evidence">
-        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&amp;L and replays</span></a>
+        <a href="/books" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Books</strong><span className="block font-mono text-micro text-muted">paper P&L and replays</span></a>
         <a href="/board" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Board</strong><span className="block font-mono text-micro text-muted">updates, ideas, and feedback</span></a>
         <a href="/chamber" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Chamber</strong><span className="block font-mono text-micro text-muted">what the desk said and why</span></a>
         <a href="/lab" className="rounded-md border border-border bg-surface p-3 hover:bg-surface-2"><strong className="text-fg">Lab</strong><span className="block font-mono text-micro text-muted">prospective experiments</span></a>
