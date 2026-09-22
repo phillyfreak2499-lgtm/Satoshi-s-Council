@@ -1,0 +1,17 @@
+/* Paper-only chip under the homepage H1. Body size, full contrast, above the doors. */
+.company-hero-chip {
+  display: inline-block;
+  max-width: 58ch;
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border: 1px solid #d6b78370;
+  border-radius: 3px;
+  color: var(--company-ink);
+  background: #121a21;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 450;
+}
+@media (max-width: 639px) {
+  .company-hero-chip { font-size: 14px; margin-bottom: 14px; padding: 9px 12px; }
+}
