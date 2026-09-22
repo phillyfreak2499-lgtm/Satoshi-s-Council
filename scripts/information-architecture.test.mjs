@@ -54,13 +54,14 @@ test("the Lab leads with comparison and stable humanized ages", () => {
   assert.match(lab, /ageLabel\(row\.frozen_at, asOf\)/);
 });
 
-test("the Chamber compacts only consecutive identical WAIT dispatches", () => {
+test("the Chamber compacts consecutive SATOSHI WAIT dispatches without hiding evidence", () => {
   assert.match(chamber, /function waitFingerprint/);
   assert.match(chamber, /statement\.speaker !== "SATOSHI"/);
   assert.match(chamber, /statement\.evidence\.kind !== "chair-wait"/);
   assert.match(chamber, /compactRepeatedWaits\(groupExchanges\(rows\)\)/);
-  assert.match(chamber, /earlier identical WAIT/);
-  assert.match(chamber, /full evidence/);
+  assert.match(chamber, /waitFingerprint\(previous\) != null/);
+  assert.match(chamber, /Full evidence · \{count\} WAIT windows/);
+  assert.match(chamber, /quietRangeLine\(count, earliest, exchange\.latest\)/);
 });
 
 test("the CSP permits the injected Grok extension without widening defaults", () => {
