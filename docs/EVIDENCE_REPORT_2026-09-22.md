@@ -18,7 +18,7 @@ not establishable, with the missing artifact named.
 | Reported reconstruction | branch `claude/satoshis-council-audit-9zffy6`, doc `docs/QUANT_AUDIT_2026-09-22.md` @ 7972372dfa5ccee9d2242b159affadb8c88c75fc | cited, not a second live book |
 | Champion policy | FLOOR_SELECTIVE_V3 = CHAIR_V1 + ENTRY_SELECTIVE_V3 + HOLD_V1 + RISK_NONE_V1, champion since 2026-09-17 12:20:28Z | DB_VERIFIED (`desk_floor_policy`) |
 | Policy fingerprint | `ENTRY_SELECTIVE_V3\|entry\|…min_speaking=2…` (`fingerprint(ENTRY_SELECTIVE_V3)`) | SOURCE_VERIFIED |
-| Fee engine | `KALSHI_TAKER_7PCT_CEIL_CENT_V1\|rate=0.07\|ceil_whole_cent\|ASSUMED` | ASSUMED (venue metadata unreachable from this environment: proxy 403 on api.elections.kalshi.com) |
+| Fee engine | `KALSHI_TAKER_7PCT_CEIL_CENT_V1\|rate=0.07\|ceil_whole_cent\|VENUE_TABLE_VERIFIED_2026_07_07` | VENUE_TABLE_VERIFIED: official Kalshi schedule effective 2026-07-07 retrieved 2026-09-22; published one-contract rows match; KXBTC15M absent from non-standard table |
 | Migrations applied in production | …0054, 0055, 0056, 20260914_board_controls; 0057 (this work) NOT applied | DB_VERIFIED |
 | Query provenance | every query text is in `docs/sql/` or the module that runs it; hashes in `docs/audit/audit_manifest.json` | — |
 
@@ -198,10 +198,12 @@ or prospective fills.
 
 ## 7. UNKNOWN, with the missing artifact
 
-- Venue fee metadata (rate, rounding unit, effective date): the public
-  series/market endpoints were unreachable through this environment's proxy.
-  Artifact: a saved response of `GET /trade-api/v2/series/KXBTC15M` and one
-  market's `fee_type`/`fee_multiplier`, with its fetch time.
+- Sub-cent one-contract fee treatment: the official schedule effective
+  2026-07-07 is now saved as primary-source provenance for the charged
+  whole-cent engine, but its centicent wording has not yet been reconciled
+  against venue fill metadata at fractional prices. Artifact still wanted:
+  one real KXBTC15M fill/fee record at a fractional quote (or equivalent API
+  fee metadata) proving the charged sub-cent rounding behavior.
 - Skill status transition history: not logged. Artifact: a persisted
   `SEAT_REVIEW`/`HUDDLE_STATUS` event per change (seat, calls, scalp_avg,
   action, card, writer).
