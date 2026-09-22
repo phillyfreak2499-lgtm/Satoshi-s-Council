@@ -2,12 +2,21 @@
 
 ## 1. Fee engine
 
-Engine `KALSHI_TAKER_7PCT_CEIL_CENT_V1`: `fee = ceil_to_cent(0.07 × C × P × (1 − P))`
-per order, C contracts, P in dollars. **Provenance: ASSUMED.** The rule comes
-from the repository (`clock.ts`, 2026-09-06). Kalshi's fee schedule was not
-fetched in this pass (`FEE_PROVENANCE.fetched_at = null`); the KXBTC15M series
-multiplier and effective date are UNKNOWN. Both audits assume the same rule;
-they differ only on rounding and contract count.
+Engine `KALSHI_TAKER_7PCT_CEIL_CENT_V1`: the desk's charged one-contract
+whole-cent engine. **Provenance: VENUE_TABLE_VERIFIED_2026_07_07.** On
+2026-09-22 we retrieved Kalshi's official fee schedule effective 2026-07-07.
+It gives the 0.07 × C × P × (1−P) formula with default multiplier M=1 and its
+published one-contract table matches this engine at every listed row (80¢ → 2¢;
+85¢/90¢/95¢ → 1¢). KXBTC15M does not appear in the non-standard fee-series
+table, so the default multiplier applies.
+
+Source: `https://kalshi.com/docs/kalshi-fee-schedule.pdf`.
+
+The PDF also uses centicent-rounding language. We therefore keep
+`KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1` **ASSUMED** for sub-cent one-contract
+research until venue fill metadata reconciles that wording with the displayed
+one-contract table. The verified charged engine and the research engine are not
+treated as interchangeable.
 
 | ask ¢ | raw 7·p·(1−p) ¢ | C=1 fee ¢ | C=100 order fee ¢ | C=100 per contract ¢ | external "1¢ flat" |
 |---|---|---|---|---|---|
@@ -69,7 +78,8 @@ a 99.1¢ buy cannot net positive even when it wins (100 − 99.1 − 1 = −0.1)
 | fee is 1¢ at every price | AUDIT_B_ERROR for C=1; DIFFERENT_POPULATION (contract count) for C≥~50 |
 | deci-cent ticks exist | CONFIRMED (<10¢, ≥90¢) |
 | the desk books deci-cents | AUDIT_A behaviour: no, coerced; 28 fills carry ±0.5¢ uncertainty |
-| 7% rule and series multiplier | UNKNOWN (ASSUMED by both audits) |
+| charged one-contract 7% rule / default multiplier | VENUE_TABLE_VERIFIED_2026_07_07 |
+| centicent research treatment at sub-cent one-lot prices | UNKNOWN / ASSUMED pending venue fill metadata |
 
 Nothing here changes production: the default engine, the coercion sites and
 the ledger are untouched.

@@ -5,7 +5,7 @@ import {
   SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, armDayState, futilityLook, manifestFingerprint, pairUniverse, pairedMetrics, promotionVerdict,
   receiptKey, riskStop, settleReceipt, type ArmOutcome, type ShadowReceipt,
 } from "./shadow-lab.ts";
-import { E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
+import { E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1, INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 
 const day = (i: number) => `2026-10-${String(1 + Math.floor(i / 20)).padStart(2, "0")}`;
 const outcome = (net: number | null, filled = net != null && net !== 0, i = 0): ArmOutcome => ({ net, filled, qualified: filled, day: day(i) });
@@ -129,10 +129,26 @@ test("the four manifests are frozen, CANDIDATE or CANDIDATE_NOT_COLLECTING, auth
     SETTLE_BASIS_MEASURED_V1: manifestFingerprint(E3_SETTLE_BASIS_MEASURED_V1),
     MIRROR_35_V1: manifestFingerprint(E4_MIRROR_35_V1),
   });
-  // Pinned: a changed parameter must change the fingerprint and thus this test.
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1!, /^UNMUTE_DEDUP_SHELF_V1\|v1\|[0-9a-f]{8}\|8arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.WARDEN_JUMP_VETO_V1!, /^WARDEN_JUMP_VETO_V1\|v1\|[0-9a-f]{8}\|5arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.SETTLE_BASIS_MEASURED_V1!, /^SETTLE_BASIS_MEASURED_V1\|v1\|[0-9a-f]{8}\|4arms$/);
-  assert.match(SHADOW_MANIFEST_FINGERPRINTS.MIRROR_35_V1!, /^MIRROR_35_V1\|v1\|[0-9a-f]{8}\|3arms$/);
+  // Pinned exactly: fee provenance or any frozen parameter/time change is a new fingerprint.
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1, "UNMUTE_DEDUP_SHELF_V1|v1|612f23b9|8arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.WARDEN_JUMP_VETO_V1, "WARDEN_JUMP_VETO_V1|v1|ae4a57cc|5arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.SETTLE_BASIS_MEASURED_V1, "SETTLE_BASIS_MEASURED_V1|v1|e1c9d3b1|4arms");
+  assert.equal(SHADOW_MANIFEST_FINGERPRINTS.MIRROR_35_V1, "MIRROR_35_V1|v1|15d0f9d4|3arms");
   assert.notEqual(manifestFingerprint({ ...E1_UNMUTE_DEDUP_SHELF_V1, arms: E1_UNMUTE_DEDUP_SHELF_V1.arms.map((a) => a.id === "PKG_85" ? { ...a, params: { ...a.params, floor_cents: 86 } } : a) }), SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1);
+});
+
+
+test("initial prospective activation set is explicit, exactly three, and excludes MIRROR-35", () => {
+  assert.deepEqual([...INITIAL_SHADOW_COLLECTION_IDS], [
+    "UNMUTE_DEDUP_SHELF_V1",
+    "WARDEN_JUMP_VETO_V1",
+    "SETTLE_BASIS_MEASURED_V1",
+  ]);
+  assert.equal(INITIAL_SHADOW_COLLECTION_IDS.length, 3);
+  assert.equal(INITIAL_SHADOW_COLLECTION_IDS.includes("MIRROR_35_V1"), false);
+  for (const id of INITIAL_SHADOW_COLLECTION_IDS) {
+    const m = SHADOW_MANIFESTS.find((x) => x.id === id);
+    assert.equal(m?.status, "CANDIDATE");
+    assert.equal(m?.prospective_start_at, null);
+  }
 });

@@ -1,7 +1,8 @@
 -- PHASE A reconciliation, as plain SQL for a read-only console.
 -- Replace :as_of with an ISO instant (e.g. '2026-09-22T00:00:00Z').
 -- Every number is after the charged fee ceil(7·p·(1−p)) whole cents
--- (fee engine KALSHI_TAKER_7PCT_CEIL_CENT_V1, provenance ASSUMED).
+-- (fee engine KALSHI_TAKER_7PCT_CEIL_CENT_V1; one-contract table provenance
+-- VENUE_TABLE_VERIFIED_2026_07_07 from Kalshi's official schedule).
 
 -- 1. Era books on the HOLD identity. official_wins uses settle_cents = 100,
 --    never ev > 0. identity_mismatch counts rows the HOLD identity cannot describe.

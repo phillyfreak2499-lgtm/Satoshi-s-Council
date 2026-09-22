@@ -78,9 +78,12 @@ a pass. One futility look at 150 qualified fills may bench, never promote.
 - **Trial decomposition** (`trial-decomposition.ts`): live − shadow =
   A (price + fee on shared fills) + B (lower-floor-only fills avoided) +
   C (settlement/accounting) + D (fee engine); must sum exactly.
-- **Fee for C contracts**: `ceil_to_cent(0.07 · C · P · (1 − P))` per order;
-  the one-contract book uses C = 1. Provenance ASSUMED until the schedule is
-  fetched (`FEE_PROVENANCE`).
+- **Fee for C contracts**: official Kalshi schedule effective 2026-07-07 uses
+  the 0.07 · C · P · (1 − P) formula with default M = 1; KXBTC15M is not in
+  its non-standard series table. The charged one-contract engine is
+  VENUE_TABLE_VERIFIED_2026_07_07. The separate centicent research treatment
+  at fractional one-lot prices remains ASSUMED pending venue fill metadata
+  (`FEE_PROVENANCE`).
 - **Price precision**: whole cents on every stored surface; 0.1¢ ticks exist
   below 10¢ and at/above 90¢; a stored ask in those bands is ±0.5¢ UNKNOWN.
 - **Evidence strength** (`evidence-strength.ts`): point WR, Wilson 95% lower

@@ -198,3 +198,42 @@ test("rail 5: status-transition telemetry never throws into the engine, is queue
   assert.doesNotMatch(codeOf("src/lib/desk/status-transitions.ts"), /\.status\s*=/, "the pure module never assigns a status");
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/status-transitions\.server"\)\s*\.then\(\(m\) => m\.ensureStatusTransitionLog\(\)\)\s*\.catch\(\(\) => \{\}\);/);
 });
+
+
+test("rail 6: shadow collection cannot start before verified atomic prospective boundary and MIRROR-35 is excluded", () => {
+  const server = codeOf("src/lib/desk/shadow-lab.server.ts");
+  const manifests = codeOf("src/lib/desk/shadow-manifests.ts");
+  assert.match(server, /await registerShadowManifests\(sql\);\s*await verifyShadowManifests\(sql\);\s*const activation = await activateInitialShadowCollection\(sql, Date\.now\(\)\);[\s\S]*st\.activatedAt = durableStart;[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /st\.sessionStartedAt = Date\.now\(\);[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /const windowOpen = snap\.close_time - 15 \* 60_000;\s*if \(st\.sessionStartedAt > 0 && windowOpen < st\.sessionStartedAt\) return;/);
+  assert.match(server, /candidates = 3 or \(shadows = 3 and shadow_starts = 1\)/);
+  assert.match(server, /coalesce\(m\.prospective_start_at,/);
+  assert.match(server, /shadow manifest fingerprint mismatch/);
+  assert.match(server, /shadow manifest fee fingerprint mismatch/);
+  assert.match(server, /a\.decided\.has\(k\) \|\| pending\.has\(k\)/);
+  assert.match(server, /recordShadowReceipt\(sql, r, payload\)[\s\S]*\.then\(\(inserted\) => \{[\s\S]*a\.decided\.add\(k\)/);
+  assert.doesNotMatch(server.slice(server.indexOf("activateInitialShadowCollection"), server.indexOf("/**\n * Settle fill receipts")), /MIRROR_35_V1/);
+  assert.match(manifests, /INITIAL_SHADOW_COLLECTION_IDS/);
+  const targetBlock = manifests.slice(manifests.indexOf("INITIAL_SHADOW_COLLECTION_IDS"), manifests.indexOf("/** The three-active rule"));
+  assert.doesNotMatch(targetBlock, /MIRROR_35_V1/);
+});
+
+
+test("rail 7: frozen experiment specimens match runtime-pinned fingerprints and verified fee provenance", () => {
+  const fee = "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|VENUE_TABLE_VERIFIED_2026_07_07";
+  const expected = {
+    UNMUTE_DEDUP_SHELF_V1: { hash: "UNMUTE_DEDUP_SHELF_V1|v1|612f23b9|8arms", frozen: "2026-09-22T02:07:19.000Z" },
+    WARDEN_JUMP_VETO_V1: { hash: "WARDEN_JUMP_VETO_V1|v1|ae4a57cc|5arms", frozen: "2026-09-22T02:07:19.000Z" },
+    SETTLE_BASIS_MEASURED_V1: { hash: "SETTLE_BASIS_MEASURED_V1|v1|e1c9d3b1|4arms", frozen: "2026-09-22T02:07:19.000Z" },
+    MIRROR_35_V1: { hash: "MIRROR_35_V1|v1|15d0f9d4|3arms", frozen: "2026-09-22T03:10:57.000Z" },
+  };
+  for (const [id, want] of Object.entries(expected)) {
+    const doc = JSON.parse(read(`docs/experiments/${id}.json`));
+    assert.equal(doc.id, id);
+    assert.equal(doc.fingerprint, want.hash);
+    assert.equal(doc.frozen_at, want.frozen);
+    assert.equal(doc.prospective_start_at, null);
+    assert.equal(doc.fingerprints.fee, fee);
+    assert.equal(doc.authority, "none");
+  }
+});

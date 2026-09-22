@@ -36,8 +36,8 @@ import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
 import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
 import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
 import { JUMP_VETO, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
-import { SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
-import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
+import { INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
+import { SHADOW_FEE_FINGERPRINT, receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import type { CallLogRow, ChairResult, Settings, Snapshot } from "./types";
 
 export const SHADOW_LAB_ENV_FLAG = "SHADOW_LAB_ENABLED";
@@ -67,7 +67,7 @@ export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: R
   return rows.length > 0;
 }
 
-/** Register the frozen manifests once. Never updates a row: prospective_start_at is the owner's to set. */
+/** Register the frozen manifests once. Never rewrites an existing specimen. */
 export async function registerShadowManifests(sql: Sql): Promise<number> {
   let inserted = 0;
   for (const m of SHADOW_MANIFESTS) {
@@ -78,6 +78,78 @@ export async function registerShadowManifests(sql: Sql): Promise<number> {
     inserted += rows.length;
   }
   return inserted;
+}
+
+
+/**
+ * Existing rows are allowed only when they are the exact frozen specimen this
+ * build knows how to collect. ON CONFLICT DO NOTHING is not permission to
+ * continue an older manifest under a new code fingerprint.
+ */
+export async function verifyShadowManifests(sql: Sql): Promise<void> {
+  for (const m of SHADOW_MANIFESTS) {
+    const rows = await sql<{ fingerprint: string; fee_fingerprint: string | null }>`
+      select fingerprint, manifest #>> '{fingerprints,fee}' as fee_fingerprint
+      from desk_shadow_manifests
+      where experiment = ${m.id} and experiment_version = ${m.experiment_version}
+    `;
+    if (rows.length !== 1) throw new Error(`shadow manifest verify failed: ${m.id} row count ${rows.length}`);
+    const expected = SHADOW_MANIFEST_FINGERPRINTS[m.id] ?? "";
+    if (rows[0]!.fingerprint !== expected) {
+      throw new Error(`shadow manifest fingerprint mismatch: ${m.id}`);
+    }
+    if (rows[0]!.fee_fingerprint !== SHADOW_FEE_FINGERPRINT) {
+      throw new Error(`shadow manifest fee fingerprint mismatch: ${m.id}`);
+    }
+  }
+}
+
+/**
+ * Atomically establish the first prospective epoch for exactly E1–E3.
+ *
+ * The single guarded UPDATE is all-or-nothing at statement level: it runs only
+ * when all three target manifests are in a coherent pre-start state
+ * (CANDIDATE/null) or an already-started state (SHADOW/non-null). MIRROR-35 is
+ * not a target. Existing prospective timestamps are preserved, so a restart can
+ * never backdate or move the research boundary.
+ */
+export async function activateInitialShadowCollection(sql: Sql, activatedAtMs: number): Promise<{ active: number; started_at: string[] }> {
+  if (!Number.isFinite(activatedAtMs) || activatedAtMs <= 0) throw new Error("invalid shadow activation clock");
+  const at = new Date(activatedAtMs).toISOString();
+  const [e1, e2, e3] = INITIAL_SHADOW_COLLECTION_IDS;
+  if (!e1 || !e2 || !e3 || INITIAL_SHADOW_COLLECTION_IDS.length !== 3) throw new Error("shadow activation target set must contain exactly three manifests");
+
+  const rows = await sql<{ experiment: string; prospective_start_at: string }>`
+    with target as (
+      select experiment, experiment_version, status, prospective_start_at
+      from desk_shadow_manifests
+      where experiment in (${e1}, ${e2}, ${e3}) and experiment_version = 1
+    ), state as (
+      select
+        count(*)::int as n,
+        count(*) filter (where status = 'CANDIDATE' and prospective_start_at is null)::int as candidates,
+        count(*) filter (where status = 'SHADOW' and prospective_start_at is not null)::int as shadows,
+        count(distinct prospective_start_at) filter (where status = 'SHADOW' and prospective_start_at is not null)::int as shadow_starts
+      from target
+    ), allowed as (
+      select n = 3 and (candidates = 3 or (shadows = 3 and shadow_starts = 1)) as ok
+      from state
+    )
+    update desk_shadow_manifests m
+       set status = 'SHADOW',
+           prospective_start_at = coalesce(m.prospective_start_at, ${at}::timestamptz)
+     where m.experiment in (${e1}, ${e2}, ${e3})
+       and m.experiment_version = 1
+       and (select ok from allowed)
+    returning m.experiment, m.prospective_start_at::text
+  `;
+
+  if (rows.length !== 3) {
+    throw new Error(`shadow activation refused: expected one uniform 3-manifest state, got ${rows.length} rows`);
+  }
+  const starts = [...new Set(rows.map((r) => String(r.prospective_start_at)))].sort();
+  if (starts.length !== 1) throw new Error(`shadow activation refused: prospective boundary split across ${starts.length} timestamps`);
+  return { active: rows.length, started_at: starts };
 }
 
 /**
@@ -101,9 +173,25 @@ export async function settleShadowReceipts(sql: Sql): Promise<number> {
 // ---------------------------------------------------------------------------
 
 type ArmState = { watch: EntryWatch | null; decided: Set<string>; lastAsk: Map<string, { ask: number; at: number; side: "UP" | "DOWN" }> };
-type Observer = { timer: ReturnType<typeof setInterval> | null; busy: boolean; arms: Map<string, ArmState>; jump: JumpVetoState; lastSettle: number; lastCapture: number | null; error: string | null; activatedAt: number };
+type Observer = {
+  timer: ReturnType<typeof setInterval> | null;
+  starting: boolean;
+  busy: boolean;
+  arms: Map<string, ArmState>;
+  jump: JumpVetoState;
+  lastSettle: number;
+  lastCapture: number | null;
+  error: string | null;
+  /** Durable experiment boundary returned by the manifest table. */
+  activatedAt: number;
+  /** Process-local boundary: no arm may use a market already open when this observer session began. */
+  sessionStartedAt: number;
+};
 const globalRef = globalThis as typeof globalThis & { __shadowLab__?: Observer };
-const state = (): Observer => globalRef.__shadowLab__ ??= { timer: null, busy: false, arms: new Map(), jump: blankJumpVeto(), lastSettle: 0, lastCapture: null, error: null, activatedAt: Date.now() };
+const state = (): Observer => globalRef.__shadowLab__ ??= {
+  timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(),
+  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0,
+};
 const armState = (id: string): ArmState => { const st = state(); const cur = st.arms.get(id) ?? { watch: null, decided: new Set(), lastAsk: new Map() }; st.arms.set(id, cur); return cur; };
 
 const E1 = "UNMUTE_DEDUP_SHELF_V1", E2 = "WARDEN_JUMP_VETO_V1", E3 = "SETTLE_BASIS_MEASURED_V1";
@@ -187,15 +275,28 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const secs = (snap.close_time - snap.as_of) / 1000;
     st.jump = observeJump(st.jump, snap.yes_ask, snap.no_ask, snap.as_of);
     if (!(secs >= 180 && secs <= 600)) return;
+    // Prospective means observed prospectively, not merely timestamped after a
+    // historical start. Every process restart skips the market already in flight.
+    const windowOpen = snap.close_time - 15 * 60_000;
+    if (st.sessionStartedAt > 0 && windowOpen < st.sessionStartedAt) return;
     const windowKey = `${snap.ticker}|${snap.close_time}`;
     const writes: Array<Promise<boolean>> = [];
+    const pending = new Set<string>();
     const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}) => {
       const a = armState(`${r.experiment}|${r.arm}`);
       const k = receiptKey(r);
-      if (a.decided.has(k)) return;
-      a.decided.add(k);
-      if (a.decided.size > 2_000) a.decided = new Set([...a.decided].slice(-1_000));
-      writes.push(recordShadowReceipt(sql, r, payload));
+      if (a.decided.has(k) || pending.has(k)) return;
+      pending.add(k);
+      writes.push(
+        recordShadowReceipt(sql, r, payload)
+          .then((inserted) => {
+            // A successful insert OR an idempotent DB conflict proves the key is durable.
+            a.decided.add(k);
+            if (a.decided.size > 2_000) a.decided = new Set([...a.decided].slice(-1_000));
+            return inserted;
+          })
+          .finally(() => pending.delete(k)),
+      );
     };
 
     // NULL_FAV benchmarks at their frozen checkpoints.
@@ -275,19 +376,62 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
   }
 }
 
-/** Start the observer. Returns why it did not start when it did not. */
+/**
+ * Start only after the manifest boundary is durably established. A database or
+ * manifest inconsistency leaves the observer dark; collection never starts
+ * before the prospective timestamp exists.
+ */
 export function ensureShadowLabObserver(env: Record<string, string | undefined> = process.env): "started" | "already" | "disabled" {
   if (!shadowLabEnabled(env)) return "disabled";
   const st = state();
-  if (st.timer) return "already";
-  st.activatedAt = Date.now();
-  void getSql().then((sql) => registerShadowManifests(sql)).catch(() => {});
-  st.timer = setInterval(() => void shadowLabTick(), SHADOW_LAB_POLL_MS);
-  void shadowLabTick();
+  if (st.timer || st.starting) return "already";
+  st.starting = true;
+
+  void getSql()
+    .then(async (sql) => {
+      await registerShadowManifests(sql);
+      await verifyShadowManifests(sql);
+      // Stamp only after the exact frozen specimens are verified. On restart,
+      // activateInitialShadowCollection returns the original durable boundary.
+      const activation = await activateInitialShadowCollection(sql, Date.now());
+      const durableStart = Date.parse(activation.started_at[0] ?? "");
+      if (!Number.isFinite(durableStart) || durableStart <= 0) throw new Error("shadow activation returned an invalid durable boundary");
+      st.activatedAt = durableStart;
+      // Separate the durable research epoch from this process session. A restart
+      // must not collect the tail of the market that was already open at boot.
+      st.sessionStartedAt = Date.now();
+      // The env may have been removed while the bootstrap was in flight.
+      if (!shadowLabEnabled(process.env)) return;
+      st.timer = setInterval(() => void shadowLabTick(), SHADOW_LAB_POLL_MS);
+      void shadowLabTick();
+      st.error = null;
+    })
+    .catch((error) => {
+      st.error = error instanceof Error ? error.message : String(error);
+    })
+    .finally(() => {
+      st.starting = false;
+    });
   return "started";
 }
 
-export function shadowLabHealth(): { enabled: boolean; running: boolean; last_capture: number | null; error: string | null } {
+export function shadowLabHealth(): {
+  enabled: boolean;
+  starting: boolean;
+  running: boolean;
+  prospective_start: number | null;
+  session_start: number | null;
+  last_capture: number | null;
+  error: string | null;
+} {
   const st = globalRef.__shadowLab__;
-  return { enabled: shadowLabEnabled(), running: !!st?.timer, last_capture: st?.lastCapture ?? null, error: st?.error ?? null };
+  return {
+    enabled: shadowLabEnabled(),
+    starting: !!st?.starting,
+    running: !!st?.timer,
+    prospective_start: st?.activatedAt ? st.activatedAt : null,
+    session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
+    last_capture: st?.lastCapture ?? null,
+    error: st?.error ?? null,
+  };
 }

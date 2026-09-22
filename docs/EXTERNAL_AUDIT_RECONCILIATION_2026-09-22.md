@@ -19,7 +19,7 @@ side. Nothing is averaged.
 | C01 | avg entry ask | 79.72¢ (190 fills); 82.16¢ (137 policy-era HOLD fills) | 76.5¢ "implied" | **AUDIT_B_ERROR** | B back-solved from a headline that pools 24 exit-priced legacy rows, uses a flat 1¢ fee and counts positive-net rows as wins |
 | C02 | wins | 140 official / 190 (117 / 137 policy era) | 149 | **AUDIT_B_ERROR** | 9 legacy early exits closed positive without settling in the money; a positive net is not a win |
 | C03 | live/shadow commingled | no: separate columns, never summed | yes | **DIFFERENT_POPULATION** | B saw the all-time headline (+92) that pools A0 legacy exits with HOLD rows; that is era pooling, not live/shadow pooling |
-| C04 | fee 1¢ everywhere | ceil(7·p·(1−p)): 2¢ 18–82¢, 1¢ 83–99¢ at C=1 | 1¢ flat | **AUDIT_B_ERROR** (C=1) | at C=100 the per-contract fee is 0.52–1.75¢, so B is right only for size the paper book does not trade; both audits ASSUME the 7% rule |
+| C04 | fee 1¢ everywhere | ceil(7·p·(1−p)): 2¢ 18–82¢, 1¢ 83–99¢ at C=1 | 1¢ flat | **AUDIT_B_ERROR** (C=1) | official Kalshi schedule effective 2026-07-07 verifies the 0.07 formula/default M=1 and the published one-contract table matches the charged engine; KXBTC15M is not listed as non-standard |
 | C05 | 0.1¢ ticks exist | yes, <10¢ and ≥90¢; desk coerces to whole cents | yes | **CONFIRMED** | 28 fills ≥90¢ have an exact ask UNKNOWN to ±0.5¢ |
 | C06 | strike = prior official settlement | yes on 1,337/1,357; 9 windows on the desk's $25 proxy grid; 11 early-era (Sep 7–10) mismatches of UNKNOWN cause; no ties ever | yes | **CONFIRMED** | the 9 proxy and 11 early windows are listed in `docs/SETTLEMENT_SEMANTICS_2026-09-22.md` |
 | C07 | 80¢ trial +215 vs 70¢ shadow | +215 = −415 (shared price −426, fee +11) + 630 (11 avoided losers) + 0 + 0 | +215 "the floor" | **CONFIRMED** | arithmetic confirmed; the higher floor *cost* 415¢ on shared fills and *saved* 630¢ by skipping 11 losers |
@@ -65,7 +65,7 @@ formula against the rows).
 ## 3. Fees and price precision
 
 See `docs/FEE_AND_PRICE_PRECISION_2026-09-22.md`. C=1 vs C=100 at every asked
-price, provenance ASSUMED (no Kalshi schedule fetched), 0.1¢ ticks observed
+price, charged-engine provenance VENUE_TABLE_VERIFIED_2026_07_07 (official schedule fetched 2026-09-22); sub-cent centicent research treatment remains ASSUMED, 0.1¢ ticks observed
 only below 10¢ and at/above 90¢, and where the desk rounds them away.
 
 ## 4. Settlement semantics

@@ -1,14 +1,14 @@
 {
-  "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|1568deb2|8arms",
+  "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|612f23b9|8arms",
   "version": "SHADOW_LAB_V1",
   "id": "UNMUTE_DEDUP_SHELF_V1",
   "experiment_version": 1,
   "status": "CANDIDATE",
-  "frozen_at": "2026-09-22T06:00:00.000Z",
+  "frozen_at": "2026-09-22T02:07:19.000Z",
   "prospective_start_at": null,
   "hypothesis": "A verified reconstruction of the era-B mid-window speaking package, under explicit selective gates with duplicate influence controlled and a valid MID review, adds after-fee net beyond a simple price-favourite benchmark at the same floor.",
   "fingerprints": {
-    "fee": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
+    "fee": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|VENUE_TABLE_VERIFIED_2026_07_07",
     "policy": "ENTRY_SELECTIVE_V3|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
     "model": "CHAIR_V1 runChair with E1_UNMUTE twins; no fitted model",
     "roster": "E1_ROSTER_CARDS=STRIKE.itm_time,STREAK.continue_young,CHAIN.oi_with_price,CARRY.trend_carry,DRIFT.aligned_3h,DRIFT.pullback_in_trend; family override STREAK->book",

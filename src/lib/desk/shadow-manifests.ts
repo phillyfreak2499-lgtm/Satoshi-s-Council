@@ -1,5 +1,5 @@
 /**
- * The three frozen shadow manifests. Hand-written; nothing may append to this
+ * The four frozen shadow manifests. Hand-written; nothing may append to this
  * at runtime. A parameter change is a new experiment version with zero
  * evidence, never an edit. `prospective_start_at` is null here by design: it
  * is set by an owner-approved activation in the database, at the actual
@@ -10,7 +10,9 @@ import { COMPONENT_MIN, ECONOMIC } from "./promotion-gates.ts";
 import { E1_ROSTER_CARDS, JUMP_VETO, MIRROR35, NULL_FAV_SCHEDULE_SECS, SETTLE_BASIS_CANDIDATES_BPS, SETTLE_BASIS_ROLE } from "./shadow-arms.ts";
 import { SHADOW_FEE_FINGERPRINT, SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, SHADOW_LAB_VERSION, SHADOW_MAX_ACTIVE, SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, SHADOW_OPERATOR_ALERT_DD_CENTS, countsAgainstCap, manifestFingerprint, type ShadowManifest } from "./shadow-lab.ts";
 
-const FROZEN_AT = "2026-09-22T06:00:00.000Z";
+// Evidence timestamps are the commits that actually froze each specimen.
+const CORE_FROZEN_AT = "2026-09-22T02:07:19.000Z"; // d1e0d6c… Phase C E1–E3
+const MIRROR_FROZEN_AT = "2026-09-22T03:10:57.000Z"; // 6ac907a… MIRROR-35 registration
 const SOURCE_SHA = "11fab5b5bc73020941fd05fee04eed2174314d28";
 const POLICY = fingerprint(ENTRY_SELECTIVE_V3);
 
@@ -20,7 +22,7 @@ const risk = { hard_dd_stop_cents: SHADOW_HARD_DD_STOP_CENTS, max_dd_worse_than_
 const freeze = (m: ShadowManifest): ShadowManifest => Object.freeze({ ...m, arms: Object.freeze(m.arms.map((a) => Object.freeze({ ...a, params: Object.freeze({ ...a.params }) }))) });
 
 export const E1_UNMUTE_DEDUP_SHELF_V1: ShadowManifest = freeze({
-  version: SHADOW_LAB_VERSION, id: "UNMUTE_DEDUP_SHELF_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  version: SHADOW_LAB_VERSION, id: "UNMUTE_DEDUP_SHELF_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: CORE_FROZEN_AT, prospective_start_at: null,
   hypothesis: "A verified reconstruction of the era-B mid-window speaking package, under explicit selective gates with duplicate influence controlled and a valid MID review, adds after-fee net beyond a simple price-favourite benchmark at the same floor.",
   fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "CHAIR_V1 runChair with E1_UNMUTE twins; no fitted model", roster: `E1_ROSTER_CARDS=${E1_ROSTER_CARDS.join(",")}; family override STREAK->book`, source_sha: SOURCE_SHA },
   arms: [
@@ -44,7 +46,7 @@ export const E1_UNMUTE_DEDUP_SHELF_V1: ShadowManifest = freeze({
 });
 
 export const E2_WARDEN_JUMP_VETO_V1: ShadowManifest = freeze({
-  version: SHADOW_LAB_VERSION, id: "WARDEN_JUMP_VETO_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  version: SHADOW_LAB_VERSION, id: "WARDEN_JUMP_VETO_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: CORE_FROZEN_AT, prospective_start_at: null,
   hypothesis: "A fixed cooldown after a qualifying ask shock improves net on opportunities the frozen base policy would actually book.",
   fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "none", roster: "base = E1 PKG_85 intention stream", source_sha: SOURCE_SHA },
   arms: [
@@ -65,7 +67,7 @@ export const E2_WARDEN_JUMP_VETO_V1: ShadowManifest = freeze({
 });
 
 export const E3_SETTLE_BASIS_MEASURED_V1: ShadowManifest = freeze({
-  version: SHADOW_LAB_VERSION, id: "SETTLE_BASIS_MEASURED_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: FROZEN_AT, prospective_start_at: null,
+  version: SHADOW_LAB_VERSION, id: "SETTLE_BASIS_MEASURED_V1", experiment_version: 1, status: "CANDIDATE", frozen_at: CORE_FROZEN_AT, prospective_start_at: null,
   hypothesis: "The 2 bps settlement-basis allowance (a 1σ term added to σ in quadrature) understates the measured spot-to-index noise and admits marginal negative-net entries near the strike.",
   fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: `fairYesCentsWithBasis; role=${SETTLE_BASIS_ROLE}; live=${SETTLE_BASIS_CANDIDATES_BPS.live}bps`, roster: "base = E1 PKG_85 intention stream", source_sha: SOURCE_SHA },
   arms: [
@@ -93,7 +95,7 @@ export const E3_SETTLE_BASIS_MEASURED_V1: ShadowManifest = freeze({
  * (train +1.89¢/fill, test −0.60¢/fill; docs/SHADOW_EXPERIMENTS_2026-09-22.md).
  */
 export const E4_MIRROR_35_V1: ShadowManifest = freeze({
-  version: SHADOW_LAB_VERSION, id: "MIRROR_35_V1", experiment_version: 1, status: "CANDIDATE_NOT_COLLECTING", frozen_at: "2026-09-22T12:00:00.000Z", prospective_start_at: null,
+  version: SHADOW_LAB_VERSION, id: "MIRROR_35_V1", experiment_version: 1, status: "CANDIDATE_NOT_COLLECTING", frozen_at: MIRROR_FROZEN_AT, prospective_start_at: null,
   hypothesis: "A first-touch buy of the cheap side at an ask in [30, 45) between T−5 and T−2, held to settlement at the real ask with the applicable fee, has positive after-fee net out of sample.",
   fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "none (price rule)", roster: "none", source_sha: SOURCE_SHA },
   arms: [
@@ -112,6 +114,17 @@ export const E4_MIRROR_35_V1: ShadowManifest = freeze({
 });
 
 export const SHADOW_MANIFESTS: readonly ShadowManifest[] = Object.freeze([E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1]);
+
+/**
+ * The only manifests allowed to begin the first prospective collection epoch.
+ * Kept explicit instead of "all CANDIDATE" so adding a future candidate cannot
+ * silently start collecting on the next deploy. MIRROR-35 is intentionally absent.
+ */
+export const INITIAL_SHADOW_COLLECTION_IDS: readonly string[] = Object.freeze([
+  E1_UNMUTE_DEDUP_SHELF_V1.id,
+  E2_WARDEN_JUMP_VETO_V1.id,
+  E3_SETTLE_BASIS_MEASURED_V1.id,
+]);
 
 /** The three-active rule, checked over the registry. */
 export function activeShadowCount(manifests: readonly ShadowManifest[] = SHADOW_MANIFESTS): number {

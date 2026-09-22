@@ -10,11 +10,13 @@
  * fingerprints it, and is the only fee path the reconciliation, the MID review
  * and the shadow lab may use.
  *
- * STATUS: ASSUMED. The venue's live fee metadata (rate, rounding unit, effective
- * date) could not be fetched from this environment; the 7% × P × (1 − P),
- * rounded up to the cent, schedule is the repository's documented rule, not a
- * verified venue record. Promotion on uncertain economics is blocked by the lab
- * gates; this module only makes the assumption explicit and reproducible.
+ * STATUS: MIXED PROVENANCE. On 2026-09-22 the official Kalshi Fee Schedule
+ * effective 2026-07-07 was retrieved. Its general one-contract table matches
+ * the desk's charged whole-cent engine at every published price row (including
+ * 80¢ → 2¢ and 85/90/95¢ → 1¢), and KXBTC15M is not listed among non-standard
+ * fee series. The separate centicent research engine remains ASSUMED for this
+ * desk until its sub-cent one-contract treatment is reconciled against venue
+ * fill metadata. Promotion code must preserve that distinction.
  *
  * Pure module: no clock, no state, no database.
  */
@@ -27,8 +29,8 @@ export type FeeEngine = {
   /** Taker rate applied to P × (1 − P) per contract. */
   rate: number;
   rounding: "ceil_whole_cent" | "ceil_centicent";
-  /** Where the rule came from. Never "venue" until the metadata is fetched and recorded. */
-  provenance: "ASSUMED";
+  /** Evidence class for this exact implementation, not for adjacent fee models. */
+  provenance: "VENUE_TABLE_VERIFIED_2026_07_07" | "ASSUMED";
   why: string;
 };
 
@@ -37,15 +39,15 @@ export const FEE_ENGINES: Readonly<Record<FeeEngineId, FeeEngine>> = Object.free
     id: "KALSHI_TAKER_7PCT_CEIL_CENT_V1",
     rate: 0.07,
     rounding: "ceil_whole_cent",
-    provenance: "ASSUMED",
-    why: "the paper book's charged fee: ceil(7 · p · (1 − p)) whole cents per contract; conservative vs the centicent schedule",
+    provenance: "VENUE_TABLE_VERIFIED_2026_07_07",
+    why: "charged one-contract paper fee; official Kalshi schedule effective 2026-07-07 matches every published one-contract table row; KXBTC15M is not listed as non-standard",
   }),
   KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1: Object.freeze({
     id: "KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1",
     rate: 0.07,
     rounding: "ceil_centicent",
     provenance: "ASSUMED",
-    why: "the lab's edge measurement: ceil to 0.01¢, the documented venue schedule to the letter",
+    why: "research-only centicent interpretation; official text references centicent rounding, but its applicability to sub-cent one-contract desk fills is not yet reconciled against venue fill metadata",
   }),
 });
 
@@ -114,18 +116,25 @@ export function feeTable(engine: FeeEngineId = DEFAULT_FEE_ENGINE): Array<{ ask:
 // ---------------------------------------------------------------------------
 
 /**
- * Where the 7% rule comes from. The venue's fee page and series metadata were
- * unreachable from the audit environment (connection refused through the
- * proxy), so the schedule is pinned as the repository's documented rule with
- * the date it was written, not as a fetched venue record. A fetched record
- * (URL, fetch time, series multiplier) should replace this block verbatim.
+ * Primary-source provenance fetched 2026-09-22.
+ *
+ * The official schedule effective 2026-07-07 gives the 0.07 formula with
+ * default M=1 and publishes a one-contract table that matches this desk's
+ * charged whole-cent engine at every listed price. KXBTC15M does not appear in
+ * the non-standard fee-series table, so the default multiplier applies.
+ *
+ * Important: the same PDF also uses "centicent" wording. We do NOT use that
+ * wording to bless the separate research centicent engine for sub-cent one-lot
+ * fills; that remains ASSUMED until venue fill metadata closes the ambiguity.
  */
 export const FEE_PROVENANCE = Object.freeze({
-  rule: "fee = ceil_to_cent(0.07 × C × P × (1 − P)) per order, C contracts, P price in dollars",
-  source: "repository rule (clock.ts, 2026-09-06); Kalshi fee schedule not fetched — provenance ASSUMED",
-  series_multiplier: "UNKNOWN for KXBTC15M (some series carry a reduced multiplier); 0.07 assumed",
-  effective_date: "UNKNOWN",
-  fetched_at: null as string | null,
+  rule: "fees = round up(M × 0.07 × C × P × (1 − P)); default M=1 unless listed otherwise",
+  source: "Kalshi Fee Schedule, effective 2026-07-07, https://kalshi.com/docs/kalshi-fee-schedule.pdf",
+  series_multiplier: "default M=1; KXBTC15M not listed in the schedule's non-standard series table",
+  effective_date: "2026-07-07",
+  fetched_at: "2026-09-22",
+  charged_engine_evidence: "official one-contract table matches published rows: 80¢→2¢; 85¢/90¢/95¢→1¢",
+  subcent_rounding_note: "centicent wording exists; research centicent engine remains ASSUMED pending venue fill metadata",
 });
 
 export type FeeQuote = {

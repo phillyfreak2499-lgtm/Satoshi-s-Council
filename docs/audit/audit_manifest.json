@@ -28,8 +28,8 @@
   "engines": {
     "fee": {
       "id": "KALSHI_TAKER_7PCT_CEIL_CENT_V1",
-      "fingerprint": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
-      "provenance": "ASSUMED"
+      "fingerprint": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|VENUE_TABLE_VERIFIED_2026_07_07",
+      "provenance": "VENUE_TABLE_VERIFIED_2026_07_07", "source": "Kalshi Fee Schedule effective 2026-07-07; retrieved 2026-09-22; KXBTC15M absent from non-standard series table"
     },
     "economics_book": "ECONOMICS_BOOK_V1",
     "reconcile": "RECONCILE_BOOK_V1",
@@ -66,28 +66,28 @@
   },
   "experiments": {
     "UNMUTE_DEDUP_SHELF_V1": {
-      "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|1568deb2|8arms",
+      "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|612f23b9|8arms",
       "status": "CANDIDATE",
       "collecting": false,
       "prospective_start_at": null,
       "prospective_fills": 0
     },
     "WARDEN_JUMP_VETO_V1": {
-      "fingerprint": "WARDEN_JUMP_VETO_V1|v1|4b54b5e5|5arms",
+      "fingerprint": "WARDEN_JUMP_VETO_V1|v1|ae4a57cc|5arms",
       "status": "CANDIDATE",
       "collecting": false,
       "prospective_start_at": null,
       "prospective_fills": 0
     },
     "SETTLE_BASIS_MEASURED_V1": {
-      "fingerprint": "SETTLE_BASIS_MEASURED_V1|v1|8e3cf22a|4arms",
+      "fingerprint": "SETTLE_BASIS_MEASURED_V1|v1|e1c9d3b1|4arms",
       "status": "CANDIDATE",
       "collecting": false,
       "prospective_start_at": null,
       "prospective_fills": 0
     },
     "MIRROR_35_V1": {
-      "fingerprint": "MIRROR_35_V1|v1|dfbc2bad|3arms",
+      "fingerprint": "MIRROR_35_V1|v1|15d0f9d4|3arms",
       "status": "CANDIDATE_NOT_COLLECTING",
       "collecting": false,
       "prospective_start_at": null,

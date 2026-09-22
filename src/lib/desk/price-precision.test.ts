@@ -21,7 +21,9 @@ test("one contract is NOT 1¢ at every price: the charged fee is 2¢ from 18¢ t
   assert.equal(feeForContracts(82, 1).raw_cents, 1.0332);
   assert.equal(feeForContracts(83, 100).charged_cents, 99);
   assert.equal(feeForContracts(83, 100).per_contract_cents, 0.99);
-  assert.equal(FEE_PROVENANCE.fetched_at, null, "provenance stays ASSUMED until a venue record is fetched");
+  assert.equal(FEE_PROVENANCE.fetched_at, "2026-09-22");
+  assert.equal(FEE_PROVENANCE.effective_date, "2026-07-07");
+  assert.match(FEE_PROVENANCE.source, /kalshi-fee-schedule\.pdf/);
 });
 
 test("deci-cent asks round-trip through the economics without a second rounding", () => {
