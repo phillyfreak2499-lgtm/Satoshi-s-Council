@@ -45,6 +45,7 @@ test("lastCallLine names side, settlement, net, and windows ago", () => {
   assert.match(line.text, /5 windows ago/);
   assert.equal(line.replayHref, "/window/KXBTC15M-26SEP101445-45");
   assert.equal(lastCallLine({ ...fill, call: null }), null);
+  assert.match(read("src/lib/desk/last-call-panel.ts"), /latest\?\.close_time \?\? null/);
 });
 
 test("both floors mount LastCallPanel and the measuring modal is dead", () => {
@@ -95,13 +96,17 @@ test("collapseWindowLog keeps fills open and collapses sit runs", () => {
   assert.match(datedClose("2026-09-17T22:00:00.000Z"), /Sep/);
 });
 
-test("Books page leads with the collapsed summary and dated missing closes", () => {
+test("Books page leads with one collapsed summary and dated missing closes", () => {
   const page = read("src/routes/books.tsx");
   const summary = read("src/components/desk/BooksRecentWindows.tsx");
+  const helper = read("src/lib/desk/books-window-log.ts");
+  const legacy = read("src/components/desk/BooksTab.tsx");
   assert.match(page, /BooksRecentWindows/);
-  assert.match(summary, /sat out ·/);
+  assert.match(summary, /sitRunLabel/);
+  assert.match(helper, /sat out ·/);
   assert.match(summary, /Show missing closes/);
   assert.match(summary, /datedClose/);
   assert.match(summary, /data-label="Close"/);
   assert.match(summary, />replay</);
+  assert.doesNotMatch(legacy, /id="books-windows"|windowRows|missingWindowsLine/);
 });
