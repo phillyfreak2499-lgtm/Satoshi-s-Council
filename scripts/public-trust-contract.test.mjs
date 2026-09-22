@@ -77,7 +77,10 @@ test("an empty Arena describes ranking eligibility instead of inventing inactivi
 
 test("Legal keeps a real contact path without inventing a mailbox", () => {
   const legal = read("src/routes/legal.tsx");
-  assert.match(legal, /Questions about the desk: post on the Board/);
+  assert.match(legal, /Questions about the desk stay on the Board/);
   assert.match(legal, /href="\/board"/);
+  assert.match(legal, /LEGAL, TRADEMARK or SECURITY/);
+  assert.match(legal, /hides that post after reading/);
+  assert.doesNotMatch(legal, /The desk has no mailbox/);
   assert.doesNotMatch(legal, /mailto:|@satoshiscouncil\.com|@gmail\.com/);
 });
