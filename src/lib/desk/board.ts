@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { cleanBoardBody } from "./public-room-view";
+import { cleanBoardBody, privateBoardContactKind } from "./public-room-view";
 import { assertPublicBoardWho } from "./system-events";
 
 export type BoardKind = "idea" | "feedback" | "update";
@@ -106,6 +106,8 @@ export const postBoard = createServerFn({ method: "POST" })
       systemUpdate = true;
     }
     assertPublicBoardWho(who, systemUpdate);
+    const privateContact = !parent && !systemUpdate ? privateBoardContactKind(body) : null;
+    const privateReason = privateContact ? `private contact: ${privateContact}` : null;
     const lean = clean(data.lean, 8);
     const ticker = clean(data.ticker, 48);
     const conf = Math.max(0, Math.min(100, Math.round(Number(data.conf) || 0)));
@@ -130,9 +132,16 @@ export const postBoard = createServerFn({ method: "POST" })
       conf: number;
       created_at: string | Date;
     }>`
-      insert into board (who, body, kind, parent_id, lean, ticker, conf)
-      values (${who}, ${body}, ${kind}, ${parent}, ${lean}, ${ticker}, ${conf})
-      returning id, who, body, kind, parent_id, lean, ticker, conf, created_at
+      with inserted as (
+        insert into board (who, body, kind, parent_id, lean, ticker, conf, hidden, moderation_reason)
+        values (${who}, ${body}, ${kind}, ${parent}, ${lean}, ${ticker}, ${conf}, ${privateContact != null}, ${privateReason})
+        returning id, who, body, kind, parent_id, lean, ticker, conf, created_at
+      ),
+      logged as (
+        insert into board_moderation_log (board_id, hidden, reason)
+        select id, true, ${privateReason} from inserted where ${privateContact != null}
+      )
+      select id, who, body, kind, parent_id, lean, ticker, conf, created_at from inserted
     `;
     return asPost(rows[0]!);
   });
