@@ -161,3 +161,13 @@ test("activation refuses partial state and manifest fingerprint drift without mu
     await assert.rejects(mod.verifyShadowManifests(sql), /fingerprint mismatch/);
   } finally { await pg.close(); }
 });
+
+
+test("observer keeps durable prospective start separate from process-session start and skips an in-flight market after restart", () => {
+  const src = codeOf("src/lib/desk/shadow-lab.server.ts");
+  assert.match(src, /activatedAt: number;[\s\S]*sessionStartedAt: number;/);
+  assert.match(src, /st\.activatedAt = durableStart;[\s\S]*st\.sessionStartedAt = Date\.now\(\);/);
+  assert.match(src, /const windowOpen = snap\.close_time - 15 \* 60_000;\s*if \(st\.sessionStartedAt > 0 && windowOpen < st\.sessionStartedAt\) return;/);
+  assert.match(src, /prospective_start: st\?\.activatedAt \? st\.activatedAt : null/);
+  assert.match(src, /session_start: st\?\.sessionStartedAt \? st\.sessionStartedAt : null/);
+});
