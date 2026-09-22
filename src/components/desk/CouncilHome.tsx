@@ -19,7 +19,7 @@ import { lastWindowFact } from "@/lib/desk/home-still";
 import "./hero-chip.css";
 
 /** The public introduction reads the same shared frame as the full desk. */
-export function CouncilHome({ last = null, books = null }: { last?: BooksWindow | null; books?: Books | null }) {
+export function CouncilHome({ last = null, books = null, fill = null }: { last?: BooksWindow | null; books?: Books | null; fill?: BooksWindow | null }) {
   const frame = useDesk();
   const { snap, chair } = frame;
   const ticking = useCountdownText(snap?.close_time ?? 0);
@@ -61,7 +61,7 @@ export function CouncilHome({ last = null, books = null }: { last?: BooksWindow 
             <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
             <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
           </div>
-          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
+          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} fill={fill} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
           {snap ? (
             <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot)}</dd></div><div><dt>Window closes in</dt><dd>{countdown}</dd></div></dl>
           ) : (

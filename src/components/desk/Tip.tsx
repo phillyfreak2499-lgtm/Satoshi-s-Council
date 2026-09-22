@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { beacon } from "@/lib/desk/beacon";
 import { createPortal } from "react-dom";
 import { glossOf } from "@/lib/desk/glossary";
+import { firstUseOf } from "@/lib/desk/first-use-gloss";
 import { cn } from "@/lib/utils";
 
 type Closer = () => void;
@@ -33,7 +34,7 @@ export function Tip({
   hoverOnly?: boolean;
   className?: string;
 }) {
-  const g = glossOf(k);
+  const g = glossOf(k) ?? firstUseOf(k);
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);

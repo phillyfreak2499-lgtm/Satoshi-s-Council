@@ -23,3 +23,11 @@ export const publicLastWindow = createServerFn({ method: "GET" }).handler(async 
   const { booksSummary } = await import("./books.server");
   return (await booksSummary()).last;
 });
+
+/** Newest graded window that booked a paper side. Skips sits. Read-only. */
+export const publicLastFill = createServerFn({ method: "GET" }).handler(async (): Promise<BooksWindow | null> => {
+  const engine = await import("./server-engine");
+  engine.ensureServerEngine();
+  const { lastFilledWindow } = await import("./last-fill.server");
+  return lastFilledWindow();
+});

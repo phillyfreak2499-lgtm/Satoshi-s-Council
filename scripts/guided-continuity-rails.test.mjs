@@ -22,7 +22,7 @@ const codeOf = (rel) =>
 
 const CONT = "src/lib/desk/guided-continuity.ts";
 const DOOR = "src/lib/desk/lab-front-door.ts";
-const GUIDED = "src/components/desk/GuidedFloor.tsx";
+const GUIDED = "src/components/desk/GuidedFloorView.tsx";
 const APP = "src/components/desk/DeskApp.tsx";
 const BEACON = "src/lib/desk/beacon.ts";
 
