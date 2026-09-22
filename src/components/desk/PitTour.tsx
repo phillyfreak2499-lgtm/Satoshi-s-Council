@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { markPitTourSeen } from "./prefs";
+import { ARENA_ACK } from "@/lib/desk/arena-gate";
 
 type PitStep = { target: "window" | "lock" | "pit" | "record"; title: string; body: string };
 
 const PIT_STEPS: PitStep[] = [
   {
     target: "window",
-    title: "One window at a time",
-    body: "This is the live Bitcoin 15-minute market on Kalshi. The clock counts down to the close. UP wins if the final minute's average price finishes above the strike; DOWN wins if it does not.",
+    title: "Paper only",
+    body: ARENA_ACK,
   },
   {
     target: "lock",

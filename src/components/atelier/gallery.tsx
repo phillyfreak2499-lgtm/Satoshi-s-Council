@@ -347,7 +347,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
       <div className="atelier-spot" />
       <header className="atelier-mast">
         <div className="atelier-mark">
-          Signal Gallery <span className="atelier-mark-rest">· SATOSHI</span>
+          Gallery <span className="atelier-mark-rest">· SATOSHI</span>
         </div>
         <div className="atelier-live" aria-live="polite">
           <span className="atelier-live-word">{word}</span>

@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PitTour } from "./PitTour";
 import { pitTourSeen } from "./prefs";
+import { ARENA_ACK, KALSHI_NONAFFILIATION } from "@/lib/desk/arena-gate";
 
 const POLL_MS = 4_000;
 const JITTER_MS = 300;
@@ -110,6 +111,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
   const [shared, setShared] = useState<string | null>(null);
   const [tourOn, setTourOn] = useState(false);
   const [tourStep, setTourStep] = useState(0);
+  const [acked, setAcked] = useState(false);
 
   const startTour = () => {
     setTourStep(0);
@@ -282,7 +284,10 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
           {w ? (
             <>
               <div className="flex items-baseline justify-between gap-2 font-mono">
-                <span className="truncate text-ui text-fg">{w.ticker}</span>
+                <span className="min-w-0">
+                  <span className="truncate text-ui text-fg">{w.ticker}</span>
+                  <span className="mt-0.5 block font-mono text-micro text-subtle">{KALSHI_NONAFFILIATION}</span>
+                </span>
                 <span className="text-ui tabular text-muted">
                   mid{" "}
                   <span className="text-fg">{w.mid == null ? "—" : `${w.mid.toFixed(1)}¢`}</span>
@@ -327,6 +332,10 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
               className="grid gap-2 rounded-md border border-border bg-surface p-3"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (!acked) {
+                  setErr("acknowledge the paper rules before you enter");
+                  return;
+                }
                 const v = draft.trim().replace(/\s+/g, " ");
                 // A faster no; the server's guard is the law on every lock.
                 if (isBlocked(v)) setErr(CALLSIGN_REJECT);
@@ -352,9 +361,19 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
                 placeholder="2–16 letters or digits"
                 className="min-h-12 rounded-sm border border-border bg-bg px-3 font-mono text-ui text-fg"
               />
+              <label className="flex items-start gap-2 font-sans text-ui leading-snug text-fg">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4 shrink-0"
+                  checked={acked}
+                  onChange={(e) => setAcked(e.target.checked)}
+                />
+                <span>{ARENA_ACK}</span>
+              </label>
               <button
                 type="submit"
-                className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip"
+                disabled={!acked}
+                className="min-h-12 rounded-sm bg-fg px-4 font-mono text-ui font-medium text-bg hover:bg-chip disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Enter the Arena
               </button>
