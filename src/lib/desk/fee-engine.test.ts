@@ -23,6 +23,9 @@ test("whole-cent boundaries: 2¢ through 82¢, 1¢ from 83¢, and the engine equ
   // The boundary: 7 · 0.82 · 0.18 = 1.0332 → 2¢; 7 · 0.83 · 0.17 = 0.9877 → 1¢.
   assert.equal(feeCents(82), 2);
   assert.equal(feeCents(83), 1);
+  // With deci-cent venue quotes the true formula boundary sits between whole cents.
+  assert.equal(feeCents(82.7), 2);
+  assert.equal(feeCents(82.8), 1);
 });
 
 test("unreal asks are rejected rather than priced", () => {
