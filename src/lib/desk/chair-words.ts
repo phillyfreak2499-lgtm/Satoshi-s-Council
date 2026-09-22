@@ -9,6 +9,9 @@ import { CHAIR_MIN_ASK_CENTS, type BookState } from "./book-floor.ts";
 const seats = (n: number) => `${n} seat${n === 1 ? "" : "s"}`;
 const sideOf = (lean: "UP" | "DOWN") => (lean === "UP" ? "YES" : "NO");
 
+/** Deliberate sit. Used when the Chair waited on purpose, not because a feed failed. */
+export const SIT_IS_THE_CALL = "The evidence does not clear the bar. Sitting this window is the call.";
+
 export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): string {
   const up = chair.quorum?.up ?? 0;
   const down = chair.quorum?.down ?? 0;
@@ -36,7 +39,7 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
   }
 
   if (up + down === 0) {
-    return "WAIT is the call. No seat has a directional read strong enough to speak, so nothing is booked. That is not an outage.";
+    return SIT_IS_THE_CALL;
   }
   const tally = `${seats(up)} lean UP and ${seats(down)} lean DOWN`;
   const fail = chair.gates.find((g) => g.hard && !g.pass);
@@ -67,6 +70,6 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
     case "law":
       return `${tally}, but the desk is in lockdown after a run of misses, so it waits.`;
     default:
-      return `${tally}. The score does not clear the bar, so the desk waits.`;
+      return `${tally}. The evidence does not clear the bar, so the desk waits. Sitting this window is the call.`;
   }
 }
