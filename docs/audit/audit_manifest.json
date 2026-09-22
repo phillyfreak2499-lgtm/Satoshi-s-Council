@@ -1,17 +1,43 @@
 {
   "version": "AUDIT_MANIFEST_V1",
   "as_of": "2026-09-22T00:00:00Z",
-  "read_bound": { "from": "2026-09-05T12:45:00Z", "to": "2026-09-22T00:00:00Z" },
+  "read_bound": {
+    "from": "2026-09-05T12:45:00Z",
+    "to": "2026-09-22T00:00:00Z"
+  },
   "source_sha": "11fab5b5bc73020941fd05fee04eed2174314d28",
-  "deployed_build_sha": { "value": "11fab5b5bc73020941fd05fee04eed2174314d28", "evidence": "desk_seat_reads.build_sha latest row 2026-09-22T01:40:33Z", "class": "DB_VERIFIED" },
-  "reported_reconstruction": { "branch": "claude/satoshis-council-audit-9zffy6", "document": "docs/QUANT_AUDIT_2026-09-22.md", "sha": "7972372dfa5ccee9d2242b159affadb8c88c75fc", "class": "cited, not a second live book" },
-  "policy": { "champion": "FLOOR_SELECTIVE_V3", "entry_policy": "ENTRY_SELECTIVE_V3", "champion_since": "2026-09-17T12:20:28Z", "deployed_min_speaking": 2, "owner_reference_min_speaking": 3, "mismatch": "deployed 2-of-2 vs owner-stated 3-of-2; production unchanged pending approval" },
+  "deployed_build_sha": {
+    "value": "11fab5b5bc73020941fd05fee04eed2174314d28",
+    "evidence": "desk_seat_reads.build_sha latest row 2026-09-22T01:40:33Z",
+    "class": "DB_VERIFIED"
+  },
+  "reported_reconstruction": {
+    "branch": "claude/satoshis-council-audit-9zffy6",
+    "document": "docs/QUANT_AUDIT_2026-09-22.md",
+    "sha": "7972372dfa5ccee9d2242b159affadb8c88c75fc",
+    "class": "cited, not a second live book"
+  },
+  "policy": {
+    "champion": "FLOOR_SELECTIVE_V3",
+    "entry_policy": "ENTRY_SELECTIVE_V3",
+    "champion_since": "2026-09-17T12:20:28Z",
+    "deployed_min_speaking": 2,
+    "owner_reference_min_speaking": 3,
+    "mismatch": "deployed 2-of-2 vs owner-stated 3-of-2; production unchanged pending approval"
+  },
   "engines": {
-    "fee": { "id": "KALSHI_TAKER_7PCT_CEIL_CENT_V1", "fingerprint": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED", "provenance": "ASSUMED" },
+    "fee": {
+      "id": "KALSHI_TAKER_7PCT_CEIL_CENT_V1",
+      "fingerprint": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
+      "provenance": "ASSUMED"
+    },
     "economics_book": "ECONOMICS_BOOK_V1",
     "reconcile": "RECONCILE_BOOK_V1",
     "mid_review": "MID_ENTRY_REVIEW_V1",
-    "shadow_lab": "SHADOW_LAB_V1"
+    "shadow_lab": "SHADOW_LAB_V1",
+    "market_baseline": "MARKET_BASELINE (market-baseline.ts)",
+    "trial_decomposition": "TRIAL_DECOMPOSITION_V1",
+    "evidence_strength": "evidence-strength.ts (Wilson 95%, minN 10, small_n < 20)"
   },
   "queries": {
     "ledger_read": "economics-book.server.ts LEDGER_QUERY (sha256 printed by npm run reconcile:book)",
@@ -25,22 +51,96 @@
     "books_floor": "close_time >= 2026-09-08T20:47:00Z (70c floor)",
     "books_all": "everything <= as_of (pools A0 legacy rows; reported apart)",
     "recap_week": "Chicago days yesterday-6 .. yesterday",
-    "eras": ["A0_pre_floor", "A1_floor70", "B_floor80_trial", "C1_selective_v1v2", "C2_selective_v3"]
+    "eras": [
+      "A0_pre_floor",
+      "A1_floor70",
+      "B_floor80_trial",
+      "C1_selective_v1v2",
+      "C2_selective_v3"
+    ]
   },
-  "train_test_provenance": { "historical_split": "none; no September 1 split exists", "backdating": "none", "training_cutoff": null },
+  "train_test_provenance": {
+    "historical_split": "none; no September 1 split exists",
+    "backdating": "none",
+    "training_cutoff": null
+  },
   "experiments": {
-    "UNMUTE_DEDUP_SHELF_V1": { "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|1568deb2|8arms", "status": "CANDIDATE", "collecting": false, "prospective_start_at": null, "prospective_fills": 0 },
-    "WARDEN_JUMP_VETO_V1": { "fingerprint": "WARDEN_JUMP_VETO_V1|v1|4b54b5e5|5arms", "status": "CANDIDATE", "collecting": false, "prospective_start_at": null, "prospective_fills": 0 },
-    "SETTLE_BASIS_MEASURED_V1": { "fingerprint": "SETTLE_BASIS_MEASURED_V1|v1|8e3cf22a|4arms", "status": "CANDIDATE", "collecting": false, "prospective_start_at": null, "prospective_fills": 0 }
+    "UNMUTE_DEDUP_SHELF_V1": {
+      "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|1568deb2|8arms",
+      "status": "CANDIDATE",
+      "collecting": false,
+      "prospective_start_at": null,
+      "prospective_fills": 0
+    },
+    "WARDEN_JUMP_VETO_V1": {
+      "fingerprint": "WARDEN_JUMP_VETO_V1|v1|4b54b5e5|5arms",
+      "status": "CANDIDATE",
+      "collecting": false,
+      "prospective_start_at": null,
+      "prospective_fills": 0
+    },
+    "SETTLE_BASIS_MEASURED_V1": {
+      "fingerprint": "SETTLE_BASIS_MEASURED_V1|v1|8e3cf22a|4arms",
+      "status": "CANDIDATE",
+      "collecting": false,
+      "prospective_start_at": null,
+      "prospective_fills": 0
+    },
+    "MIRROR_35_V1": {
+      "fingerprint": "MIRROR_35_V1|v1|dfbc2bad|3arms",
+      "status": "CANDIDATE_NOT_COLLECTING",
+      "collecting": false,
+      "prospective_start_at": null,
+      "prospective_fills": 0,
+      "counts_against_cap": false
+    }
   },
   "production_behaviour_change": "none",
   "approval_required_activations": [
     "set SEAT_REVIEW_DEMOTION_FROZEN = true (learner.ts)",
+    "set SHADOW_LAB_ENABLED=true in the Render environment and move a manifest to SHADOW with prospective_start_at=now()",
     "apply migration 0057_desk_shadow_lab.sql",
-    "import ensureShadowLabObserver in server/routes/healthz.get.ts and set SHADOW_LAB_ENABLED=true",
     "widen SCORE_AUDIT_SKILLS to every directional card",
-    "persist seat review / huddle status transitions to desk_system_events",
-    "any change to min_speaking (2 vs 3)"
+    "any change to min_speaking (2 vs 3)",
+    "apply migration 0058_desk_shadow_manifest_candidate_not_collecting.sql (with 0057)"
   ],
-  "classification_legend": ["DB_VERIFIED", "SOURCE_VERIFIED", "DERIVED", "SOURCE_REPORTED", "ASSUMED", "UNKNOWN"]
+  "classification_legend": [
+    "DB_VERIFIED",
+    "SOURCE_VERIFIED",
+    "DERIVED",
+    "SOURCE_REPORTED",
+    "ASSUMED",
+    "UNKNOWN"
+  ],
+  "reconciliation_pass": {
+    "branch": "claude/audit-reconcile-external-20260922",
+    "document": "docs/EXTERNAL_AUDIT_RECONCILIATION_2026-09-22.md",
+    "machine": "docs/audit/external_reconciliation.json",
+    "split_for_reproduction": "2026-09-14T12:00:00Z",
+    "baseline_label": "MARKET_BASELINE",
+    "replay_windows": 1362,
+    "replay_windows_complete": 1176
+  },
+  "shadow_cap": {
+    "max_active": 3,
+    "active_now": 0
+  },
+  "measurement_activated_2026-09-22": [
+    "shadow-lab observer wired in server/routes/healthz.get.ts; env-gated SHADOW_LAB_ENABLED (unset \u2192 disabled)",
+    "skill-status transition log: queueStatusTransitions in server-engine.ts around reviewSeats/runHuddle; drainer status-transitions.server.ts kicked from healthz (kill switch SKILL_STATUS_LOG_DISABLED)",
+    "migration 0058_desk_shadow_manifest_candidate_not_collecting.sql (additive)"
+  ],
+  "separate_optional_commit": {
+    "branch": "claude/seat-review-freeze-optional-20260922",
+    "change": "SEAT_REVIEW_DEMOTION_FROZEN = true (learner.ts), one line",
+    "in_primary_pr": false
+  },
+  "artifacts_2026-09-22": {
+    "ledger_190": "docs/audit/ledger_190_rows_2026-09-22.csv",
+    "trial_shadow_only": "docs/audit/trial_shadow70_only_rows_2026-09-22.csv",
+    "market_baseline": "docs/audit/market_baseline_2026-09-22.json",
+    "seat_review_snapshot": "docs/audit/seat_review_snapshot_2026-09-22.json",
+    "vote_correlation": "docs/audit/vote_correlation_2026-09-22.csv",
+    "wilson_small_n": "docs/audit/wilson_small_n_2026-09-22.csv"
+  }
 }

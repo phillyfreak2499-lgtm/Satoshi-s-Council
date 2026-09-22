@@ -7,8 +7,8 @@
  */
 import { SELECTIVE_ENTRY_ID, ENTRY_SELECTIVE_V3, fingerprint } from "./floor-policy.ts";
 import { COMPONENT_MIN, ECONOMIC } from "./promotion-gates.ts";
-import { E1_ROSTER_CARDS, JUMP_VETO, NULL_FAV_SCHEDULE_SECS, SETTLE_BASIS_CANDIDATES_BPS, SETTLE_BASIS_ROLE } from "./shadow-arms.ts";
-import { SHADOW_FEE_FINGERPRINT, SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, SHADOW_LAB_VERSION, SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, SHADOW_OPERATOR_ALERT_DD_CENTS, manifestFingerprint, type ShadowManifest } from "./shadow-lab.ts";
+import { E1_ROSTER_CARDS, JUMP_VETO, MIRROR35, NULL_FAV_SCHEDULE_SECS, SETTLE_BASIS_CANDIDATES_BPS, SETTLE_BASIS_ROLE } from "./shadow-arms.ts";
+import { SHADOW_FEE_FINGERPRINT, SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, SHADOW_LAB_VERSION, SHADOW_MAX_ACTIVE, SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, SHADOW_OPERATOR_ALERT_DD_CENTS, countsAgainstCap, manifestFingerprint, type ShadowManifest } from "./shadow-lab.ts";
 
 const FROZEN_AT = "2026-09-22T06:00:00.000Z";
 const SOURCE_SHA = "11fab5b5bc73020941fd05fee04eed2174314d28";
@@ -84,7 +84,42 @@ export const E3_SETTLE_BASIS_MEASURED_V1: ShadowManifest = freeze({
   authority: "none",
 });
 
-export const SHADOW_MANIFESTS: readonly ShadowManifest[] = Object.freeze([E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1]);
+/**
+ * MIRROR-35 (external hypothesis, 2026-09-22): the fourth hypothesis. The lab
+ * caps collection at three, so it is registered CANDIDATE_NOT_COLLECTING and
+ * takes a slot only if an owner retires one of E1–E3 with a documented reason.
+ * Its historical +2.4¢/fill came from a ~60-cell price/time search and is
+ * discovery-biased; the internal replay reproduction flips sign out of sample
+ * (train +1.89¢/fill, test −0.60¢/fill; docs/SHADOW_EXPERIMENTS_2026-09-22.md).
+ */
+export const E4_MIRROR_35_V1: ShadowManifest = freeze({
+  version: SHADOW_LAB_VERSION, id: "MIRROR_35_V1", experiment_version: 1, status: "CANDIDATE_NOT_COLLECTING", frozen_at: "2026-09-22T12:00:00.000Z", prospective_start_at: null,
+  hypothesis: "A first-touch buy of the cheap side at an ask in [30, 45) between T−5 and T−2, held to settlement at the real ask with the applicable fee, has positive after-fee net out of sample.",
+  fingerprints: { fee: SHADOW_FEE_FINGERPRINT, policy: POLICY, model: "none (price rule)", roster: "none", source_sha: SOURCE_SHA },
+  arms: [
+    { id: "MIRROR_35", role: "candidate", description: `cheap side ask in [${MIRROR35.lo_cents}, ${MIRROR35.hi_cents}), first touch only, T−${MIRROR35.hi_secs}s..T−${MIRROR35.lo_secs}s, one fill per window, HOLD`, decision_schedule_secs: [MIRROR35.hi_secs, MIRROR35.lo_secs], params: { lo_cents: MIRROR35.lo_cents, hi_cents: MIRROR35.hi_cents, lo_secs: MIRROR35.lo_secs, hi_secs: MIRROR35.hi_secs, discovery_cells_searched: MIRROR35.discovery_cells_searched }, promotable: true },
+    { id: "NO_TRADE", role: "control", description: "sit: net 0 on every window (the cheap side's benchmark is not trading it)", decision_schedule_secs: [], params: {}, promotable: false },
+    { id: "MIRROR_35_EXEC", role: "secondary", description: "same signal priced at the hypothetical executable quote (+1 s ask when resting size ≥ 1, else no fill)", decision_schedule_secs: [MIRROR35.hi_secs, MIRROR35.lo_secs], params: { slippage_model: "next_observed_ask" }, promotable: false },
+  ],
+  primary_contrast: { candidate: "MIRROR_35", control: "NO_TRADE", metric: "paired_net_per_100_windows_and_per_week" },
+  secondary_contrasts: [{ candidate: "MIRROR_35_EXEC", control: "NO_TRADE", label: "executable quote" }],
+  eligible_population: "every window with an official result after activation; fields: signal timestamp, side, signal ask, bid, size at ask, next observed ask, +1/+2/+5/+60 s asks where available, hypothetical execution price, settlement, fee, pnl, slippage, quote disappearance",
+  training_cutoff: null, pairing: "window",
+  latency_assumption: "signal quote vs executable quote recorded separately; missing sub-second resolution = UNKNOWN, never a fill",
+  size: { contracts: 1 }, risk, gates, multiplicity: { method: "bonferroni", contrasts: 2 },
+  kill_criteria: ["futility at 150 qualified fills: mean net ≤ 0 benches", "drawdown ≤ −258¢ invalidates", "positive only at a cell not in the frozen definition", "any production Chair fill authorised by this arm invalidates the specimen"],
+  authority: "none",
+});
+
+export const SHADOW_MANIFESTS: readonly ShadowManifest[] = Object.freeze([E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1]);
+
+/** The three-active rule, checked over the registry. */
+export function activeShadowCount(manifests: readonly ShadowManifest[] = SHADOW_MANIFESTS): number {
+  return manifests.filter((m) => countsAgainstCap(m.status)).length;
+}
+export function capRespected(manifests: readonly ShadowManifest[] = SHADOW_MANIFESTS): boolean {
+  return activeShadowCount(manifests) <= SHADOW_MAX_ACTIVE;
+}
 
 export function manifestById(id: string): ShadowManifest | null {
   return SHADOW_MANIFESTS.find((m) => m.id === id) ?? null;

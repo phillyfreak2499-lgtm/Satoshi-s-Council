@@ -53,6 +53,9 @@ test("no decision-path module imports the system-event writer in Phase 1A", () =
     "chamber-wait.server.ts",
     "chamber-sweep.server.ts",
     "chamber-speech.ts",
+    // Healthz-kicked drainer of the engine's in-memory skill-status transition
+    // buffer (status-transitions.ts is pure; the engine never imports this file).
+    "status-transitions.server.ts",
   ]);
   for (const name of files) {
     if (allowed.has(name)) continue;

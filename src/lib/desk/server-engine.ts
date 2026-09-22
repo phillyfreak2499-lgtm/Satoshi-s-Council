@@ -26,6 +26,7 @@ import {
   windowsHuddleDue,
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
+import { queueStatusTransitions, skillStatusSnapshot } from "./status-transitions";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
 import {
@@ -1070,7 +1071,10 @@ async function applyGrade(
     e.learner = gr.learner;
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
     settleAll(e.learner, finish);
+    // Telemetry only: card statuses before/after the seat review, as append-only events.
+    const statusesBeforeReview = skillStatusSnapshot(e.learner);
     reviewSeats(e.learner);
+    queueStatusTransitions(statusesBeforeReview, skillStatusSnapshot(e.learner), "reviewSeats");
     if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   } else {
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
@@ -1155,7 +1159,7 @@ async function applyGrade(
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
   });
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
-    e.learner = runHuddle(e.learner).learner;
+    { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
   }
   e.learner.window_memory.entry_spot = 0;
   // This is the durability boundary for the learner claim and ledger outbox.
@@ -1383,7 +1387,7 @@ async function tick(e: Eng) {
   try {
     void maybeDigest(e);
     if (chicagoHuddleDue(e.learner.last_huddle)) {
-      e.learner = runHuddle(e.learner).learner;
+      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
     }
     const snap = await liveSnap(e);
     if (!e.learner.window_memory.entry_spot) e.learner.window_memory.entry_spot = snap.spot;
@@ -2227,7 +2231,7 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
       e.lastCall = null;
       break;
     case "huddle":
-      e.learner = runHuddle(e.learner).learner;
+      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
       break;
     case "accept_candidate":
       e.learner = acceptCandidate(e.learner);

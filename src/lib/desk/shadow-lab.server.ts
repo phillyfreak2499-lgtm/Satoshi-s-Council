@@ -1,10 +1,13 @@
 /**
  * Shadow-lab observer and receipt writer (server only).
  *
- * NOT WIRED. `ensureShadowLabObserver` is exported but imported by nothing;
- * adding it to server/routes/healthz.get.ts is the owner-approved activation
- * step (docs/ACTIVATION_ROLLBACK_2026-09-22.md). Even when wired it refuses to
- * run unless SHADOW_LAB_ENABLED=true, so a deploy alone cannot start collection.
+ * WIRED, ENV-GATED, DEFAULT OFF. server/routes/healthz.get.ts kicks
+ * `ensureShadowLabObserver` beside the other observers, but it returns
+ * "disabled" unless SHADOW_LAB_ENABLED=true, so a deploy alone cannot start
+ * collection (docs/ACTIVATION_ROLLBACK_2026-09-22.md, docs/SHADOW_EXPERIMENTS_2026-09-22.md).
+ * The tick reads a structuredClone of the engine frame and catches every
+ * error into its own health record; a failing database, frame or arm can
+ * never reach the Chair, the gate or the paper book (scripts/audit-reconcile-rails.test.mjs).
  *
  * WHAT IT WRITES. Only desk_shadow_receipts and desk_shadow_manifests, both
  * append-only through primary-key ON CONFLICT DO NOTHING; a settle sweep fills

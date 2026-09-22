@@ -1,0 +1,100 @@
+{
+  "fingerprint": "MIRROR_35_V1|v1|dfbc2bad|3arms",
+  "version": "SHADOW_LAB_V1",
+  "id": "MIRROR_35_V1",
+  "experiment_version": 1,
+  "status": "CANDIDATE_NOT_COLLECTING",
+  "frozen_at": "2026-09-22T12:00:00.000Z",
+  "prospective_start_at": null,
+  "hypothesis": "A first-touch buy of the cheap side at an ask in [30, 45) between T−5 and T−2, held to settlement at the real ask with the applicable fee, has positive after-fee net out of sample.",
+  "fingerprints": {
+    "fee": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
+    "policy": "ENTRY_SELECTIVE_V3|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
+    "model": "none (price rule)",
+    "roster": "none",
+    "source_sha": "11fab5b5bc73020941fd05fee04eed2174314d28"
+  },
+  "arms": [
+    {
+      "id": "MIRROR_35",
+      "role": "candidate",
+      "description": "cheap side ask in [30, 45), first touch only, T−300s..T−120s, one fill per window, HOLD",
+      "decision_schedule_secs": [
+        300,
+        120
+      ],
+      "params": {
+        "lo_cents": 30,
+        "hi_cents": 45,
+        "lo_secs": 120,
+        "hi_secs": 300,
+        "discovery_cells_searched": 60
+      },
+      "promotable": true
+    },
+    {
+      "id": "NO_TRADE",
+      "role": "control",
+      "description": "sit: net 0 on every window (the cheap side's benchmark is not trading it)",
+      "decision_schedule_secs": [],
+      "params": {},
+      "promotable": false
+    },
+    {
+      "id": "MIRROR_35_EXEC",
+      "role": "secondary",
+      "description": "same signal priced at the hypothetical executable quote (+1 s ask when resting size ≥ 1, else no fill)",
+      "decision_schedule_secs": [
+        300,
+        120
+      ],
+      "params": {
+        "slippage_model": "next_observed_ask"
+      },
+      "promotable": false
+    }
+  ],
+  "primary_contrast": {
+    "candidate": "MIRROR_35",
+    "control": "NO_TRADE",
+    "metric": "paired_net_per_100_windows_and_per_week"
+  },
+  "secondary_contrasts": [
+    {
+      "candidate": "MIRROR_35_EXEC",
+      "control": "NO_TRADE",
+      "label": "executable quote"
+    }
+  ],
+  "eligible_population": "every window with an official result after activation; fields: signal timestamp, side, signal ask, bid, size at ask, next observed ask, +1/+2/+5/+60 s asks where available, hypothetical execution price, settlement, fee, pnl, slippage, quote disappearance",
+  "training_cutoff": null,
+  "pairing": "window",
+  "latency_assumption": "signal quote vs executable quote recorded separately; missing sub-second resolution = UNKNOWN, never a fill",
+  "size": {
+    "contracts": 1
+  },
+  "risk": {
+    "hard_dd_stop_cents": -258,
+    "max_dd_worse_than_control_cents": 50,
+    "operator_alert_dd_cents": -150
+  },
+  "gates": {
+    "min_fills": 250,
+    "min_days": 30,
+    "min_paired_control_losses": 25,
+    "futility_look_fills": 150,
+    "min_paired_delta_cents": 1,
+    "confidence": 0.95
+  },
+  "multiplicity": {
+    "method": "bonferroni",
+    "contrasts": 2
+  },
+  "kill_criteria": [
+    "futility at 150 qualified fills: mean net ≤ 0 benches",
+    "drawdown ≤ −258¢ invalidates",
+    "positive only at a cell not in the frozen definition",
+    "any production Chair fill authorised by this arm invalidates the specimen"
+  ],
+  "authority": "none"
+}

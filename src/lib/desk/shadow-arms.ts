@@ -145,3 +145,46 @@ export function edgeUnderBasis(snap: Pick<Snapshot, "spot" | "strike" | "atr" | 
   if (!realAskCents(ask)) return NaN;
   return (side === "UP" ? fair : 100 - fair) - ask - feeCents(ask, engine);
 }
+
+// ---------------------------------------------------------------------------
+// MIRROR-35 — the cheap-side first touch (external hypothesis), CANDIDATE only.
+// ---------------------------------------------------------------------------
+
+export const MIRROR35 = Object.freeze({ lo_cents: 30, hi_cents: 45, lo_secs: 120, hi_secs: 300, discovery_cells_searched: 60 });
+
+export type Mirror35Intention = Intention & {
+  /** The quote the signal saw. */
+  signal_ask: number;
+  /** The quote a taker would pay on the observed book: the same ask when it is resting, else null (UNKNOWN). */
+  hypothetical_exec_ask: number | null;
+  bid_cents: number;
+  first_touch: true;
+};
+
+/**
+ * First touch only: the first tick inside T−5..T−2 where either side's ask is
+ * in [30, 45). `seen` holds windows already touched so a second tick can never
+ * produce a second intention. Depth and the +1/+2/+5/+60 s asks are recorded
+ * by the observer after the fact; they never change the intention.
+ */
+export function mirror35Intention(snap: Snapshot, seen: Set<string>, engine: FeeEngineId = DEFAULT_FEE_ENGINE): Mirror35Intention | null {
+  const key = `${snap.ticker}|${snap.close_time}`;
+  if (seen.has(key)) return null;
+  const secs = (snap.close_time - snap.as_of) / 1000;
+  if (!(secs >= MIRROR35.lo_secs && secs <= MIRROR35.hi_secs)) return null;
+  const cands: Array<{ side: "UP" | "DOWN"; ask: number; bid: number; size: number }> = [
+    { side: "UP", ask: snap.yes_ask, bid: snap.yes_bid, size: snap.no_bid_size },
+    { side: "DOWN", ask: snap.no_ask, bid: snap.no_bid, size: snap.yes_bid_size },
+  ];
+  for (const c of cands) {
+    if (!realAskCents(c.ask) || c.ask < MIRROR35.lo_cents || c.ask >= MIRROR35.hi_cents) continue;
+    seen.add(key);
+    const ok = feedsFresh(snap);
+    return {
+      side: c.side, ask_cents: c.ask, fee_cents: feeCents(c.ask, engine), size_at_ask: Number.isFinite(c.size) ? c.size : 0,
+      spread_cents: Number.isFinite(c.bid) ? c.ask - c.bid : NaN, feeds_ok: ok, secs_left: secs,
+      signal_ask: c.ask, hypothetical_exec_ask: Number.isFinite(c.size) && c.size >= 1 ? c.ask : null, bid_cents: c.bid, first_touch: true,
+    };
+  }
+  return null;
+}

@@ -64,3 +64,37 @@ ledger only.
 supported incremental net vs the current Chair + HOLD on the same universe AND
 the registered primary benchmark AND drawdown/tail gates. Insufficient is not
 a pass. One futility look at 150 qualified fills may bench, never promote.
+
+## Added 2026-09-22 — external reconciliation
+
+- **MARKET_BASELINE**: a summary produced by a blind quote-path rule
+  (`market-baseline.ts`: first touch, cheap first touch, jump chase, late band,
+  Brier by horizon). It carries `kind: "MARKET_BASELINE"` and is never a Chair
+  backtest; `assertBaseline` and a rail keep the label. Split for train/test
+  reproduction: `2026-09-14T12:00:00Z`.
+- **Matched control**: for a booked fill, every unselected window whose
+  favourite ask at the same seconds-left (±45 s) is within ±2¢; pooled, so
+  control counts are not independent windows.
+- **Trial decomposition** (`trial-decomposition.ts`): live − shadow =
+  A (price + fee on shared fills) + B (lower-floor-only fills avoided) +
+  C (settlement/accounting) + D (fee engine); must sum exactly.
+- **Fee for C contracts**: `ceil_to_cent(0.07 · C · P · (1 − P))` per order;
+  the one-contract book uses C = 1. Provenance ASSUMED until the schedule is
+  fetched (`FEE_PROVENANCE`).
+- **Price precision**: whole cents on every stored surface; 0.1¢ ticks exist
+  below 10¢ and at/above 90¢; a stored ask in those bands is ±0.5¢ UNKNOWN.
+- **Evidence strength** (`evidence-strength.ts`): point WR, Wilson 95% lower
+  bound, needed WR at the actual booked ask; labels INSUFFICIENT_N (< 10),
+  LOWER_BOUND_CLEARS_NEED, PROMISING_INSUFFICIENT, BELOW_NEED; `small_n` flags
+  n < 20. A card with no booked ask has its need UNPRICED.
+- **Chalk-adjusted WAIT**: WAIT rate excluding windows already ≥ 99¢ on a side
+  at the checkpoint; always published beside the raw rate, never instead.
+- **Vote correlation** (`vote-correlation.ts`): pairs on identical timestamps
+  only; phi from the 2×2 of directional reads (undefined when a cell is
+  empty), directional agreement excluding WAIT, raw agreement including WAIT,
+  and both-heard-same-side as the quorum co-contribution count.
+- **Counterfactual telemetry** (`counterfactuals.ts`): a cap or gate variant is
+  recorded beside what the desk did; the oracle ceiling reads official results
+  and is evaluation-only (rail: no decision module imports it).
+- **Skill-status transition**: one insert-once system event per (card, from,
+  to, ms), queued by the engine and drained beside it; authority none.
