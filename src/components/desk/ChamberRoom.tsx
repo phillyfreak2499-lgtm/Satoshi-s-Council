@@ -98,7 +98,7 @@ function compactRepeatedWaits(exchanges: Exchange[]): Exchange[] {
   for (const exchange of exchanges) {
     const fingerprint = waitFingerprint(exchange);
     const previous = compact[compact.length - 1];
-    if (fingerprint && previous && waitFingerprint(previous) === fingerprint) {
+    if (fingerprint && previous && waitFingerprint(previous) != null) {
       previous.repeats = [...(previous.repeats ?? []), exchange];
     } else {
       compact.push({ ...exchange });
