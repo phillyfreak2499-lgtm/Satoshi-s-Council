@@ -1,0 +1,129 @@
+{
+  "fingerprint": "WARDEN_JUMP_VETO_V1|v1|4b54b5e5|5arms",
+  "version": "SHADOW_LAB_V1",
+  "id": "WARDEN_JUMP_VETO_V1",
+  "experiment_version": 1,
+  "status": "CANDIDATE",
+  "frozen_at": "2026-09-22T06:00:00.000Z",
+  "prospective_start_at": null,
+  "hypothesis": "A fixed cooldown after a qualifying ask shock improves net on opportunities the frozen base policy would actually book.",
+  "fingerprints": {
+    "fee": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
+    "policy": "ENTRY_SELECTIVE_V3|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
+    "model": "none",
+    "roster": "base = E1 PKG_85 intention stream",
+    "source_sha": "11fab5b5bc73020941fd05fee04eed2174314d28"
+  },
+  "arms": [
+    {
+      "id": "BASE_NO_VETO",
+      "role": "control",
+      "description": "the frozen base policy (E1 PKG_85) without any cooldown",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {},
+      "promotable": false
+    },
+    {
+      "id": "VETO_8S",
+      "role": "candidate",
+      "description": "8 s cooldown after |Δask| ≥ 2¢ on either side; re-entry only through the base schedule with new inputs",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "threshold_cents": 2,
+        "cooldown_ms": 8000
+      },
+      "promotable": true
+    },
+    {
+      "id": "VETO_15S",
+      "role": "secondary",
+      "description": "15 s cooldown sensitivity",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "threshold_cents": 2,
+        "cooldown_ms": 15000
+      },
+      "promotable": false
+    },
+    {
+      "id": "VETO_30S",
+      "role": "secondary",
+      "description": "30 s cooldown sensitivity",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "threshold_cents": 2,
+        "cooldown_ms": 30000
+      },
+      "promotable": false
+    },
+    {
+      "id": "CURRENT_CHAIR",
+      "role": "reference",
+      "description": "the production Chair's qualified entries (≈0): reported separately; no benefit is claimed from the shock population",
+      "decision_schedule_secs": [],
+      "params": {},
+      "promotable": false
+    }
+  ],
+  "primary_contrast": {
+    "candidate": "VETO_8S",
+    "control": "BASE_NO_VETO",
+    "metric": "paired_net_per_100_windows_and_per_week"
+  },
+  "secondary_contrasts": [
+    {
+      "candidate": "VETO_15S",
+      "control": "BASE_NO_VETO",
+      "label": "15 s"
+    },
+    {
+      "candidate": "VETO_30S",
+      "control": "BASE_NO_VETO",
+      "label": "30 s"
+    }
+  ],
+  "eligible_population": "windows where BASE_NO_VETO had an intention; shocks scored one first-opportunity per window; feed-flap annotations kept apart",
+  "training_cutoff": null,
+  "pairing": "window",
+  "latency_assumption": "shock time from the lag capture's receipt clock; a veto is never a fill; delayed replacement entries are counted",
+  "size": {
+    "contracts": 1
+  },
+  "risk": {
+    "hard_dd_stop_cents": -258,
+    "max_dd_worse_than_control_cents": 50,
+    "operator_alert_dd_cents": -150
+  },
+  "gates": {
+    "min_fills": 250,
+    "min_days": 30,
+    "min_paired_control_losses": 25,
+    "futility_look_fills": 150,
+    "min_paired_delta_cents": 1,
+    "confidence": 0.95
+  },
+  "multiplicity": {
+    "method": "bonferroni",
+    "contrasts": 3
+  },
+  "kill_criteria": [
+    "the vetoed subset is economically beneficial",
+    "adjusted strategy net deteriorates",
+    "the only positive slice disappears",
+    "timestamp resolution insufficient for the mechanism",
+    "frozen risk or integrity gates fail"
+  ],
+  "authority": "none"
+}

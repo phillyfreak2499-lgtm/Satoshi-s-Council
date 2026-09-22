@@ -1,5 +1,14 @@
 # Quant audit — SATOSHI'S COUNCIL — 2026-09-22
 
+> **Corrections (2026-09-22, second pass; see `docs/EVIDENCE_REPORT_2026-09-22.md`):**
+> 1. The whole-cent fee boundary is 82¢ → 2¢ and 83¢ → 1¢ (not 84¢).
+> 2. "All-time excluding A0 … +226¢ on 137 fills" is the book **since the 70¢ floor** (A1+B+C), not since the 80¢ floor; the 80¢-and-later book is 92 fills / +222¢.
+> 3. "149 wins" counts positive-net positions; **official settlement wins are 140 of 190** (23 of the 53 pre-floor rows; 24 of those rows carry a non-binary exit price and do not satisfy the HOLD identity).
+> 4. The 80-vs-70 trial advantage (+215¢) is −415¢ on the 91 shared windows (the shadow bought the same winners 4.7¢ cheaper) plus +630¢ avoided on the 11 shadow-only windows.
+> 5. The four "last-7" surfaces were one rolling definition at four as-of instants.
+> 6. The 15¢ scalp floor is not impossible at every ask; it requires ≈97% at 80¢ and 100% at 84¢ as a HOLD illustration. The defect is established from the code and live state, not from that illustration.
+> 7. Section 2's per-100-window leak figures are estimates on the populations named; they are not verified P&L.
+
 Scope: paper-only 15-minute Bitcoin desk (KXBTC15M). Source of truth: the live `satoshi-council-db` Postgres (read-only), `desk_ledger_research` (1,562 valid windows, 2026-09-05 12:45Z to 2026-09-22 00:00Z, 190 booked fills), `desk_call_quality` (1,028 receipts at T−450/300/180s), `desk_chair_evals`, `desk_policy_observations`, `desk_lag_events`, `desk_v3_samples`, `desk_v4_forced`, `desk_openai_shadow`, `desk_samples`, `desk_taker`, `desk_seat_reads` (Sep 21 only), and the live learner state in `desk_state`. Code at `main` 11fab5b.
 
 Fee: confirmed from `clock.ts` / Books SQL as `ceil(7 · p · (1−p))` cents per contract. In the 80–98¢ band that is 2¢ at 80–83¢ and 1¢ from 84¢ up. Needed win rate = (ask + fee) / 100.

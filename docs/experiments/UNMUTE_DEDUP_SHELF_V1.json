@@ -1,0 +1,207 @@
+{
+  "fingerprint": "UNMUTE_DEDUP_SHELF_V1|v1|1568deb2|8arms",
+  "version": "SHADOW_LAB_V1",
+  "id": "UNMUTE_DEDUP_SHELF_V1",
+  "experiment_version": 1,
+  "status": "CANDIDATE",
+  "frozen_at": "2026-09-22T06:00:00.000Z",
+  "prospective_start_at": null,
+  "hypothesis": "A verified reconstruction of the era-B mid-window speaking package, under explicit selective gates with duplicate influence controlled and a valid MID review, adds after-fee net beyond a simple price-favourite benchmark at the same floor.",
+  "fingerprints": {
+    "fee": "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED",
+    "policy": "ENTRY_SELECTIVE_V3|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
+    "model": "CHAIR_V1 runChair with E1_UNMUTE twins; no fitted model",
+    "roster": "E1_ROSTER_CARDS=STRIKE.itm_time,STREAK.continue_young,CHAIN.oi_with_price,CARRY.trend_carry,DRIFT.aligned_3h,DRIFT.pullback_in_trend; family override STREAK->book",
+    "source_sha": "11fab5b5bc73020941fd05fee04eed2174314d28"
+  },
+  "arms": [
+    {
+      "id": "PKG_85",
+      "role": "candidate",
+      "description": "reconstructed package, 85¢ floor, deployed 2-of-2 quorum with STREAK counted as book, CARRY/CHAIN one derivs group",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "floor_cents": 85,
+        "min_speaking": 2,
+        "min_families": 2,
+        "roster": [
+          "STRIKE.itm_time",
+          "STREAK.continue_young",
+          "CHAIN.oi_with_price",
+          "CARRY.trend_carry",
+          "DRIFT.aligned_3h",
+          "DRIFT.pullback_in_trend"
+        ]
+      },
+      "promotable": true
+    },
+    {
+      "id": "NULL_FAV_85",
+      "role": "control",
+      "description": "buy the ≥85¢ favourite at T−7:30, T−5 frozen fallback; spread ≤2, size ≥1, fresh feeds; no Council, no model edge",
+      "decision_schedule_secs": [
+        450,
+        300
+      ],
+      "params": {
+        "floor_cents": 85
+      },
+      "promotable": false
+    },
+    {
+      "id": "PKG_80",
+      "role": "secondary",
+      "description": "same package at the live 80¢ floor",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "floor_cents": 80,
+        "min_speaking": 2,
+        "min_families": 2,
+        "roster": [
+          "STRIKE.itm_time",
+          "STREAK.continue_young",
+          "CHAIN.oi_with_price",
+          "CARRY.trend_carry",
+          "DRIFT.aligned_3h",
+          "DRIFT.pullback_in_trend"
+        ]
+      },
+      "promotable": true
+    },
+    {
+      "id": "NULL_FAV_80",
+      "role": "control",
+      "description": "favourite benchmark at 80¢",
+      "decision_schedule_secs": [
+        450,
+        300
+      ],
+      "params": {
+        "floor_cents": 80
+      },
+      "promotable": false
+    },
+    {
+      "id": "PKG_88",
+      "role": "secondary",
+      "description": "same package at an 88¢ floor",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "floor_cents": 88,
+        "min_speaking": 2,
+        "min_families": 2,
+        "roster": [
+          "STRIKE.itm_time",
+          "STREAK.continue_young",
+          "CHAIN.oi_with_price",
+          "CARRY.trend_carry",
+          "DRIFT.aligned_3h",
+          "DRIFT.pullback_in_trend"
+        ]
+      },
+      "promotable": true
+    },
+    {
+      "id": "NULL_FAV_88",
+      "role": "control",
+      "description": "favourite benchmark at 88¢",
+      "decision_schedule_secs": [
+        450,
+        300
+      ],
+      "params": {
+        "floor_cents": 88
+      },
+      "promotable": false
+    },
+    {
+      "id": "PKG_85_OWNER3",
+      "role": "reference",
+      "description": "the package under the owner-reference 3-of-2 quorum; labelled, never relabelled as the deployed policy",
+      "decision_schedule_secs": [
+        600,
+        180
+      ],
+      "params": {
+        "floor_cents": 85,
+        "min_speaking": 3,
+        "min_families": 2,
+        "roster": [
+          "STRIKE.itm_time",
+          "STREAK.continue_young",
+          "CHAIN.oi_with_price",
+          "CARRY.trend_carry",
+          "DRIFT.aligned_3h",
+          "DRIFT.pullback_in_trend"
+        ]
+      },
+      "promotable": false
+    },
+    {
+      "id": "LIVE_MUTED_BOOK",
+      "role": "reference",
+      "description": "the production paper book as observed (≈0 fills): the second reference, never edited",
+      "decision_schedule_secs": [],
+      "params": {},
+      "promotable": false
+    }
+  ],
+  "primary_contrast": {
+    "candidate": "PKG_85",
+    "control": "NULL_FAV_85",
+    "metric": "paired_net_per_100_windows_and_per_week"
+  },
+  "secondary_contrasts": [
+    {
+      "candidate": "PKG_80",
+      "control": "NULL_FAV_80",
+      "label": "80¢ floor"
+    },
+    {
+      "candidate": "PKG_88",
+      "control": "NULL_FAV_88",
+      "label": "88¢ floor"
+    }
+  ],
+  "eligible_population": "every KXBTC15M window closing after activation with an official result and research_quality = valid; both arms priced at their own decision ticks",
+  "training_cutoff": null,
+  "pairing": "window",
+  "latency_assumption": "an intention is a fill only if the ask survives 150 ms in the lag capture; 500 ms reported; missing resolution = UNKNOWN, never a fill",
+  "size": {
+    "contracts": 1
+  },
+  "risk": {
+    "hard_dd_stop_cents": -258,
+    "max_dd_worse_than_control_cents": 50,
+    "operator_alert_dd_cents": -150
+  },
+  "gates": {
+    "min_fills": 250,
+    "min_days": 30,
+    "min_paired_control_losses": 25,
+    "futility_look_fills": 150,
+    "min_paired_delta_cents": 1,
+    "confidence": 0.95
+  },
+  "multiplicity": {
+    "method": "bonferroni",
+    "contrasts": 3
+  },
+  "kill_criteria": [
+    "futility at 150 qualified fills: mean paired delta ≤ 0 benches the candidate",
+    "candidate drawdown ≤ −258¢ or > 50¢ worse than control invalidates",
+    "> 25 shadow fills per 100 windows triggers investigation, not a quota",
+    "improvement confined to one regime, a cheap shelf or stale quotes is not promotable",
+    "any authority contamination, mid-price fill or broken pairing invalidates the specimen"
+  ],
+  "authority": "none"
+}

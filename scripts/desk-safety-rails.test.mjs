@@ -1204,6 +1204,12 @@ test("research readers exclude the known-invalid windows", () => {
         "still missing its official value",
     ],
     "src/lib/desk/replay.server.ts": ["the replay viewer: one named window, shown for forensics"],
+    "src/lib/desk/economics-book.server.ts": [
+      "PHASE A reconciliation: a read-only SELECT that must see every row so excluded windows are " +
+        "REPORTED as excluded (event kind 'excluded', counted in excluded_windows) rather than silently " +
+        "absent; every economic total in bookSummary() drops them, and the reference query it is " +
+        "compared against reads desk_ledger_research. Manual command only; no operating consumer.",
+    ],
     "src/lib/desk/kalshi-reconcile.server.ts": [
       "S2-7 independent reconciliation: it must audit EVERY window, including the " +
         "quarantined/identity-invalid rows, which it classifies as TICKER_CLOSE_MISMATCH. " +
