@@ -1,4 +1,4 @@
-import { TRAINING_COACHES, screenNumber } from "@/lib/desk/training";
+import { TRAINING_COACHES, WICK_ROLE_LINE, screenNumber } from "@/lib/desk/training";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { CouncilVoiceButton } from "./CouncilVoiceButton";
 
@@ -11,11 +11,12 @@ export function TrainingHome() {
       <p className="font-mono text-micro uppercase tracking-widest text-wait">The apprentice desk</p>
       <h1 className="mt-3 font-sans text-display font-medium tracking-tight text-fg">Start with WICK.</h1>
       <p className="mt-3 max-w-2xl font-sans text-body leading-relaxed text-muted">Learn to read a closed candle and decide when to wait. Paper only. No live orders.</p>
+      <p className="mt-2 max-w-2xl font-sans text-ui leading-relaxed text-subtle">{WICK_ROLE_LINE}</p>
 
       {wick ? <section aria-labelledby="wick-coach" className="mt-8 grid overflow-hidden rounded-lg border border-wait/30 bg-surface lg:grid-cols-2">
         <div className="p-6 sm:p-8"><span className="rounded-sm border border-up/30 bg-up/10 px-2 py-1 font-mono text-micro text-up">AVAILABLE NOW · GUIDED COACH</span><h2 id="wick-coach" className="mt-5 font-sans text-display font-medium">{wick.name}</h2><p className="mt-1 font-mono text-ui text-wait">{wick.specialty}</p><p className="mt-4 max-w-lg font-sans text-body leading-relaxed text-muted">{wick.lesson} The first lesson is one closed candle: close first, then a read. You do not need to know the live market to take it.</p><div className="mt-5 flex flex-wrap gap-2 font-mono text-micro text-muted"><span className="rounded border border-border px-2 py-1">Lesson 01 · Close first. Then a read.</span><span className="rounded border border-border px-2 py-1">Illustrated practice</span><span className="rounded border border-border px-2 py-1">Guided questions</span></div><div className="mt-6 flex flex-wrap items-center gap-2"><a href="/training/wick" className="btn btn-primary">Enter WICK’s station ↗</a><CouncilVoiceButton source="intro" speaker="WICK" label="Hear WICK" /></div><p className="mt-3 font-mono text-micro text-subtle">Paper only. Text coaching, with optional AI-generated character voice.</p></div>
         <div className="flex flex-col justify-center border-t border-border bg-bg p-5 sm:p-8 lg:border-l lg:border-t-0" aria-label="WICK’s six screens">
-          <div className="grid grid-cols-3 gap-2">{["What do you see?", "Let me try", "Ask WICK", "The chart", "WICK’s notes", "Practice"].map((label, i) => <div key={label} className="flex min-h-24 flex-col justify-between rounded border border-border-strong bg-surface-2 p-3 shadow-lg sm:min-h-32"><span className="font-mono text-micro text-subtle">{screenNumber(i)}</span><span className="font-sans text-ui text-fg">{label}</span><span aria-hidden="true" className="mt-3 block h-1 w-8 bg-wait/40" /></div>)}</div><p className="mt-5 text-center font-mono text-micro text-subtle">Six screens. One coach. Your pace.</p>
+          <div className="grid grid-cols-3 gap-2">{["What do you see?", "Let me try", "Guided questions", "The chart", "WICK’s notes", "Practice"].map((label, i) => <div key={label} className="flex min-h-24 flex-col justify-between rounded border border-border-strong bg-surface-2 p-3 shadow-lg sm:min-h-32"><span className="font-mono text-micro text-subtle">{screenNumber(i)}</span><span className="font-sans text-ui text-fg">{label}</span><span aria-hidden="true" className="mt-3 block h-1 w-8 bg-wait/40" /></div>)}</div><p className="mt-5 text-center font-mono text-micro text-subtle">Six screens. One coach. Your pace.</p>
         </div>
       </section> : null}
 

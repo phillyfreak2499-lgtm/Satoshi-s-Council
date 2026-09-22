@@ -10,7 +10,7 @@ export const Route = createFileRoute("/legal")({
 function Legal() {
   return (
     <Page title="Paper only, in plain words" lede="The short version: nothing on this site places a trade, holds money or tells you what to do with yours.">
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 18, 2026 · United States audience</p>
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 22, 2026 · United States audience</p>
       <H2>No orders, no accounts</H2>
       <P>
         Satoshi&apos;s Council never sends an order to any exchange or market. It has no accounts, deposits, wallets or payment flows. The calls, the ledger,
@@ -55,8 +55,11 @@ function Legal() {
       </P>
       <H2>Contact</H2>
       <P>
-        Questions about the desk: post on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>. The Board is the
-        only contact. The desk has no mailbox, so there is no address to write to; a public note there reaches the same people and stays on the record.
+        Public questions about the desk stay on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>.
+      </P>
+      <P>
+        Legal, trademark and security reports are not public conversation. Start a Board post whose first line is exactly LEGAL, TRADEMARK or SECURITY.
+        The desk hides that post after reading and keeps the original text in the moderation log. Do not attach credentials, private keys or account passwords.
       </P>
     </Page>
   );
