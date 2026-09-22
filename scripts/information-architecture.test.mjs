@@ -40,7 +40,7 @@ test("Books keeps research sections while the recent-window log is one collapsed
   assert.equal((summary.match(/className="books-window-table /g) || []).length, 1);
   assert.match(summary, /data-label="Close"/);
   assert.match(summary, /sitRunLabel/);
-  assert.match(summary, />replay</);
+  assert.match(summary, />\s*replay\s*</);
   assert.match(read("src/styles.css"), /\.books-window-table/);
 });
 
