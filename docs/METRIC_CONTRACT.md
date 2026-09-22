@@ -101,3 +101,27 @@ a pass. One futility look at 150 qualified fills may bench, never promote.
   and is evaluation-only (rail: no decision module imports it).
 - **Skill-status transition**: one insert-once system event per (card, from,
   to, ms), queued by the engine and drained beside it; authority none.
+
+## Added 2026-09-22 — SELECTOR ATTRIBUTION v1 (`docs/SELECTOR_ATTRIBUTION_V1_2026-09-22.md`)
+
+- **Blind eligible opportunity**: the price favourite at the deployed 80¢
+  floor, under 99¢, spread ≤ 2¢, ≥ 1 resting contract, fresh feeds, first tick
+  inside T−10:00..T−3:00; decided on the whole-cent lane (as NULL_FAV), priced
+  on the exact lane. **Chair-selected opportunity**: the production paper
+  book's position. **Divergence**: BLIND_ONLY / CHAIR_ONLY / BOTH_SAME_SIDE /
+  BOTH_OPPOSITE / NEITHER, one WINDOW row per window.
+- **Prospective only**: a row exists only for windows that START
+  (`close_time − 15 min`) at or after the shadow manifests' `prospective_start_at`;
+  the table check refuses anything earlier. Nothing historical is re-derived.
+- **Exact price lane**: `ask_cents` is the venue's exact ask (deci-cents where
+  they exist) and `fee_cents` the charged engine on that ask; `ask_whole_cents`
+  is the whole-cent decision ask beside it. Rounding happens only at display.
+- **Probability-shaped fields**: `model_fair_yes` (main-model fair YES, cents)
+  and `market_yes_mid` (venue YES mid). Chair confidence is recorded as the
+  gate number it is, never as a probability.
+- **Counterfactual P&L** (settled from the official winner, same identity as
+  net cents): `net_under_cap` (92¢ cap; 0 when blocked), one net per gate
+  variant (FLAT_3C production, QUARTER_OF_WIN, FEE_PLUS_2; 0 when refused),
+  `net_whole_lane` and `lane_delta`, and for WINDOW rows `blind_net`,
+  `chair_net`, `chair_minus_blind`.
+- **Chalk-adjusted WAIT** facts at T−7:30 and T−5:00 on every WINDOW row.

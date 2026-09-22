@@ -53,6 +53,9 @@ test("the observer is wired only from healthz, fire-and-forget, and nothing in t
 test("the observer writes only its own tables and reaches no production actuator", () => {
   const writes = [...server.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:r\s+)?set|delete from\s+(\w+)/gi)].map((m) => m[1] || m[2] || m[3]);
   assert.deepEqual([...new Set(writes)].sort(), ["desk_shadow_manifests", "desk_shadow_receipts"]);
+  const attribution = codeOf("src/lib/desk/selector-attribution.server.ts");
+  const attributionWrites = [...attribution.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+set|delete from\s+(\w+)/gi)].map((m) => m[1] || m[2] || m[3]);
+  assert.deepEqual([...new Set(attributionWrites)].sort(), ["desk_selector_attribution"], "the attribution step the observer calls writes only its own table");
   for (const forbidden of ["noteCall(", "applyDeskOp(", "promoteToLive(", "reviewSeats(", "setKnob(", "runHuddle(", "desk_ledger (", "desk_state", "e.learner ="]) {
     assert.ok(!server.includes(forbidden), `observer reaches ${forbidden}`);
   }

@@ -9,12 +9,14 @@
  * error into its own health record; a failing database, frame or arm can
  * never reach the Chair, the gate or the paper book (scripts/audit-reconcile-rails.test.mjs).
  *
- * WHAT IT WRITES. Only desk_shadow_receipts and desk_shadow_manifests, both
+ * WHAT IT WRITES. desk_shadow_receipts and desk_shadow_manifests, both
  * append-only through primary-key ON CONFLICT DO NOTHING; a settle sweep fills
  * in official_winner/net_cents on fill receipts from the official ledger row
  * using the fee already recorded on the receipt. It never touches desk_ledger,
  * desk_state, the learner, a seat or card status, thresholds, the Chair, the
- * paper book, or any promotion.
+ * paper book, or any promotion. SELECTOR ATTRIBUTION v1 rides the same tick
+ * (selector-attribution.server.ts): its own table, desk_selector_attribution,
+ * its own health, the same switch and the same prospective boundary.
  *
  * WHAT IT COMPUTES, per tick, inside the 3–10 minute window only:
  *   NULL_FAV_{80,85,88}  the favourite benchmark at T−7:30 (T−5 fallback).
@@ -38,6 +40,7 @@ import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
 import { JUMP_VETO, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
 import { INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 import { SHADOW_FEE_FINGERPRINT, receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
+import { attributionHealth, blankAttributionTracker, observeSelectorAttribution, settleAttributionRows, type AttributionTracker } from "./selector-attribution.server.ts";
 import type { CallLogRow, ChairResult, Settings, Snapshot } from "./types";
 
 export const SHADOW_LAB_ENV_FLAG = "SHADOW_LAB_ENABLED";
@@ -186,11 +189,13 @@ type Observer = {
   activatedAt: number;
   /** Process-local boundary: no arm may use a market already open when this observer session began. */
   sessionStartedAt: number;
+  /** SELECTOR ATTRIBUTION v1 (selector-attribution.server.ts): its own table, its own health. */
+  attribution: AttributionTracker;
 };
 const globalRef = globalThis as typeof globalThis & { __shadowLab__?: Observer };
 const state = (): Observer => globalRef.__shadowLab__ ??= {
   timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(),
-  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0,
+  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0, attribution: blankAttributionTracker(),
 };
 const armState = (id: string): ArmState => { const st = state(); const cur = st.arms.get(id) ?? { watch: null, decided: new Set(), lastAsk: new Map() }; st.arms.set(id, cur); return cur; };
 
@@ -267,13 +272,27 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
   st.busy = true;
   try {
     const sql = await getSql();
-    if (now - st.lastSettle > SHADOW_LAB_SETTLE_EVERY_MS) { st.lastSettle = now; await settleShadowReceipts(sql); }
+    if (now - st.lastSettle > SHADOW_LAB_SETTLE_EVERY_MS) {
+      st.lastSettle = now;
+      await settleShadowReceipts(sql);
+      // SELECTOR ATTRIBUTION v1 settles from the same official ledger row; its own table, its own health.
+      try { st.attribution.settled += await settleAttributionRows(sql); } catch (error) { st.attribution.error = error instanceof Error ? error.message : String(error); }
+    }
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
     if (!frame.snap || !frame.chair || frame.snap.demo || !frame.selective.ready) return;
     const { snap, votes, learner, settings } = structuredClone({ snap: frame.snap, votes: frame.votes, learner: frame.learner, settings: frame.settings });
     const secs = (snap.close_time - snap.as_of) / 1000;
     st.jump = observeJump(st.jump, snap.yes_ask, snap.no_ask, snap.as_of);
+    // SELECTOR ATTRIBUTION v1: the PRODUCTION Chair vs the blind favourite, on its
+    // own clone of the frame, gated on the manifests' durable prospective boundary
+    // (selector-attribution.server.ts). Its failure is its own health record.
+    try {
+      const a = structuredClone({ chair: frame.chair, call_log: frame.call_log ?? [], selective: frame.selective });
+      await observeSelectorAttribution(sql, { snap, chair: a.chair!, call_log: a.call_log, audit: a.selective?.audit ?? null, ready: a.selective?.ready, start: a.selective?.start, session_started_ms: st.sessionStartedAt }, st.attribution, now);
+    } catch (error) {
+      st.attribution.error = error instanceof Error ? error.message : String(error);
+    }
     if (!(secs >= 180 && secs <= 600)) return;
     // Prospective means observed prospectively, not merely timestamped after a
     // historical start. Every process restart skips the market already in flight.
@@ -423,6 +442,7 @@ export function shadowLabHealth(): {
   session_start: number | null;
   last_capture: number | null;
   error: string | null;
+  attribution: ReturnType<typeof attributionHealth>;
 } {
   const st = globalRef.__shadowLab__;
   return {
@@ -433,5 +453,6 @@ export function shadowLabHealth(): {
     session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
     last_capture: st?.lastCapture ?? null,
     error: st?.error ?? null,
+    attribution: attributionHealth(st?.attribution),
   };
 }
