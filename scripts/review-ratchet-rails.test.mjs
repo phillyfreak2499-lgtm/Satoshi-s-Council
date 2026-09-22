@@ -57,8 +57,9 @@ function fixture(calls = 700) {
 }
 
 test("the freeze switch defaults OFF in source and in the module: production behaviour is unchanged", () => {
-  assert.match(read("src/lib/desk/learner.ts"), /export const SEAT_REVIEW_DEMOTION_FROZEN = false;/);
-  assert.equal(learnerMod.SEAT_REVIEW_DEMOTION_FROZEN, false);
+  // Optional freeze commit (docs/SEAT_REVIEW_FREEZE_DECISION_2026-09-22.md): the constant is true here.
+  assert.match(read("src/lib/desk/learner.ts"), /export const SEAT_REVIEW_DEMOTION_FROZEN = true;/);
+  assert.equal(learnerMod.SEAT_REVIEW_DEMOTION_FROZEN, true);
   assert.equal(learnerMod.AUTO_SKILL_PROMOTION_ENABLED, false);
   assert.deepEqual([math.EDGE_FLOOR, math.FULL_N, math.REVIEW_EVERY], [15, 700, 500]);
 });
@@ -69,7 +70,8 @@ test("REPRODUCTION: at 700 calls the review benches the LIVE card and re-zeroes 
   assert.equal(before.would_demote, true);
   assert.equal(before.first_to_bench, "STRIKE.itm_time");
 
-  const lines = learnerMod.reviewSeats(learner);
+  // The reproduction is of the UNFROZEN rule: pass frozen:false explicitly on this optional freeze branch.
+  const lines = learnerMod.reviewSeats(learner, { frozen: false });
   assert.equal(lines.length, 1);
   assert.match(lines[0], /STRIKE (1\.9|2\.0)¢ < 15¢ demote · bench STRIKE\.itm_time/);
   assert.equal(learner.skills["STRIKE.itm_time"].status, "BENCH");
