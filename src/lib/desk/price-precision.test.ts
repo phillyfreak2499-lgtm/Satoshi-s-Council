@@ -77,7 +77,7 @@ test("exact quote lane preserves deci-cent top/depth without changing legacy who
 });
 
 
-test("exact lane retains sub-cent and 99.x venue levels that legacy rounding intentionally rejects", () => {
+test("exact lane retains extreme venue levels while legacy rounding keeps its historical collapse/reject semantics", () => {
   const q = interpretKalshiBook(
     {
       orderbook_fp: {
@@ -88,11 +88,14 @@ test("exact lane retains sub-cent and 99.x venue levels that legacy rounding int
     { yes_bid: 0, yes_ask: 0, no_bid: 0, no_ask: 0 },
   );
 
-  // Old production parser rejected levels rounding outside 1..99; keep that.
+  // Old production parser: 0.4¢ rounds to 0 and is rejected; 0.6¢ rounds to
+  // 1¢ and survives; 99.5/99.9¢ round to 100 and are rejected. Keep exactly that.
   assert.equal(q.yes_bid, 0);
-  assert.equal(q.no_bid, 0);
+  assert.equal(q.no_bid, 1);
+  assert.equal(q.yes_ask, 99);
+  assert.equal(q.no_ask, 0);
   assert.equal(q.yes_bid_size, 0);
-  assert.equal(q.no_bid_size, 0);
+  assert.equal(q.no_bid_size, 3);
 
   // Measurement lane keeps the true venue top and corresponding ask.
   assert.equal(q.yes_bid_exact, 99.9);
