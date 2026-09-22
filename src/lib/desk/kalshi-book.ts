@@ -7,6 +7,16 @@ export type KalshiQuote = {
   no_ask: number;
   yes_bid_size: number;
   no_bid_size: number;
+  /**
+   * MEASUREMENT ONLY. Exact venue price lane kept beside the legacy whole-cent
+   * fields above. No Chair/seat/gate consumer reads these fields.
+   */
+  yes_bid_exact?: number;
+  yes_ask_exact?: number;
+  no_bid_exact?: number;
+  no_ask_exact?: number;
+  yes_bid_size_exact?: number;
+  no_bid_size_exact?: number;
 };
 
 function cents(v: unknown): number {
@@ -16,12 +26,21 @@ function cents(v: unknown): number {
   return Math.round(n);
 }
 
+/** Venue price in cents without the legacy whole-cent coercion. */
+export function exactKalshiCents(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const c = n <= 1.5 ? n * 100 : n;
+  if (!(c > 0 && c < 100)) return 0;
+  return Math.round(c * 1000) / 1000;
+}
+
 function num(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-type Level = { px: number; sz: number };
+type Level = { px: number; px_exact: number; sz: number; legacy_valid: boolean };
 
 function parseLevels(rows: unknown): Level[] {
   if (!Array.isArray(rows)) return [];
@@ -29,22 +48,46 @@ function parseLevels(rows: unknown): Level[] {
   for (const row of rows) {
     if (!Array.isArray(row) || row.length < 2) continue;
     const px = cents(row[0]);
+    const px_exact = exactKalshiCents(row[0]);
     const sz = num(row[1]);
-    if (px >= 1 && px <= 99 && sz > 0) out.push({ px, sz });
+    // Exact measurement accepts the venue's full (0,100) price range. The
+    // legacy lane keeps its old 1..99 rounded-cent validity separately so
+    // this additive path cannot change Chair behavior at 0.x / 99.x levels.
+    if (px_exact > 0 && sz > 0) out.push({ px, px_exact, sz, legacy_valid: px >= 1 && px <= 99 });
   }
   return out;
 }
 
+/** Legacy chooser: deliberately compares rounded cents to preserve Chair behavior. */
 function bestBid(levels: Level[]): Level | null {
+  const legacy = levels.filter((l) => l.legacy_valid);
+  if (!legacy.length) return null;
+  let best = legacy[0]!;
+  for (const l of legacy) if (l.px > best.px) best = l;
+  return best;
+}
+
+/** Measurement chooser: actual venue top of book, including deci-cent differences. */
+function bestBidExact(levels: Level[]): Level | null {
   if (!levels.length) return null;
   let best = levels[0]!;
-  for (const l of levels) if (l.px > best.px) best = l;
+  for (const l of levels) if (l.px_exact > best.px_exact) best = l;
   return best;
 }
 
 function clampC(n: number): number {
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.max(1, Math.min(99, Math.round(n)));
+}
+
+function clampExactC(n: number): number {
+  if (!Number.isFinite(n) || !(n > 0 && n < 100)) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
+function exactFallback(exact: number | undefined, legacy: number): number {
+  const e = clampExactC(Number(exact));
+  return e > 0 ? e : clampExactC(legacy);
 }
 
 /** Venue sequence if present. 0 = not available. Never synthesize from a clock. */
@@ -78,7 +121,8 @@ export function readSeq(raw: unknown): number {
  */
 export function interpretKalshiBook(
   raw: unknown,
-  ticker: Pick<KalshiQuote, "yes_bid" | "yes_ask" | "no_bid" | "no_ask">,
+  ticker: Pick<KalshiQuote, "yes_bid" | "yes_ask" | "no_bid" | "no_ask"> &
+    Partial<Pick<KalshiQuote, "yes_bid_exact" | "yes_ask_exact" | "no_bid_exact" | "no_ask_exact">>,
 ): KalshiQuote {
   const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
   const book =
@@ -89,11 +133,20 @@ export function interpretKalshiBook(
   const no = parseLevels(book?.no_dollars ?? book?.no);
   const y = bestBid(yes);
   const n = bestBid(no);
+  const yExact = bestBidExact(yes);
+  const nExact = bestBidExact(no);
 
+  // Production lane: unchanged whole-cent semantics.
   const yes_bid = y ? y.px : clampC(ticker.yes_bid);
   const no_bid = n ? n.px : clampC(ticker.no_bid);
   const yes_ask = n ? clampC(100 - n.px) : clampC(ticker.yes_ask);
   const no_ask = y ? clampC(100 - y.px) : clampC(ticker.no_ask);
+
+  // Measurement lane: actual venue price/depth where available.
+  const yes_bid_exact = yExact ? yExact.px_exact : exactFallback(ticker.yes_bid_exact, ticker.yes_bid);
+  const no_bid_exact = nExact ? nExact.px_exact : exactFallback(ticker.no_bid_exact, ticker.no_bid);
+  const yes_ask_exact = nExact ? clampExactC(100 - nExact.px_exact) : exactFallback(ticker.yes_ask_exact, ticker.yes_ask);
+  const no_ask_exact = yExact ? clampExactC(100 - yExact.px_exact) : exactFallback(ticker.no_ask_exact, ticker.no_ask);
 
   return {
     yes_bid,
@@ -102,5 +155,11 @@ export function interpretKalshiBook(
     no_ask,
     yes_bid_size: y?.sz ?? 0,
     no_bid_size: n?.sz ?? 0,
+    yes_bid_exact,
+    yes_ask_exact,
+    no_bid_exact,
+    no_ask_exact,
+    yes_bid_size_exact: yExact?.sz ?? 0,
+    no_bid_size_exact: nExact?.sz ?? 0,
   };
 }
