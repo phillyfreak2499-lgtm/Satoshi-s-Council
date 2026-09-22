@@ -6,6 +6,9 @@ import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
 import { SEAT_IDS } from "@/lib/desk/types";
+import { CHAIR_NON_VOTER_IDS, RETIRED_SEAT_IDS } from "@/lib/desk/seats";
+import { COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
 import { CouncilVoiceButton } from "./CouncilVoiceButton";
@@ -95,13 +98,37 @@ function compactRepeatedWaits(exchanges: Exchange[]): Exchange[] {
   for (const exchange of exchanges) {
     const fingerprint = waitFingerprint(exchange);
     const previous = compact[compact.length - 1];
-    if (fingerprint && previous && waitFingerprint(previous) === fingerprint) {
+    if (fingerprint && previous && waitFingerprint(previous) != null) {
       previous.repeats = [...(previous.repeats ?? []), exchange];
     } else {
       compact.push({ ...exchange });
     }
   }
   return compact;
+}
+
+const NON_VOTERS = new Set<string>(CHAIR_NON_VOTER_IDS);
+const RETIRED = new Set<string>(RETIRED_SEAT_IDS);
+
+function ChamberRoster() {
+  return (
+    <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="chamber-roster-title">
+      <div className="font-mono text-micro uppercase tracking-widest text-subtle">Quiet floor</div>
+      <h2 id="chamber-roster-title" className="mt-1 font-sans text-title font-medium">Meet the Council</h2>
+      <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7" role="list" aria-label="The 21 Council seats">
+        {SEAT_IDS.map((seat) => {
+          const role = NON_VOTERS.has(seat) ? "pit crew" : RETIRED.has(seat) ? "retired" : "voting";
+          return (
+            <div key={seat} role="listitem" className="rounded border border-border bg-canvas px-2 py-2">
+              <div className="font-mono text-micro font-bold text-fg">{seat}</div>
+              <div className="mt-0.5 font-mono text-micro text-subtle">{role}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
@@ -210,6 +237,42 @@ function Statement({ statement }: { statement: ChamberStatement }) {
   );
 }
 
+
+function ExchangeCard({ exchange }: { exchange: Exchange }) {
+  const repeats = exchange.repeats ?? [];
+  const count = 1 + repeats.length;
+  const quiet = waitFingerprint(exchange) !== null && count > 1;
+  const earliest = repeats.at(-1)?.latest ?? exchange.latest;
+  const all = [exchange, ...repeats];
+
+  return (
+    <section className="rounded-md border border-border bg-surface p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+        <div className="min-w-0 font-mono text-micro uppercase tracking-widest text-subtle">
+          {quiet ? quietRangeLine(count, earliest, exchange.latest) : <>{exchange.statements.length > 1 ? "Exchange" : "Dispatch"} · <span className="break-all text-muted">{exchange.label}</span></>}
+        </div>
+        <time className="font-mono text-micro tabular text-subtle" dateTime={exchange.latest}>{utcDate(exchange.latest)}</time>
+      </div>
+      {quiet ? (
+        <>
+          <p className="font-sans text-ui leading-relaxed text-muted">{sitStreakLine(count)}</p>
+          <details className="mt-4 border-t border-border pt-3">
+            <summary className="min-h-11 cursor-pointer list-none py-2 font-mono text-micro uppercase tracking-widest text-muted marker:content-none sm:min-h-0">
+              Full evidence · {count} WAIT windows
+            </summary>
+            <div className="mt-3 space-y-5">
+              {all.flatMap((row) => row.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />))}
+            </div>
+          </details>
+        </>
+      ) : (
+        <div className="space-y-5">
+          {exchange.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />)}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded: boolean }) {
   const [view, setView] = useState<CameraView>("overview");
@@ -372,6 +435,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
   }, []);
 
   const exchanges = useMemo(() => compactRepeatedWaits(groupExchanges(rows)), [rows]);
+  const quietFloor = exchanges.length > 0 && waitFingerprint(exchanges[0]) !== null;
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -395,6 +459,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
         </section>
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={rows[0] ?? null} loaded={loaded} /> : null}
+        {quietFloor ? <ChamberRoster /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">
@@ -415,35 +480,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
               </div>
             ) : (
               <div className="space-y-4">
-                {exchanges.map((exchange) => (
-                  <section key={exchange.key} className="rounded-md border border-border bg-surface p-4 sm:p-5">
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-                      <div className="min-w-0 font-mono text-micro uppercase tracking-widest text-subtle">
-                        {exchange.statements.length > 1 ? "Exchange" : "Dispatch"} · <span className="break-all text-muted">{exchange.label}</span>
-                      </div>
-                      <time className="font-mono text-micro tabular text-subtle" dateTime={exchange.latest}>
-                        {utcDate(exchange.latest)}
-                      </time>
-                    </div>
-                    <div className="space-y-5">
-                      {exchange.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />)}
-                    </div>
-                    {exchange.repeats?.length ? (
-                      <details className="mt-4 border-t border-border pt-3">
-                        <summary className="min-h-11 cursor-pointer list-none py-2 font-mono text-micro uppercase tracking-widest text-muted marker:content-none sm:min-h-0">
-                          {exchange.repeats.length} earlier identical WAIT {exchange.repeats.length === 1 ? "dispatch" : "dispatches"} · full evidence
-                        </summary>
-                        <div className="mt-3 space-y-5">
-                          {exchange.repeats.flatMap((repeated) =>
-                            repeated.statements.map((statement) => (
-                              <Statement key={statement.event_key} statement={statement} />
-                            )),
-                          )}
-                        </div>
-                      </details>
-                    ) : null}
-                  </section>
-                ))}
+                {exchanges.map((exchange) => <ExchangeCard key={exchange.key} exchange={exchange} />)}
               </div>
             )}
           </section>

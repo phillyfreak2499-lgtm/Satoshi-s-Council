@@ -1,8 +1,8 @@
 # Satoshi's Council
 
-Paper-only **Bitcoin 15-minute** research desk. Twenty specialist seats
-read tape, structure, candles, book, and derivatives; **SATOSHI** chairs
-the vote. Nothing here places a live trade.
+Paper-only **Bitcoin 15-minute** research desk. Twenty-one Council seats
+read tape, structure, candles, book, derivatives, and operational context;
+**SATOSHI** chairs the vote. Nothing here places a live trade.
 
 This repo is the **fresh start** (2026-09-02): the chair, WICK catalog,
 learner, glossary, and 60-second tour. The older FastAPI dual-table
@@ -12,7 +12,7 @@ it onto this tree.
 ## What this is
 
 - **Bitcoin only.** Kalshi 15-minute up/down contracts. Paper ledger.
-- **21 seats: 18 vote, 3 pit crew** — specialist market reads, with WARDEN, ORBIT, and WIRE providing non-voting operational context; SATOSHI chairs.
+- **21 seats · 15 currently voting · 3 retired from votes · 3 non-voting pit crew** — specialist market reads, with WARDEN, ORBIT, and WIRE providing non-voting operational context; ODDS, CHEAP and FADE retired from votes; SATOSHI chairs.
 - **Skill engine** — LIVE / SHADOW / BENCH / UNCALIBRATED / MUTED, Wilson + Brier + EV grading.
 - **Demo + live split** — demo ticks and live Kalshi/spot do not share learner state.
 - **Chair math** — sit-mass, disagreement tax, learnable seat weights, LAW dimmer, invert hysteresis, hypothesis/invalidate.

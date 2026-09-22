@@ -582,7 +582,7 @@ export type SeatFact = {
   health_warning: boolean;
   /** The per-seat speaking bar (52 plus COACH's offset), when the frame carries the knob. */
   speak_bar: number | null;
-  /** True when this seat is one of the 18 the Chair aggregates. */
+  /** True when this seat is one of the 15 currently voting specialists. */
   aggregated: boolean;
   health: FeedHealth;
   status: SeatStatus | null;
@@ -690,7 +690,7 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     suppression,
     health_warning: health === "STALE",
     speak_bar: knob || vote ? speakBar : null,
-    aggregated: row != null,
+    aggregated: row != null && !NON_VOTERS.has(seat) && !RETIRED.has(seat),
     health,
     status,
     weight: num(row?.weight),
@@ -754,8 +754,9 @@ const FAMILY_EYES: Record<SeatTab, string> = {
 export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
   return (Object.keys(TAB_SEATS) as SeatTab[]).map((family) => {
     const seats = facts.filter((f) => f.family === family);
-    const up = seats.filter((s) => s.voice === "speaking" && s.final_lean === "UP").length;
-    const down = seats.filter((s) => s.voice === "speaking" && s.final_lean === "DOWN").length;
+    const voting = seats.filter((s) => s.aggregated);
+    const up = voting.filter((s) => s.voice === "speaking" && s.final_lean === "UP").length;
+    const down = voting.filter((s) => s.voice === "speaking" && s.final_lean === "DOWN").length;
     return {
       family,
       label: FAMILY_LABEL[family],
@@ -763,7 +764,7 @@ export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
       seats,
       up,
       down,
-      wait: seats.length - up - down,
+      wait: voting.length - up - down,
       suppressed_up: seats.filter((s) => s.voice !== "speaking" && s.raw_lean === "UP").length,
       suppressed_down: seats.filter((s) => s.voice !== "speaking" && s.raw_lean === "DOWN").length,
       unhealthy: seats.filter((s) => s.voice === "unhealthy").length,
@@ -806,7 +807,7 @@ export type BalanceFacts = {
   split_families: number;
   /** Seats silenced by their own feed. */
   unhealthy: number;
-  /** How many of the 21 the Chair aggregates on this frame. */
+  /** How many specialists are currently eligible for the Chair's voting tally on this frame. */
   aggregated: number;
   /** Always the same words: this is a count, never a recommendation. */
   label: "Evidence balance";
