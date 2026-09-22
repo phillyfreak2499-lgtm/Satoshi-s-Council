@@ -12,7 +12,6 @@ import {
   type BooksWindow,
   type Keeper,
   type KeeperStats,
-  missingWindowsLine,
 } from "@/lib/desk/books";
 import { FLOOR_LIVE_CENTS, FLOOR_SHADOW_CENTS } from "@/lib/desk/book-floor";
 import { cn } from "@/lib/utils";
@@ -667,12 +666,6 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
     );
   }
 
-  const missing = books.missing_windows ?? [];
-  const oldest = books.windows.at(-1)?.close_time;
-  const newest = books.windows[0]?.close_time;
-  const windowRows = [...books.windows, ...missing.filter((close) => oldest && newest && close >= oldest && close <= newest).map((close_time) => ({ close_time, missing: true as const }))]
-    .sort((a, b) => b.close_time.localeCompare(a.close_time));
-
   return (
     <div className="books-content grid min-w-0 grid-cols-1 gap-3">
       <nav
@@ -685,7 +678,6 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           ["#books-curve", "Curve"],
           ["#books-calibration", "Calibration"],
           ["#books-lab", "Lab"],
-          ["#books-windows", "Recent windows"],
         ].map(([href, label]) => (
           <a
             key={href}
@@ -696,18 +688,6 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
           </a>
         ))}
       </nav>
-
-      {missing.length > 0 ? (
-        <section aria-label="Missing ledger windows" className="rounded-md border border-border bg-surface px-3 py-2">
-          <p className="font-mono text-micro text-muted">{missingWindowsLine(missing.length)}</p>
-          <details className="font-mono text-micro text-subtle">
-            <summary className="min-h-11 cursor-pointer py-2">Show missing closes · {tz}</summary>
-            <ul className="max-h-60 overflow-y-auto">{missing.slice(-100).reverse().map((close) => <li key={close} className="py-1"><time dateTime={close}>{fmtWhen(close, tz)}</time> · no recorded result</li>)}</ul>
-            {missing.length > 100 ? <p>Showing the most recent 100 missing closes.</p> : null}
-            <a href="/status" className="underline underline-offset-2">View data status</a>
-          </details>
-        </section>
-      ) : null}
 
       <section id="books-overview" className="books-overview grid grid-cols-1 scroll-mt-20 gap-4">
         {books.last ? (
@@ -783,74 +763,6 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
         </section>
       ) : null}
 
-      <section id="books-windows" className="scroll-mt-20">
-        <Pane title={<span>RECENT WINDOWS <span className="font-normal text-subtle">· open a window with ▶ to replay it</span></span>}>
-          <div className="overflow-x-auto">
-          <table role="table" className="books-window-table w-full font-mono text-micro">
-            <caption className="sr-only">Recent paper windows, including missing ledger slots. Times in {tz}.</caption>
-            <thead>
-              <tr className="text-left">
-                <th >close</th>
-                <th >result</th>
-                <th >settled</th>
-                <th >chair</th>
-                <th className="text-right">cents</th>
-                <th className="text-right">seats</th>
-                <th className="text-right">reads</th>
-                <th className="py-1 text-right">arena</th>
-              </tr>
-            </thead>
-            <tbody>
-              {windowRows.map((w) => "missing" in w ? (
-                <tr key={w.close_time} role="row" className="border-t border-border bg-surface">
-                  <td role="cell" data-label="Close" className="py-3 text-muted">{fmtWhen(w.close_time, tz)}</td>
-                  <td role="cell" colSpan={7} className="books-missing-cell py-3 text-subtle">No recorded result · an outage, not a sit · not in the totals</td>
-                </tr>
-              ) : (
-                <tr
-                  key={`${w.ticker}:${w.close_time}`}
-                  role="row"
-                  className={cn("border-t border-border/50", w.replay && "hover:bg-surface-2/40", sel === w.ticker && "bg-surface-2/60")}
-                >
-                  <td role="cell" data-label="Close" className="whitespace-nowrap text-muted">
-                    {w.replay ? (
-                      <button
-                        type="button"
-                        className="min-h-11 rounded-sm py-2 text-left text-fg hover:underline"
-                        aria-label={`${fmtWhen(w.close_time, tz)} · open replay`}
-                        aria-expanded={sel === w.ticker}
-                        aria-controls={sel === w.ticker ? "books-replay" : undefined}
-                        onClick={() => openReplay(w.ticker)}
-                      >
-                        <span aria-hidden="true" className="mr-1">▶</span>{fmtWhen(w.close_time, tz)}
-                      </button>
-                    ) : <span>· {fmtWhen(w.close_time, tz)}</span>}
-                  </td>
-                  <td role="cell" data-label="Result">
-                    <LeanChip lean={w.winner} />
-                  </td>
-                  <td role="cell" data-label="Settled" className="tabular text-muted">{fmtPx(w.official ?? w.settle_avg)}</td>
-                  <td role="cell" data-label="Chair">
-                    <CallCell c={w.call} />
-                  </td>
-                  <td role="cell" data-label="Paper cents" className={cn("text-right tabular", tone(w.call?.ev))}>{w.call ? fmtC(w.call.ev) : "no fill"}</td>
-                  <td role="cell" data-label="Seats" title="Speaking seats right at grade; not agreement at entry" className="text-right tabular text-muted">{w.seats.n ? `${w.seats.right}/${w.seats.n}` : "—"}</td>
-                  <td role="cell" data-label="Reads" className="text-right tabular text-muted">{w.raw.n ? `${w.raw.right}/${w.raw.n}` : "—"}</td>
-                  <td role="cell" data-label="Arena" className={cn("py-1 text-right tabular", w.arena ? tone(w.arena.net) : "text-subtle")}>
-                    {w.arena ? (
-                      <span className="inline-flex flex-wrap items-center justify-end gap-1">
-                        <span className="hidden sm:inline">ARENA ·</span>
-                        <span>{w.arena.n} {w.arena.n === 1 ? "CALL" : "CALLS"} · {fmtC(w.arena.net)}</span>
-                      </span>
-                    ) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </Pane>
-      </section>
     </div>
   );
 }

@@ -22,7 +22,7 @@ test("the Board separates and paginates public threads", () => {
   assert.match(board, /pageRows\(newestNotes, feedbackPage\)/);
 });
 
-test("Books gain section anchors and one responsive window table", () => {
+test("Books keeps research sections while the recent-window log is one collapsed summary", () => {
   assert.match(books, /aria-label="Paper book sections"/);
   for (const id of [
     "books-overview",
@@ -30,17 +30,18 @@ test("Books gain section anchors and one responsive window table", () => {
     "books-curve",
     "books-calibration",
     "books-lab",
-    "books-windows",
   ]) {
     assert.match(books, new RegExp(`id="${id}"`));
   }
-  assert.equal((books.match(/className="books-window-table /g) || []).length, 1);
-  assert.doesNotMatch(books, /className="grid gap-2 sm:hidden"/);
-  assert.match(books, /data-label="Close"/);
+  assert.doesNotMatch(books, /id="books-windows"|windowRows|missingWindowsLine/);
+  const summary = read("src/components/desk/BooksRecentWindows.tsx");
+  const page = read("src/routes/books.tsx");
+  assert.match(page, /<BooksRecentWindows/);
+  assert.equal((summary.match(/className="books-window-table /g) || []).length, 1);
+  assert.match(summary, /data-label="Close"/);
+  assert.match(summary, /sitRunLabel/);
+  assert.match(summary, />\s*replay\s*</);
   assert.match(read("src/styles.css"), /\.books-window-table/);
-  assert.match(books, /open replay/);
-  assert.match(books, /<span className="hidden sm:inline">ARENA ·<\/span>/);
-  assert.match(books, /w\.arena\.n === 1 \? "CALL" : "CALLS"/);
 });
 
 test("the Lab leads with comparison and stable humanized ages", () => {
