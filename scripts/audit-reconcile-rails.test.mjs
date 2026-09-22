@@ -198,3 +198,18 @@ test("rail 5: status-transition telemetry never throws into the engine, is queue
   assert.doesNotMatch(codeOf("src/lib/desk/status-transitions.ts"), /\.status\s*=/, "the pure module never assigns a status");
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/status-transitions\.server"\)\s*\.then\(\(m\) => m\.ensureStatusTransitionLog\(\)\)\s*\.catch\(\(\) => \{\}\);/);
 });
+
+
+test("rail 6: shadow collection cannot start before an atomic prospective boundary and MIRROR-35 is excluded", () => {
+  const server = codeOf("src/lib/desk/shadow-lab.server.ts");
+  const manifests = codeOf("src/lib/desk/shadow-manifests.ts");
+  assert.match(server, /await registerShadowManifests\(sql\);\s*await activateInitialShadowCollection\(sql, st\.activatedAt\);[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /status = 'CANDIDATE' and prospective_start_at is null/);
+  assert.match(server, /status = 'SHADOW' and prospective_start_at is not null/);
+  assert.match(server, /coalesce\(m\.prospective_start_at,/);
+  assert.match(server, /\(select n from coherent\) = 3/);
+  assert.doesNotMatch(server.slice(server.indexOf("activateInitialShadowCollection"), server.indexOf("/**\n * Settle fill receipts")), /MIRROR_35_V1/);
+  assert.match(manifests, /INITIAL_SHADOW_COLLECTION_IDS/);
+  const targetBlock = manifests.slice(manifests.indexOf("INITIAL_SHADOW_COLLECTION_IDS"), manifests.indexOf("/** The three-active rule"));
+  assert.doesNotMatch(targetBlock, /MIRROR_35_V1/);
+});
