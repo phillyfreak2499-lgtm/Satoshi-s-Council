@@ -58,7 +58,8 @@ test("the observer writes only its own tables and reaches no production actuator
   }
   assert.match(server, /on conflict \(experiment, arm, ticker, close_time, kind\) do nothing/);
   assert.match(server, /on conflict \(experiment, experiment_version\) do nothing/);
-  assert.match(read("src/lib/desk/shadow-lab.server.ts"), /prospective_start_at is the owner.s to set/);
+  assert.match(server, /activateInitialShadowCollection/);
+  assert.match(server, /verifyShadowManifests/);
 });
 
 test("without SHADOW_LAB_ENABLED=true the observer refuses to start", () => {
@@ -85,9 +86,23 @@ test("receipts are idempotent on their key, manifests register once without a st
 
     assert.equal(await mod.registerShadowManifests(sql), 4);
     assert.equal(await mod.registerShadowManifests(sql), 0);
+    await assert.doesNotReject(mod.verifyShadowManifests(sql));
     const m = (await pg.query("select experiment, status, prospective_start_at from desk_shadow_manifests order by 1")).rows;
     assert.deepEqual(m.map((x) => x.status), ["CANDIDATE_NOT_COLLECTING", "CANDIDATE", "CANDIDATE", "CANDIDATE"]);
     assert.ok(m.every((x) => x.prospective_start_at == null));
+
+    const firstStart = Date.parse("2026-10-01T14:52:00Z");
+    const activated = await mod.activateInitialShadowCollection(sql, firstStart);
+    assert.equal(activated.active, 3);
+    assert.equal(activated.started_at.length, 1, "all active manifests share one boundary");
+    const after = (await pg.query("select experiment, status, prospective_start_at from desk_shadow_manifests order by 1")).rows;
+    assert.deepEqual(after.map((x) => x.status), ["CANDIDATE_NOT_COLLECTING", "SHADOW", "SHADOW", "SHADOW"]);
+    assert.equal(after[0].prospective_start_at, null, "MIRROR-35 remains unstarted");
+    const starts = new Set(after.slice(1).map((x) => new Date(x.prospective_start_at).toISOString()));
+    assert.deepEqual([...starts], [new Date(firstStart).toISOString()]);
+
+    const restarted = await mod.activateInitialShadowCollection(sql, firstStart + 86_400_000);
+    assert.deepEqual(restarted.started_at, activated.started_at, "restart preserves the original prospective boundary");
 
     assert.equal(await mod.settleShadowReceipts(sql), 0, "no ledger row yet: nothing settles");
     await pg.query("insert into desk_ledger (ticker, close_time, graded_at, source, winner, chair_lean) values ($1, $2, $3, 'kalshi-result', 'DOWN', 'WAIT')", [r.ticker, new Date(close).toISOString(), new Date(close + 1000).toISOString()]);
@@ -113,5 +128,36 @@ test("the migration is additive and idempotent, and the receipt key is the prima
     const pk = (await pg.query("select a.attname from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey) where i.indrelid = 'desk_shadow_receipts'::regclass and i.indisprimary order by a.attnum")).rows.map((r) => r.attname);
     assert.deepEqual(pk, ["experiment", "arm", "ticker", "close_time", "kind"]);
     await assert.rejects(pg.query("insert into desk_shadow_receipts (experiment, arm, ticker, close_time, kind, decided_at, fee_engine, ask_cents) values ('E','A','T',now(),'fill',now(),'F',100)"), /check/i);
+  } finally { await pg.close(); }
+});
+
+
+test("activation refuses partial state and manifest fingerprint drift without mutating the remaining candidates", async () => {
+  const { pg, sql } = await database();
+  try {
+    const load = loader({ "@/lib/db": { getSql: async () => sql } }, { env: {} });
+    const mod = load("src/lib/desk/shadow-lab.server.ts");
+    assert.equal(await mod.registerShadowManifests(sql), 4);
+    await assert.doesNotReject(mod.verifyShadowManifests(sql));
+
+    const partialStart = "2026-10-01T14:52:00.000Z";
+    await pg.query(
+      "update desk_shadow_manifests set status='SHADOW', prospective_start_at=$1 where experiment='UNMUTE_DEDUP_SHELF_V1'",
+      [partialStart],
+    );
+    await assert.rejects(
+      mod.activateInitialShadowCollection(sql, Date.parse("2026-10-01T15:00:00Z")),
+      /uniform 3-manifest state/,
+    );
+    const partial = (await pg.query(
+      "select experiment, status, prospective_start_at from desk_shadow_manifests where experiment <> 'MIRROR_35_V1' order by experiment",
+    )).rows;
+    assert.equal(partial.filter((x) => x.status === "SHADOW").length, 1, "partial state is rejected, not silently completed");
+    assert.equal(partial.filter((x) => x.status === "CANDIDATE").length, 2);
+
+    await pg.query(
+      "update desk_shadow_manifests set fingerprint='stale-fingerprint' where experiment='WARDEN_JUMP_VETO_V1'",
+    );
+    await assert.rejects(mod.verifyShadowManifests(sql), /fingerprint mismatch/);
   } finally { await pg.close(); }
 });
