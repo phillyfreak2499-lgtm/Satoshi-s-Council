@@ -40,7 +40,7 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Level = { px: number; px_exact: number; sz: number };
+type Level = { px: number; px_exact: number; sz: number; legacy_valid: boolean };
 
 function parseLevels(rows: unknown): Level[] {
   if (!Array.isArray(rows)) return [];
@@ -50,16 +50,20 @@ function parseLevels(rows: unknown): Level[] {
     const px = cents(row[0]);
     const px_exact = exactKalshiCents(row[0]);
     const sz = num(row[1]);
-    if (px >= 1 && px <= 99 && px_exact > 0 && sz > 0) out.push({ px, px_exact, sz });
+    // Exact measurement accepts the venue's full (0,100) price range. The
+    // legacy lane keeps its old 1..99 rounded-cent validity separately so
+    // this additive path cannot change Chair behavior at 0.x / 99.x levels.
+    if (px_exact > 0 && sz > 0) out.push({ px, px_exact, sz, legacy_valid: px >= 1 && px <= 99 });
   }
   return out;
 }
 
 /** Legacy chooser: deliberately compares rounded cents to preserve Chair behavior. */
 function bestBid(levels: Level[]): Level | null {
-  if (!levels.length) return null;
-  let best = levels[0]!;
-  for (const l of levels) if (l.px > best.px) best = l;
+  const legacy = levels.filter((l) => l.legacy_valid);
+  if (!legacy.length) return null;
+  let best = legacy[0]!;
+  for (const l of legacy) if (l.px > best.px) best = l;
   return best;
 }
 
