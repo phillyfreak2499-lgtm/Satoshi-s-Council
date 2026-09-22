@@ -112,6 +112,7 @@ test("each arm carries its own causal day state; pending fills reserve their ful
 });
 
 test("the four manifests are frozen, CANDIDATE or CANDIDATE_NOT_COLLECTING, authority none, with null prospective start and pinned fingerprints", () => {
+  console.log("SHADOW_MANIFEST_FINGERPRINTS_FINAL", JSON.stringify(SHADOW_MANIFEST_FINGERPRINTS));
   assert.equal(SHADOW_MANIFESTS.length, 4);
   for (const m of SHADOW_MANIFESTS) {
     assert.ok(m.status === "CANDIDATE" || m.status === "CANDIDATE_NOT_COLLECTING");
