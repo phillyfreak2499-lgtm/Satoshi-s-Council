@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { FEE_PROVENANCE, feeForContracts, feeCents } from "./fee-engine.ts";
 import { PRICE_PRECISION_CONTRACT, deciCentEconomics, describeStoredPrecision, onTickGrid, storedAskUncertaintyCents } from "./price-precision.ts";
 import { interpretKalshiBook } from "./kalshi-book.ts";
@@ -20,7 +21,9 @@ test("one contract is NOT 1¢ at every price: the charged fee is 2¢ from 18¢ t
   assert.equal(feeForContracts(82, 1).raw_cents, 1.0332);
   assert.equal(feeForContracts(83, 100).charged_cents, 99);
   assert.equal(feeForContracts(83, 100).per_contract_cents, 0.99);
-  assert.equal(FEE_PROVENANCE.fetched_at, null, "provenance stays ASSUMED until a venue record is fetched");
+  assert.equal(FEE_PROVENANCE.fetched_at, "2026-09-22");
+  assert.equal(FEE_PROVENANCE.effective_date, "2026-07-07");
+  assert.match(FEE_PROVENANCE.source, /kalshi-fee-schedule\.pdf/);
 });
 
 test("deci-cent asks round-trip through the economics without a second rounding", () => {
@@ -122,4 +125,25 @@ test("unavailable exact sentinels fall back to the executable legacy quote inste
   assert.equal(q.yes_ask_exact, 85);
   assert.equal(q.no_bid_exact, 15);
   assert.equal(q.no_ask_exact, 16);
+});
+
+
+test("exact quote fields are measurement-only and never read by production decision modules", () => {
+  const protectedFiles = [
+    "chair.ts",
+    "gate-vector.ts",
+    "selective-entry.ts",
+    "book-floor.ts",
+    "learner.ts",
+    "engine.ts",
+    "server-engine.ts",
+  ];
+  for (const file of protectedFiles) {
+    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(
+      src,
+      /\b(?:yes|no)_(?:bid|ask)(?:_size)?_exact\b/,
+      `${file} must not consume the exact measurement lane`,
+    );
+  }
 });
