@@ -460,7 +460,7 @@ test("non-voters and retired seats are never presented as active directional spe
     assert.equal(seat.suppression, "retired");
   }
   assert.equal(f.seats.filter((x) => x.voice === "speaking").length, 0, "none of them speaks");
-  assert.equal(f.balance.aggregated, SEAT_IDS.length - CHAIR_NON_VOTER_IDS.length);
+  assert.equal(f.balance.aggregated, SEAT_IDS.length - CHAIR_NON_VOTER_IDS.length - RETIRED_SEAT_IDS.length);
 });
 
 test("an unhealthy feed silences a seat and says so rather than calling it a WAIT", () => {
