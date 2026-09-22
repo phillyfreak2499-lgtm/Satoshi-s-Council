@@ -215,6 +215,13 @@ export type Snapshot = {
   yes_ask: number;
   no_bid: number;
   no_ask: number;
+  /** MEASUREMENT ONLY: exact venue quote lane. Never use for Chair/seat decisions without a new research-era boundary. */
+  yes_bid_exact?: number;
+  yes_ask_exact?: number;
+  no_bid_exact?: number;
+  no_ask_exact?: number;
+  yes_bid_size_exact?: number;
+  no_bid_size_exact?: number;
   leftover_cents: number;
   combined_ask_cents: number;
   spread_cents: number;
@@ -621,8 +628,15 @@ export type LiveBundle = {
     yes_ask: number;
     no_bid: number;
     no_ask: number;
+    /** MEASUREMENT ONLY: exact venue quote lane, additive beside production whole-cent fields. */
+    yes_bid_exact?: number;
+    yes_ask_exact?: number;
+    no_bid_exact?: number;
+    no_ask_exact?: number;
     yes_bid_size: number;
     no_bid_size: number;
+    yes_bid_size_exact?: number;
+    no_bid_size_exact?: number;
     quote_age_s: number;
     quote_ts: number;
     quote_seq: number;
