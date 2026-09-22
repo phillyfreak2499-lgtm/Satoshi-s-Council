@@ -10,6 +10,9 @@ const books = read("src/components/desk/BooksTab.tsx");
 const chamber = read("src/components/desk/ChamberRoom.tsx");
 const lab = read("src/components/desk/LabRoom.tsx");
 const security = read("server/middleware/security-headers.ts");
+const words = read("src/lib/desk/chair-words.ts");
+const home = read("src/components/desk/CouncilHome.tsx");
+const guided = read("src/components/desk/GuidedFloor.tsx");
 
 test("the Board separates and paginates public threads", () => {
   assert.match(board, /const PAGE_SIZE = 6/);
@@ -61,6 +64,7 @@ test("the Chamber compacts only consecutive identical WAIT dispatches", () => {
   assert.match(chamber, /compactRepeatedWaits\(groupExchanges\(rows\)\)/);
   assert.match(chamber, /earlier identical WAIT/);
   assert.match(chamber, /full evidence/);
+  assert.match(chamber, /sitStreakLine/);
 });
 
 test("the CSP permits the injected Grok extension without widening defaults", () => {
@@ -68,4 +72,11 @@ test("the CSP permits the injected Grok extension without widening defaults", ()
   assert.match(security, /connect-src 'self'/);
   assert.match(security, /https:\/\/\*\.grok\.com/);
   assert.match(security, /default-src 'self'/);
+});
+
+test("WAIT copy and the locked read/fill pair are on the public surfaces", () => {
+  assert.match(words, /Sitting this window is the call/);
+  assert.doesNotMatch(words, /No seat has a directional read strong enough to speak/);
+  assert.match(home, /ReadFillPair/);
+  assert.match(guided, /ReadFillPair/);
 });

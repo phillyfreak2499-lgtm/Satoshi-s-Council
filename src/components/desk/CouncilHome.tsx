@@ -12,6 +12,7 @@ import { LiveConnectionNotice } from "./LiveConnectionNotice";
 import { HomeStill } from "./HomeStill";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { CanonicalRecord } from "./CanonicalRecord";
+import { ReadFillPair } from "./ReadFillPair";
 import { applyDisplayPrefs } from "./prefs";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import type { Books, BooksWindow } from "@/lib/desk/books";
@@ -58,8 +59,7 @@ export function CouncilHome({ last = null, books = null }: { last?: BooksWindow 
         <section className="company-live" aria-labelledby="home-live-title">
           <div className="company-live-decision">
             <p className="company-eyebrow" id="home-live-title">{demo ? "Demo preview" : "From the research floor"}</p>
-            <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
-            <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
+            {chair ? <ReadFillPair lean={chair.lean} book={book} /> : <div className="company-live-call">Connecting</div>}
           </div>
           <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
           {snap ? (
