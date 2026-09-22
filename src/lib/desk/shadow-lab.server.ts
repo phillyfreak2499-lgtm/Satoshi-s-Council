@@ -173,9 +173,25 @@ export async function settleShadowReceipts(sql: Sql): Promise<number> {
 // ---------------------------------------------------------------------------
 
 type ArmState = { watch: EntryWatch | null; decided: Set<string>; lastAsk: Map<string, { ask: number; at: number; side: "UP" | "DOWN" }> };
-type Observer = { timer: ReturnType<typeof setInterval> | null; starting: boolean; busy: boolean; arms: Map<string, ArmState>; jump: JumpVetoState; lastSettle: number; lastCapture: number | null; error: string | null; activatedAt: number };
+type Observer = {
+  timer: ReturnType<typeof setInterval> | null;
+  starting: boolean;
+  busy: boolean;
+  arms: Map<string, ArmState>;
+  jump: JumpVetoState;
+  lastSettle: number;
+  lastCapture: number | null;
+  error: string | null;
+  /** Durable experiment boundary returned by the manifest table. */
+  activatedAt: number;
+  /** Process-local boundary: no arm may use a market already open when this observer session began. */
+  sessionStartedAt: number;
+};
 const globalRef = globalThis as typeof globalThis & { __shadowLab__?: Observer };
-const state = (): Observer => globalRef.__shadowLab__ ??= { timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(), lastSettle: 0, lastCapture: null, error: null, activatedAt: 0 };
+const state = (): Observer => globalRef.__shadowLab__ ??= {
+  timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(),
+  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0,
+};
 const armState = (id: string): ArmState => { const st = state(); const cur = st.arms.get(id) ?? { watch: null, decided: new Set(), lastAsk: new Map() }; st.arms.set(id, cur); return cur; };
 
 const E1 = "UNMUTE_DEDUP_SHELF_V1", E2 = "WARDEN_JUMP_VETO_V1", E3 = "SETTLE_BASIS_MEASURED_V1";
@@ -259,6 +275,10 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const secs = (snap.close_time - snap.as_of) / 1000;
     st.jump = observeJump(st.jump, snap.yes_ask, snap.no_ask, snap.as_of);
     if (!(secs >= 180 && secs <= 600)) return;
+    // Prospective means observed prospectively, not merely timestamped after a
+    // historical start. Every process restart skips the market already in flight.
+    const windowOpen = snap.close_time - 15 * 60_000;
+    if (st.sessionStartedAt > 0 && windowOpen < st.sessionStartedAt) return;
     const windowKey = `${snap.ticker}|${snap.close_time}`;
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
@@ -377,6 +397,9 @@ export function ensureShadowLabObserver(env: Record<string, string | undefined> 
       const durableStart = Date.parse(activation.started_at[0] ?? "");
       if (!Number.isFinite(durableStart) || durableStart <= 0) throw new Error("shadow activation returned an invalid durable boundary");
       st.activatedAt = durableStart;
+      // Separate the durable research epoch from this process session. A restart
+      // must not collect the tail of the market that was already open at boot.
+      st.sessionStartedAt = Date.now();
       // The env may have been removed while the bootstrap was in flight.
       if (!shadowLabEnabled(process.env)) return;
       st.timer = setInterval(() => void shadowLabTick(), SHADOW_LAB_POLL_MS);
@@ -392,7 +415,23 @@ export function ensureShadowLabObserver(env: Record<string, string | undefined> 
   return "started";
 }
 
-export function shadowLabHealth(): { enabled: boolean; starting: boolean; running: boolean; last_capture: number | null; error: string | null } {
+export function shadowLabHealth(): {
+  enabled: boolean;
+  starting: boolean;
+  running: boolean;
+  prospective_start: number | null;
+  session_start: number | null;
+  last_capture: number | null;
+  error: string | null;
+} {
   const st = globalRef.__shadowLab__;
-  return { enabled: shadowLabEnabled(), starting: !!st?.starting, running: !!st?.timer, last_capture: st?.lastCapture ?? null, error: st?.error ?? null };
+  return {
+    enabled: shadowLabEnabled(),
+    starting: !!st?.starting,
+    running: !!st?.timer,
+    prospective_start: st?.activatedAt ? st.activatedAt : null,
+    session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
+    last_capture: st?.lastCapture ?? null,
+    error: st?.error ?? null,
+  };
 }
