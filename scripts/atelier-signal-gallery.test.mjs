@@ -19,7 +19,8 @@ const styles = readFileSync(
 );
 
 test("the Gallery presents the live SATOSHI call as display art", () => {
-  assert.match(gallery, /Signal Gallery/);
+  assert.match(gallery, /Gallery /);
+  assert.doesNotMatch(gallery, /Signal Gallery/);
   assert.match(gallery, /data-stance=\{stance\}/);
   assert.match(gallery, /gate confidence/);
   assert.match(gallery, /weighted vote/);
