@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { BooksWindow } from "@/lib/desk/books";
+import { missingWindowsLine, type BooksWindow } from "@/lib/desk/books";
 import { collapseWindowLog, datedClose, sitRunLabel } from "@/lib/desk/books-window-log";
 import { fmtCents } from "@/lib/desk/record";
 import { LeanChip } from "./bits";
@@ -150,10 +150,12 @@ export function BooksRecentWindows({
         </table>
       </div>
       {missing && missing.length > 0 ? (
-        <details className="mt-3 font-mono text-micro text-subtle">
-          <summary className="min-h-11 cursor-pointer py-2">
-            Show missing closes · {missing.length} dated outages
-          </summary>
+        <div className="mt-3">
+          <p className="font-mono text-micro text-muted">{missingWindowsLine(missing.length)}</p>
+          <details className="font-mono text-micro text-subtle">
+            <summary className="min-h-11 cursor-pointer py-2">
+              Show missing closes · {missing.length} dated outages
+            </summary>
           <ul>
             {missing.slice(-100).reverse().map((close) => (
               <li key={close} className="py-1">
@@ -161,8 +163,9 @@ export function BooksRecentWindows({
                 {" · no recorded result"}
               </li>
             ))}
-          </ul>
-        </details>
+            </ul>
+          </details>
+        </div>
       ) : null}
     </section>
   );
