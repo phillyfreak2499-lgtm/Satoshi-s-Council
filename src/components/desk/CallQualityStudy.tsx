@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CallQualitySnapshot } from "@/lib/desk/call-quality.server";
 import { sampleRate } from "@/lib/desk/display-evidence";
 
@@ -6,7 +7,12 @@ const number = (v: number | null) => v == null ? "—" : v.toFixed(4);
 const percent = (v: number | null) => v == null ? "—" : `${Math.round(v * 100)}%`;
 const time = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+const CHECKPOINTS = [450, 300, 180] as const;
+
 export function CallQualityStudy({ data }: { data: CallQualitySnapshot | null }) {
+  const [checkpoint, setCheckpoint] = useState<number>(CHECKPOINTS[0]);
+  const [showAllSeats, setShowAllSeats] = useState(false);
+  const groups = data?.groups.filter((g) => g.horizon === checkpoint) ?? [];
   return (
     <section id="call-quality" className="mt-6 scroll-mt-20 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="call-quality-title">
       <div className="font-mono text-micro uppercase tracking-widest text-subtle">Entry-time evidence</div>
@@ -47,9 +53,25 @@ export function CallQualityStudy({ data }: { data: CallQualitySnapshot | null })
 
         <h3 className="mt-6 font-sans text-lg font-medium">Prospective challenger</h3>
         <p className="mt-2 text-subtle">Checkpoint coverage since the first retained receipt: {data.coverage.checkpoints.recorded} of {data.coverage.checkpoints.expected} due reads recorded · {data.coverage.checkpoints.missing} missing. Invalid receipts are counted as recorded, then excluded from results.</p>
-        {!data.groups.length ? <p className="mt-2 text-muted">The new study starts with fresh evidence. Results will appear as checkpoints are recorded and officially graded.</p> : null}
+        <div className="mt-3">
+          <div className="font-mono text-micro uppercase tracking-widest text-subtle">Checkpoint selector</div>
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Checkpoint selector">
+            {CHECKPOINTS.map((horizon) => (
+              <button
+                key={horizon}
+                type="button"
+                aria-pressed={checkpoint === horizon}
+                onClick={() => setCheckpoint(horizon)}
+                className={`min-h-11 rounded border px-3 font-mono text-ui ${checkpoint === horizon ? "border-fg bg-surface-2 text-fg" : "border-border text-muted hover:text-fg"}`}
+              >
+                {time(horizon)}
+              </button>
+            ))}
+          </div>
+        </div>
+        {!groups.length ? <p className="mt-3 text-muted">No observations at this checkpoint yet. Missed checkpoints stay missing.</p> : null}
         <div className="mt-3 grid gap-4">
-          {data.groups.map(g => <article key={`${g.policy}-${g.horizon}`} className="min-w-0 rounded border border-border bg-canvas p-4">
+          {groups.map(g => <article key={`${g.policy}-${g.horizon}`} className="min-w-0 rounded border border-border bg-canvas p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-sans text-lg">{time(g.horizon)} before close</h4>
               <span className="font-mono text-micro text-muted">{g.sample_ready ? "Sample minimums met · review required" : g.paired ? "Collecting evidence" : "Warm-up"}</span>
@@ -77,9 +99,15 @@ export function CallQualityStudy({ data }: { data: CallQualitySnapshot | null })
             <details className="mt-3 border-t border-border pt-3">
               <summary className="cursor-pointer py-2 font-sans text-ui">Seat accuracy at this checkpoint</summary>
               <p className="mt-2 text-muted">Raw directional seat reads on healthy feeds, compared with the market direction on the same observations. Seat strength is not a probability. These measurements do not change seat weights.</p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="text-muted">Empty seat rows stay hidden unless you ask for the full roster.</p>
+                <button type="button" onClick={() => setShowAllSeats((v) => !v)} className="min-h-11 shrink-0 rounded border border-border px-3 font-mono text-micro text-muted hover:text-fg">
+                  {showAllSeats ? "hide empty seats" : "show all 21"}
+                </button>
+              </div>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2 font-mono text-micro text-muted">
-                {g.seats.map(s => <li key={s.seat}>{s.seat}: {sampleRate(s.hit_rate, s.n)} · market {s.n >= 20 ? percent(s.market_hit_rate) : "small sample"}</li>)}
-                {!g.seats.length ? <li>No eligible seat readings yet.</li> : null}
+                {(showAllSeats ? g.seats : g.seats.filter((s) => s.n > 0)).map(s => <li key={s.seat}>{s.seat}: {sampleRate(s.hit_rate, s.n)} · market {s.n >= 20 ? percent(s.market_hit_rate) : "small sample"}</li>)}
+                {!(showAllSeats ? g.seats : g.seats.filter((s) => s.n > 0)).length ? <li>No observations for eligible seats at this checkpoint.</li> : null}
               </ul>
             </details>
             <details className="mt-3 border-t border-border pt-3">
