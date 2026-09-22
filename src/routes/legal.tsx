@@ -44,7 +44,8 @@ function Legal() {
       </P>
       <H2>Your data</H2>
       <P>
-        Board posts are public. The desk can hide or restore posts, retaining their original text and an internal moderation reason.
+        Ordinary Board posts are public. A top-level post whose first line is exactly LEGAL, TRADEMARK or SECURITY is hidden from the public Board on submission and remains available to desk moderation.
+        The desk can hide or restore other posts, retaining their original text and an internal moderation reason.
         To limit spam, the Board keeps a one-way network identifier and recent posting counts; it does not store your raw IP address in that record.
         Inactive rate-limit records are removed after seven days when new posts are processed.
       </P>
@@ -58,8 +59,8 @@ function Legal() {
         Public questions about the desk stay on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>.
       </P>
       <P>
-        Legal, trademark and security reports are not public conversation. Start a Board post whose first line is exactly LEGAL, TRADEMARK or SECURITY.
-        The desk hides that post after reading and keeps the original text in the moderation log. Do not attach credentials, private keys or account passwords.
+        For a non-public legal, trademark or security report, start a new Board post whose first line is exactly LEGAL, TRADEMARK or SECURITY.
+        That top-level post is hidden from the public Board on submission and remains available to desk moderation with its original text retained. Do not attach credentials, private keys or account passwords.
       </P>
     </Page>
   );
