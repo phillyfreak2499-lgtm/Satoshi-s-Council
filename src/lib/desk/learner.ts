@@ -447,8 +447,28 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
   return notes;
 }
 
+/**
+ * REVIEW FREEZE (approval-required activation; default OFF = today's behaviour).
+ *
+ * The 500-call review below demotes a seat whose rolling 20-leg scalp average is
+ * under EDGE_FLOOR (15¢): it re-zeroes the seat's calibration and benches its
+ * lowest-EV LIVE card. With AUTO_SKILL_PROMOTION_ENABLED false the huddle can
+ * only return that card to SHADOW, never LIVE, so each review is a one-way step.
+ * On 2026-09-19/20 this took STRIKE.itm_time and STREAK.continue_young, the two
+ * cards that carried every mid-window paper entry; CASCADE and CHAIN went the
+ * same way on 2026-09-15/16 (docs/EVIDENCE_REPORT_2026-09-22.md).
+ *
+ * Setting this true keeps the review RUNNING and PRINTING its verdict (the
+ * huddle line still says what it would have done) but stops it from changing a
+ * status or a calibration debt. It restores nothing already benched. It is a
+ * production status-writer change, so it stays false until the owner activates
+ * it; the rail test pins the default.
+ */
+export const SEAT_REVIEW_DEMOTION_FROZEN = false;
+
 /** Every 500 calls after 700: keep 15¢ avg or lose calibration and swap the play. */
-export function reviewSeats(learner: Learner): string[] {
+export function reviewSeats(learner: Learner, opts: { frozen?: boolean } = {}): string[] {
+  const frozen = opts.frozen ?? SEAT_REVIEW_DEMOTION_FROZEN;
   if (!learner.seat_calib_debt) learner.seat_calib_debt = {};
   if (!learner.seat_review_at) learner.seat_review_at = {};
   const lines: string[] = [];
@@ -469,6 +489,12 @@ export function reviewSeats(learner: Learner): string[] {
       const debt = learner.seat_calib_debt[s.id] ?? 0;
       if (debt > 0) learner.seat_calib_debt[s.id] = Math.max(0, debt - 100);
       lines.push(`${s.id} ${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢ hold`);
+      continue;
+    }
+    if (frozen) {
+      // Measurement only: the verdict is printed, no status or debt moves.
+      const live = Object.values(learner.skills).filter((c) => c.owner === s.id && c.status === "LIVE").sort((a, b) => a.ev - b.ev);
+      lines.push(`${s.id} ${avg.toFixed(1)}¢ < ${EDGE_FLOOR}¢ would demote · FROZEN (no change) · would bench ${live[0]?.id ?? "nothing"}`);
       continue;
     }
     learner.seat_calib_debt[s.id] = learner.seat_n[s.id] ?? 0;
