@@ -54,7 +54,7 @@ test("WICK station invites guided questions, not an open AI line", () => {
   assert.match(html, /Open-ended AI conversation is not connected/);
   assert.match(home, /Guided questions/);
   assert.match(home, /WICK_ROLE_LINE/);
-  const js = read("public/training-desk/wick/main.js");
+  const js = read("public/training-desk/wick/plain-seat-note.js") + read("public/training-desk/wick/main.js");
   assert.match(js, /plainSeatNote/);
   assert.match(js, /HAR UL/);
   assert.match(js, /next candle to close/);
