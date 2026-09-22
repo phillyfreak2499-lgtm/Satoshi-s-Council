@@ -8,6 +8,7 @@ import { guidedRead } from "@/lib/desk/guided-read";
 import { useCountdownText } from "@/lib/desk/hooks";
 import { beacon } from "@/lib/desk/beacon";
 import { cn } from "@/lib/utils";
+import { ALCHEMIST_ROLE_LINE, WICK_ROLE_LINE } from "@/lib/desk/training";
 import { Tip } from "./Tip";
 import { LastCallPanel } from "./LastCallPanel";
 
@@ -183,6 +184,7 @@ export function GuidedFloor({
             <p className="font-mono text-micro uppercase tracking-widest text-wait">A tiny floor guide</p>
             <h2 id="guided-lesson" className="mt-1 font-sans text-title font-medium text-fg">{steps[step].title}</h2>
             <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">{steps[step].body}</p>
+            <p className="mt-2 max-w-[70ch] font-sans text-ui leading-relaxed text-subtle">{WICK_ROLE_LINE}</p>
             <div className="mt-4 flex flex-wrap gap-3">
               <button type="button" onClick={() => setStep((step + 1) % steps.length)} className="min-h-11 rounded-sm border border-wait/50 bg-wait/10 px-4 font-mono text-ui text-wait hover:bg-wait/20">{step === steps.length - 1 ? "Start again" : "Next clue →"}</button>
               <a href="/training/wick" onClick={() => beacon("guided_to_wick")} className="inline-flex min-h-11 items-center rounded-sm border border-border px-4 font-mono text-ui text-fg hover:bg-surface-2">Learn with WICK →</a>
@@ -195,7 +197,8 @@ export function GuidedFloor({
           <div className="h-24 w-24 shrink-0"><Portrait name="Alchemist" src={portraits.alchemist} /></div>
           <div>
             <p className="font-mono text-micro uppercase tracking-widest text-subtle">Meet the research bench</p>
-            <p className="font-sans text-ui leading-relaxed text-muted">Alchemist explores ideas in the lab. The live Council still decides by its recorded rules.</p>
+            <p className="font-sans text-ui leading-relaxed text-muted">{ALCHEMIST_ROLE_LINE}</p>
+            <a href="/lab" className="mt-2 inline-flex font-mono text-micro text-fg underline underline-offset-4">Open the Lab →</a>
           </div>
         </div>
       </section>

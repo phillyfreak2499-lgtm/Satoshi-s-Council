@@ -10,7 +10,7 @@ export const Route = createFileRoute("/legal")({
 function Legal() {
   return (
     <Page title="Paper only, in plain words" lede="The short version: nothing on this site places a trade, holds money or tells you what to do with yours.">
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 18, 2026 · United States audience</p>
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Last updated September 22, 2026 · United States audience</p>
       <H2>No orders, no accounts</H2>
       <P>
         Satoshi&apos;s Council never sends an order to any exchange or market. It has no accounts, deposits, wallets or payment flows. The calls, the ledger,
@@ -44,7 +44,8 @@ function Legal() {
       </P>
       <H2>Your data</H2>
       <P>
-        Board posts are public. The desk can hide or restore posts, retaining their original text and an internal moderation reason.
+        Ordinary Board posts are public. A top-level post whose first line is exactly LEGAL, TRADEMARK or SECURITY is hidden from the public Board on submission and remains available to desk moderation.
+        The desk can hide or restore other posts, retaining their original text and an internal moderation reason.
         To limit spam, the Board keeps a one-way network identifier and recent posting counts; it does not store your raw IP address in that record.
         Inactive rate-limit records are removed after seven days when new posts are processed.
       </P>
@@ -55,8 +56,11 @@ function Legal() {
       </P>
       <H2>Contact</H2>
       <P>
-        Questions about the desk: post on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>. The Board is the
-        only contact. The desk has no mailbox, so there is no address to write to; a public note there reaches the same people and stays on the record.
+        Public questions about the desk stay on the Board at <a href="/board" className="underline underline-offset-2 hover:text-fg">/board</a>.
+      </P>
+      <P>
+        For a non-public legal, trademark or security report, start a new Board post whose first line is exactly LEGAL, TRADEMARK or SECURITY.
+        That top-level post is hidden from the public Board on submission and remains available to desk moderation with its original text retained. Do not attach credentials, private keys or account passwords.
       </P>
     </Page>
   );

@@ -7,7 +7,7 @@ import { fmtLocal } from "@/lib/desk/market-hours";
 import { cn } from "@/lib/utils";
 import { LeanChip } from "./bits";
 import { SEEN_KEY } from "./use-board-unread";
-import { pageIndex } from "@/lib/desk/public-room-view";
+import { pageIndex, privateBoardContactKind } from "@/lib/desk/public-room-view";
 
 const WHO_KEY = "satoshi-desk-v1-board-who";
 const PAGE_SIZE = 6;
@@ -152,6 +152,7 @@ function Composer({
   const send = async () => {
     const body = note.trim();
     if (!body || sending.current) return;
+    const privateContact = !parentId && kind !== "update" ? privateBoardContactKind(body) : null;
     sending.current = true;
     setBusy(true);
     setStatus("");
@@ -178,7 +179,7 @@ function Composer({
         await post();
       }
       setNote("");
-      setStatus("Posted. Your message is on the Board.");
+      setStatus(privateContact ? "Sent privately to desk moderation." : "Posted. Your message is on the Board.");
       onPosted();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Could not post.");

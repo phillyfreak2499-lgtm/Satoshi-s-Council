@@ -49,7 +49,7 @@ test("launch polish covers desktop Arena, touch onboarding and legal truth", () 
   assert.match(welcome, /Tap × or Watch the floor to close/);
   assert.match(welcome, /hidden sm:inline">Esc opens the floor/);
   assert.match(legal, /pageHead\("\/legal",/);
-  assert.match(legal, /Last updated September 18, 2026/);
+  assert.match(legal, /Last updated September 22, 2026/);
   assert.match(legal, /Google Analytics 4/);
   assert.match(legal, /Google Fonts/);
   assert.match(legal, /United States audience/);

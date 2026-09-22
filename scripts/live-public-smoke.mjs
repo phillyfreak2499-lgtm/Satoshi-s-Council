@@ -9,10 +9,10 @@ const surfaces = [
   ["/arena", ["Paper calls only.", "ranked after 3 settled"]],
   ["/board", ["The Board", "Posts do not change the Chair or place orders."]],
   ["/training", ["Start with WICK.", "Paper only. No live orders."]],
-  ["/training/wick", ["WICK"]],
+  ["/training/wick", ["WICK", "Guided questions", "Close first"]],
   ["/training/tape", ["TAPE"]],
   ["/training/drift", ["DRIFT"]],
-  ["/legal", ["Paper only, in plain words", "Questions about the desk"]],
+  ["/legal", ["Paper only, in plain words", "Questions about the desk", "LEGAL, TRADEMARK or SECURITY"]],
   ["/about", ["How the desk works", "15 currently voting", "3 retired from votes", "3 non-voting pit crew"]],
   ["/faq", ["Questions people ask", "How many Council seats actually vote?", "15 currently voting", "3 non-voting pit crew"]],
 ];
