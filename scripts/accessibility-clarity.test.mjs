@@ -48,7 +48,7 @@ test("seat counts and the two status vocabularies stay canonical", () => {
   const readme = read("README.md");
   const faq = read("src/routes/faq.tsx");
   const prompt = read("docs/SATOSHI_DESK_FULL_PROMPT.md");
-  assert.match(readme, /21 seats: 18 vote, 3 pit crew/);
+  assert.match(readme, /21 seats · 15 currently voting · 3 retired from votes · 3 non-voting pit crew/);
   for (const word of ["CANDIDATE", "SHADOW", "LIVE", "BENCH"]) {
     assert.match(faq, new RegExp(word));
     assert.match(prompt, new RegExp(word));
