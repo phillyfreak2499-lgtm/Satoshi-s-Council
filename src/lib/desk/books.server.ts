@@ -418,11 +418,8 @@ async function build(): Promise<Books> {
 }
 
 /**
- * The 80¢ trial's two books. The live side reads the real fills; the shadow side
- * reads shadow_entry_cents / shadow_ev_cents, which the engine captured live at
- * decision time — the first ask each window at which the old floor would have
- * filled. Both are restricted to windows closing since the trial began, so the
- * comparison is on identical windows and nothing pre-trial leaks in.
+ * Peak-to-trough drawdown for one explicitly bounded live-book population.
+ * The starting balance is 0, so an opening loss counts as drawdown.
  */
 async function maxDrawdownSince(db: Awaited<ReturnType<typeof sql>>, since: string): Promise<number | null> {
   try {
@@ -444,7 +441,12 @@ async function maxDrawdownSince(db: Awaited<ReturnType<typeof sql>>, since: stri
   }
 }
 
-/** The archived 80¢ vs 70¢ matched-window trial. It is research, not the canonical live record. */
+/**
+ * The archived 80¢ vs 70¢ matched-window trial. The live side reads the real fills;
+ * the shadow side reads shadow_entry_cents / shadow_ev_cents captured live at
+ * decision time. It ends at SELECTIVE_FROZEN_AT and remains research-only; it is
+ * never the canonical current record.
+ */
 async function floorTrial(db: Awaited<ReturnType<typeof sql>>): Promise<FloorTrial | null> {
   try {
     const [r] = await db<Record<string, number | null>>`
