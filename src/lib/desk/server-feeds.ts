@@ -87,6 +87,12 @@ function cents(v: unknown): number {
   return Math.round(n);
 }
 
+/** Exact fields use 0 as unavailable; never let that sentinel replace a real legacy quote. */
+function exactCentsOr(v: unknown, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n < 100 ? n : fallback;
+}
+
 function num(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -252,10 +258,10 @@ async function kalshi(): Promise<KalshiPack | null> {
       yes_ask = quote.yes_ask;
       no_bid = quote.no_bid;
       no_ask = quote.no_ask;
-      yes_bid_exact = quote.yes_bid_exact ?? yes_bid;
-      yes_ask_exact = quote.yes_ask_exact ?? yes_ask;
-      no_bid_exact = quote.no_bid_exact ?? no_bid;
-      no_ask_exact = quote.no_ask_exact ?? no_ask;
+      yes_bid_exact = exactCentsOr(quote.yes_bid_exact, yes_bid);
+      yes_ask_exact = exactCentsOr(quote.yes_ask_exact, yes_ask);
+      no_bid_exact = exactCentsOr(quote.no_bid_exact, no_bid);
+      no_ask_exact = exactCentsOr(quote.no_ask_exact, no_ask);
       yes_bid_size = quote.yes_bid_size;
       no_bid_size = quote.no_bid_size;
       yes_bid_size_exact = quote.yes_bid_size_exact ?? yes_bid_size;
