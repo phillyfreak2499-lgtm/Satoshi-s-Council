@@ -1,6 +1,7 @@
 import { pageHead } from "@/lib/desk/site";
 import { createFileRoute } from "@tanstack/react-router";
 import { BooksTab } from "@/components/desk/BooksTab";
+import { BooksRecentWindows } from "@/components/desk/BooksRecentWindows";
 import { CanonicalRecord } from "@/components/desk/CanonicalRecord";
 import { Page } from "@/components/desk/Page";
 import { publicBooksSnapshot } from "@/lib/desk/books-public";
@@ -26,6 +27,9 @@ function BooksPage() {
     >
       <div className="mb-4">
         <CanonicalRecord books={initial} />
+      </div>
+      <div className="mb-4">
+        <BooksRecentWindows windows={initial.windows} missing={initial.missing_windows} tz={BOOK_TZ} />
       </div>
       <BooksTab tz={BOOK_TZ} initial={initial} />
     </Page>

@@ -14,6 +14,7 @@ import { useMemo, type ReactNode } from "react";
 import { proFloorFacts } from "@/lib/desk/pro-floor";
 import type { CallLogRow, ChairResult, SeatId, SeatKnobs, Snapshot, Vote } from "@/lib/desk/types";
 import type { FloorDensity } from "../prefs";
+import { LastCallPanel } from "../LastCallPanel";
 import { ProDecisionStrip } from "./ProDecisionStrip";
 import { ProChairCard } from "./ProChairCard";
 import { ProScoreBar } from "./ProScoreBar";
@@ -61,6 +62,7 @@ export function ProOverview({
 
   return (
     <div className="flex flex-col gap-3">
+      <LastCallPanel />
       <ProDecisionStrip facts={facts} />
       {headline}
       <ProChairCard facts={facts} plain={plain} />

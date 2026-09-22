@@ -6,7 +6,7 @@ import {
   researchQuietNoticeHiddenOn,
 } from "@/lib/desk/research-quiet-notice.ts";
 
-/** One dismissible overlay. Not a homepage hero button. */
+/** Overlay retired — killed by the last-call panel. Kept so the dismiss glyph rail still compiles. */
 export function ResearchQuietNotice() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const titleId = useId();

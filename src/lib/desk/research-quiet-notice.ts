@@ -2,6 +2,10 @@
  * Copy and placement for the temporary research-stretch overlay.
  * A WAIT is a first-class decision. This notice must not read as a signal,
  * a third homepage hero CTA, or a claim that the desk is down.
+ *
+ * Audit leftover 1: the overlay is retired. The last-call panel on both
+ * floors is the proof the desk is selective. This module stays so existing
+ * tests and imports keep compiling.
  */
 export const RESEARCH_QUIET_NOTICE_KEY = "sc.notice.research-quiet.v1";
 
@@ -15,7 +19,7 @@ export const RESEARCH_QUIET_NOTICE = {
   dismissLabel: "Dismiss",
 } as const;
 
-/** Already on Lab or Training \u2014 do not cover the rooms the notice points to. */
-export function researchQuietNoticeHiddenOn(pathname: string): boolean {
-  return pathname === "/lab" || pathname.startsWith("/training") || pathname === "/legal";
+/** Overlay retired — last-call panel carries the proof instead. */
+export function researchQuietNoticeHiddenOn(_pathname: string): boolean {
+  return true;
 }

@@ -9,6 +9,7 @@ import { useCountdownText } from "@/lib/desk/hooks";
 import { beacon } from "@/lib/desk/beacon";
 import { cn } from "@/lib/utils";
 import { Tip } from "./Tip";
+import { LastCallPanel } from "./LastCallPanel";
 
 const portraits = {
   satoshi: "/floor/guides/satoshi.png",
@@ -172,6 +173,7 @@ export function GuidedFloor({
           </div>
         </section>
       </div>
+      <LastCallPanel last={last} />
       <WhatWouldChange chair={chair} snap={snap} callLog={callLog} />
       <WhatHappened last={last} />
       <section aria-labelledby="guided-lesson" className="rounded-md border border-border bg-surface p-5 sm:p-6">

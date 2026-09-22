@@ -19,10 +19,10 @@ test("the notice is a measurement note, not a signal or a third hero CTA", () =>
   assert.equal(RESEARCH_QUIET_NOTICE_KEY, "sc.notice.research-quiet.v1");
 });
 
-test("the overlay stays off Lab, Training, and Legal", () => {
-  assert.equal(researchQuietNoticeHiddenOn("/"), false);
-  assert.equal(researchQuietNoticeHiddenOn("/desk"), false);
-  assert.equal(researchQuietNoticeHiddenOn("/books"), false);
+test("the overlay is retired on every public room", () => {
+  assert.equal(researchQuietNoticeHiddenOn("/"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/desk"), true);
+  assert.equal(researchQuietNoticeHiddenOn("/books"), true);
   assert.equal(researchQuietNoticeHiddenOn("/lab"), true);
   assert.equal(researchQuietNoticeHiddenOn("/training"), true);
   assert.equal(researchQuietNoticeHiddenOn("/training/wick"), true);
