@@ -204,6 +204,8 @@ test("rail 6: shadow collection cannot start before verified atomic prospective 
   const server = codeOf("src/lib/desk/shadow-lab.server.ts");
   const manifests = codeOf("src/lib/desk/shadow-manifests.ts");
   assert.match(server, /await registerShadowManifests\(sql\);\s*await verifyShadowManifests\(sql\);\s*const activation = await activateInitialShadowCollection\(sql, Date\.now\(\)\);[\s\S]*st\.activatedAt = durableStart;[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /st\.sessionStartedAt = Date\.now\(\);[\s\S]*st\.timer = setInterval/);
+  assert.match(server, /const windowOpen = snap\.close_time - 15 \* 60_000;\s*if \(st\.sessionStartedAt > 0 && windowOpen < st\.sessionStartedAt\) return;/);
   assert.match(server, /candidates = 3 or \(shadows = 3 and shadow_starts = 1\)/);
   assert.match(server, /coalesce\(m\.prospective_start_at,/);
   assert.match(server, /shadow manifest fingerprint mismatch/);
