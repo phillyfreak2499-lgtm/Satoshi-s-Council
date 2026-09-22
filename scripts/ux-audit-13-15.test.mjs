@@ -70,10 +70,20 @@ test("Alchemist is framed as Lab and linked there; WICK dual-role is explicit", 
   assert.doesNotMatch(WICK_ROLE_LINE, /Alchemist/);
 });
 
-test("legal lists a private path for legal, trademark and security", () => {
+test("legal contact markers are hidden before they can enter the public Board", () => {
   const legal = read("src/routes/legal.tsx");
-  assert.match(legal, /LEGAL, TRADEMARK or SECURITY/);
-  assert.match(legal, /hides that post after reading/);
+  const board = read("src/lib/desk/board.ts");
+  const feedback = read("src/components/desk/Feedback.tsx");
+  const { privateBoardContactKind } = load("src/lib/desk/public-room-view.ts");
+  assert.equal(privateBoardContactKind("LEGAL\nA legal note"), "LEGAL");
+  assert.equal(privateBoardContactKind("TRADEMARK\nA mark note"), "TRADEMARK");
+  assert.equal(privateBoardContactKind("SECURITY\nA security note"), "SECURITY");
+  assert.equal(privateBoardContactKind("security\nnot exact"), null);
+  assert.match(legal, /hidden from the public Board on submission/);
+  assert.match(board, /privateBoardContactKind\(body\)/);
+  assert.match(board, /hidden, moderation_reason/);
+  assert.match(board, /board_moderation_log/);
+  assert.match(feedback, /Sent privately to desk moderation/);
   assert.doesNotMatch(legal, /The desk has no mailbox/);
   const smoke = read("scripts/live-public-smoke.mjs");
   assert.match(smoke, /LEGAL, TRADEMARK or SECURITY/);
