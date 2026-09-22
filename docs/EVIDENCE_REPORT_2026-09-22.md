@@ -163,9 +163,9 @@ settled hits at 80–98¢ asks: n = 1,314, realized −499¢ total, −0.38¢/sh
 
 | Experiment | Fingerprint | Status in code | Collecting? | Prospective start |
 |---|---|---|---|---|
-| UNMUTE_DEDUP_SHELF_V1 (E1) | `UNMUTE_DEDUP_SHELF_V1\|v1\|1568deb2\|8arms` | CANDIDATE | **No** | null |
-| WARDEN_JUMP_VETO_V1 (E2) | `WARDEN_JUMP_VETO_V1\|v1\|4b54b5e5\|5arms` | CANDIDATE | **No** | null |
-| SETTLE_BASIS_MEASURED_V1 (E3) | `SETTLE_BASIS_MEASURED_V1\|v1\|8e3cf22a\|4arms` | CANDIDATE | **No** | null |
+| UNMUTE_DEDUP_SHELF_V1 (E1) | `UNMUTE_DEDUP_SHELF_V1\|v1\|612f23b9\|8arms` | CANDIDATE | **No** | null |
+| WARDEN_JUMP_VETO_V1 (E2) | `WARDEN_JUMP_VETO_V1\|v1\|ae4a57cc\|5arms` | CANDIDATE | **No** | null |
+| SETTLE_BASIS_MEASURED_V1 (E3) | `SETTLE_BASIS_MEASURED_V1\|v1\|e1c9d3b1\|4arms` | CANDIDATE | **No** | null |
 
 Prospective counts: **0** for every arm. No backfill. Migration 0057 is not
 applied in production; the observer is not wired and refuses to start without
