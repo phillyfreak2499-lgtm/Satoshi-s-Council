@@ -44,9 +44,7 @@ function load(rel, extra = {}) {
 const { lastWindowFact, lastFilledFact, preferFilledFact } = load("src/lib/desk/home-still.ts");
 const { HomeStill } = load("src/components/desk/HomeStill.tsx");
 const text = (html) => html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, "");
-/** Values cross a vm realm; compare structure, not prototypes. */
 const plain = (value) => JSON.parse(JSON.stringify(value));
-/** Anything that would turn the front door into a scoreboard. */
 const SCOREBOARD = /Last 7 days|of \d+ fills?|needs \d+%|breakeven|win rate|Open the results|sat all|no paper fills/i;
 
 const sat = { ticker: "KXBTC-26SEP1817-T115000", close_time: "2026-09-18T22:45:00.000Z", winner: "UP", official: 1, settle_avg: null, prints: null, call: null, seats: { n: 5, right: 3 }, raw: { n: 5, right: 3 }, arena: null, replay: true };
@@ -124,7 +122,7 @@ test("first-use glossary keys exist for the jargon the audits flagged", () => {
   for (const k of ["term.window", "term.chair", "term.paper-fill", "term.directional-read", "term.sat", "term.wait", "term.confluence", "term.sit-mass", "term.gold", "term.sweep", "term.brier"]) {
     assert.ok(firstUseOf(k), k);
   }
-  const guided = read("src/components/desk/GuidedFloor.tsx");
+  const guided = read("src/components/desk/GuidedFloorView.tsx");
   assert.match(guided, /<Tip k="term.wait">/);
   assert.match(guided, /<Tip k="term.window">/);
   assert.match(guided, /<Tip k="term.chair">/);
