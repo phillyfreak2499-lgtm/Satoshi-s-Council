@@ -91,7 +91,8 @@ test("rail 1b: a failing or out-of-window frame is absorbed; the observer reads 
   await assert.doesNotReject(m2.shadowLabTick(Date.now()));
   assert.equal(m2.shadowLabHealth().error, null);
   assert.equal(JSON.stringify(frame), before, "the observer mutates nothing on the frame it was handed");
-  assert.ok(calls.every((q) => /^\s*update desk_shadow_receipts/.test(q)), `only the settle sweep touched the database: ${calls.map((q) => q.slice(0, 40)).join(" | ")}`);
+  assert.ok(calls.every((q) => /^\s*(update desk_shadow_receipts|select[\s\S]*?from desk_selector_attribution|update desk_selector_attribution)/.test(q)), `only the settle sweeps touched the database: ${calls.map((q) => q.slice(0, 40)).join(" | ")}`);
+  assert.ok(!calls.some((q) => /desk_shadow_manifests|insert into/.test(q)), "an out-of-band tick reads no boundary and inserts nothing");
 
   const src = codeOf("src/lib/desk/shadow-lab.server.ts");
   assert.match(src, /structuredClone\(\{ snap: frame\.snap, votes: frame\.votes, learner: frame\.learner, settings: frame\.settings \}\)/);
@@ -121,7 +122,7 @@ test("rail 2: oracle, counterfactual, baseline and reconciliation modules are ev
       if (re.test(src) && !f.includes(`/${m}`)) importers.push(`${f} -> ${m}`);
     }
   }
-  assert.deepEqual(importers.sort(), ["src/lib/desk/server-engine.ts -> status-transitions"], "the engine imports only the pure transition buffer; nothing else is imported by any runtime module (healthz kicks the drainer through a dynamic import)");
+  assert.deepEqual(importers.sort(), ["src/lib/desk/selector-attribution.ts -> counterfactuals", "src/lib/desk/server-engine.ts -> status-transitions"], "the engine imports only the pure transition buffer; the attribution recorder (evaluation-only, observer-side) imports the gate variants; nothing else is imported by any runtime module (healthz kicks the drainer through a dynamic import)");
   assert.match(read("server/routes/healthz.get.ts"), /status-transitions\.server/);
   assert.doesNotMatch(read("src/lib/desk/server-engine.ts"), /status-transitions\.server/, "the engine never imports the writer side");
   assert.match(read("src/lib/desk/counterfactuals.ts"), /EVALUATION ONLY/);

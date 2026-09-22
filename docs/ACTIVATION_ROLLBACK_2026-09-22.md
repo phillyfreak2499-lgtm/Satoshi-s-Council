@@ -11,8 +11,9 @@ Each item below is a separate owner decision with its own rollback.
 | 4 | Widen card-fire receipts | extend `SCORE_AUDIT_SKILLS` in `src/lib/desk/skill-score-audit.ts` | revert the list | larger `skill_score_audit` JSON per ledger row |
 | 5 | Persist status transitions | **active from this branch's deploy**: engine queues, `healthz`-kicked drainer writes insert-once `SKILL_STATUS:*` events | set env `SKILL_STATUS_LOG_DISABLED=true` (drainer refuses to start) | one small insert per status change |
 | 6 | Reconcile on demand | `DATABASE_URL=... npm run reconcile:book -- --as-of <ISO>` | n/a (read-only) | none |
+| 7 | SELECTOR ATTRIBUTION v1 | `migrations/0059_desk_selector_attribution.sql` applies on deploy; the recorder rides the shadow-lab tick and starts with step 3 (same switch, same `prospective_start_at`, logs from the first window that starts after it); `docs/SELECTOR_ATTRIBUTION_V1_2026-09-22.md` | unset `SHADOW_LAB_ENABLED` (nothing records); `drop table desk_selector_attribution` | one table, ≤ 3 inserts per window; no path into the Chair, gate, book or learner (`scripts/selector-attribution-rails.test.mjs`) |
 
 Never in this branch: lowering the 80¢ floor, changing `min_speaking`,
 re-promoting a card, early exits, size-up, a live-trading arm.
 
-Order: 1 may be decided alone (separate optional commit on `claude/seat-review-freeze-optional-20260922`). 2 → 3 in that order. 4 is independent. 5 is already on.
+Order: 1 was merged alone (main 45b0cd0, 2026-09-22 03:40Z). 2 → 3 in that order; 7 follows 3 automatically. 4 is independent. 5 is already on.

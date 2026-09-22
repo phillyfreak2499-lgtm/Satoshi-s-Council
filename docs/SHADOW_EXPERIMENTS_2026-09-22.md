@@ -14,6 +14,10 @@ counted over SHADOW and PAUSED manifests. Nothing collects until an owner sets
 | **MIRROR_35_V1** | `MIRROR_35_V1|v1|15d0f9d4|3arms` | **CANDIDATE_NOT_COLLECTING** | **never** | MIRROR_35, NO_TRADE (control), MIRROR_35_EXEC | MIRROR_35 vs NO_TRADE |
 
 Migration `0058` adds `CANDIDATE_NOT_COLLECTING` to the manifest status check.
+
+SELECTOR ATTRIBUTION v1 (`docs/SELECTOR_ATTRIBUTION_V1_2026-09-22.md`) is not
+a fourth experiment and holds no slot: it is a recorder that rides the same
+observer tick, starts with the same boundary, and writes its own table.
 `capRespected()` and `activeShadowCount()` are pinned by `mirror35.test.ts`.
 
 ## MIRROR-35 (registered, not collecting)
