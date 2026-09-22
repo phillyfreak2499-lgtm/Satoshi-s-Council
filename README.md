@@ -1,8 +1,8 @@
 # Satoshi's Council
 
-Paper-only **Bitcoin 15-minute** research desk. Twenty specialist seats
-read tape, structure, candles, book, and derivatives; **SATOSHI** chairs
-the vote. Nothing here places a live trade.
+Paper-only **Bitcoin 15-minute** research desk. Twenty-one Council seats
+read tape, structure, candles, book, derivatives, and operational context;
+**SATOSHI** chairs the vote. Nothing here places a live trade.
 
 This repo is the **fresh start** (2026-09-02): the chair, WICK catalog,
 learner, glossary, and 60-second tour. The older FastAPI dual-table
