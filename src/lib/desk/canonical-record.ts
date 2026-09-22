@@ -38,10 +38,16 @@ export function wilsonInterval(wins: number, n: number): [number, number] | null
   return [Math.max(0, (centre - margin) / denom), Math.min(1, (centre + margin) / denom)];
 }
 
-function fromTotals(t: BooksTotals, since: string, windows: number, maxDrawdown: number | null): CanonicalRecord {
+function fromTotals(
+  t: BooksTotals,
+  since: string,
+  windows: number,
+  maxDrawdown: number | null,
+  liveCents: number,
+): CanonicalRecord {
   const losses = Math.max(0, t.calls - t.wins);
   return {
-    scope: `Live paper book · recorded fills held to official settlement · after Kalshi fees · since ${since.slice(0, 10)}`,
+    scope: `Current ${liveCents}¢ paper book · recorded fills held to official settlement · after Kalshi fees · since ${since.slice(0, 10)} · through latest graded window`,
     calls: t.calls,
     wins: t.wins,
     losses,
@@ -55,13 +61,13 @@ function fromTotals(t: BooksTotals, since: string, windows: number, maxDrawdown:
   };
 }
 
-/** Prefer the live 80¢ trial book. Fall back to the current-floor book. */
+/**
+ * The canonical record is the current live price-floor population only.
+ * The archived matched-window trial and all-time keeper are different scopes.
+ */
 export function canonicalFromBooks(books: Books): CanonicalRecord {
-  const dd = books.keeper?.all.max_dd ?? null;
-  if (books.trial) {
-    return fromTotals(books.trial.live, books.trial.since, books.trial.windows, dd);
-  }
-  return fromTotals(books.floor, books.floor_since, books.floor.n, dd);
+  const live = books.live_floor;
+  return fromTotals(live.totals, live.since, live.totals.n, live.max_dd, live.live_cents);
 }
 
 export function fmtCents(n: number | null | undefined, digits = 1): string {
