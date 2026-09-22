@@ -7,10 +7,11 @@ import {
 } from "./fee-engine.ts";
 
 test("the fingerprint of the charged engine is frozen", () => {
-  assert.equal(feeFingerprint(), "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|ASSUMED");
+  assert.equal(feeFingerprint(), "KALSHI_TAKER_7PCT_CEIL_CENT_V1|rate=0.07|ceil_whole_cent|VENUE_TABLE_VERIFIED_2026_07_07");
   assert.equal(feeFingerprint("KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1"), "KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1|rate=0.07|ceil_centicent|ASSUMED");
   assert.equal(DEFAULT_FEE_ENGINE, "KALSHI_TAKER_7PCT_CEIL_CENT_V1");
-  for (const e of Object.values(FEE_ENGINES)) assert.equal(e.provenance, "ASSUMED");
+  assert.equal(FEE_ENGINES.KALSHI_TAKER_7PCT_CEIL_CENT_V1.provenance, "VENUE_TABLE_VERIFIED_2026_07_07");
+  assert.equal(FEE_ENGINES.KALSHI_TAKER_7PCT_CEIL_CENTICENT_V1.provenance, "ASSUMED");
 });
 
 test("whole-cent boundaries: 2¢ through 82¢, 1¢ from 83¢, and the engine equals clock.ts exactly", () => {
