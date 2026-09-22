@@ -85,6 +85,11 @@ function clampExactC(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+function exactFallback(exact: number | undefined, legacy: number): number {
+  const e = clampExactC(Number(exact));
+  return e > 0 ? e : clampExactC(legacy);
+}
+
 /** Venue sequence if present. 0 = not available. Never synthesize from a clock. */
 export function readSeq(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
@@ -138,10 +143,10 @@ export function interpretKalshiBook(
   const no_ask = y ? clampC(100 - y.px) : clampC(ticker.no_ask);
 
   // Measurement lane: actual venue price/depth where available.
-  const yes_bid_exact = yExact ? yExact.px_exact : clampExactC(ticker.yes_bid_exact ?? ticker.yes_bid);
-  const no_bid_exact = nExact ? nExact.px_exact : clampExactC(ticker.no_bid_exact ?? ticker.no_bid);
-  const yes_ask_exact = nExact ? clampExactC(100 - nExact.px_exact) : clampExactC(ticker.yes_ask_exact ?? ticker.yes_ask);
-  const no_ask_exact = yExact ? clampExactC(100 - yExact.px_exact) : clampExactC(ticker.no_ask_exact ?? ticker.no_ask);
+  const yes_bid_exact = yExact ? yExact.px_exact : exactFallback(ticker.yes_bid_exact, ticker.yes_bid);
+  const no_bid_exact = nExact ? nExact.px_exact : exactFallback(ticker.no_bid_exact, ticker.no_bid);
+  const yes_ask_exact = nExact ? clampExactC(100 - nExact.px_exact) : exactFallback(ticker.yes_ask_exact, ticker.yes_ask);
+  const no_ask_exact = yExact ? clampExactC(100 - yExact.px_exact) : exactFallback(ticker.no_ask_exact, ticker.no_ask);
 
   return {
     yes_bid,
