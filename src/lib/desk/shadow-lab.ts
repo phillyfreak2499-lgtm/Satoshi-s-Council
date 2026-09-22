@@ -37,7 +37,15 @@ export const SHADOW_OPERATOR_ALERT_DD_CENTS = -150;
 // ---------------------------------------------------------------------------
 
 export type ArmRole = "candidate" | "control" | "secondary" | "reference";
-export type ManifestStatus = "CANDIDATE" | "SHADOW" | "PAUSED" | "BLOCKED" | "KILLED";
+export type ManifestStatus = "CANDIDATE" | "CANDIDATE_NOT_COLLECTING" | "SHADOW" | "PAUSED" | "BLOCKED" | "KILLED";
+
+/** At most this many hypotheses may collect (status SHADOW) at once. A fourth waits as CANDIDATE_NOT_COLLECTING. */
+export const SHADOW_MAX_ACTIVE = 3;
+
+/** Statuses that count against the cap: collecting or paused-but-holding-a-slot. */
+export function countsAgainstCap(status: ManifestStatus): boolean {
+  return status === "SHADOW" || status === "PAUSED";
+}
 
 export type ShadowArm = {
   id: string;

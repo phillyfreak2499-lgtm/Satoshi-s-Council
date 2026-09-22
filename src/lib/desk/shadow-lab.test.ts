@@ -5,7 +5,7 @@ import {
   SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, armDayState, futilityLook, manifestFingerprint, pairUniverse, pairedMetrics, promotionVerdict,
   receiptKey, riskStop, settleReceipt, type ArmOutcome, type ShadowReceipt,
 } from "./shadow-lab.ts";
-import { E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
+import { E1_UNMUTE_DEDUP_SHELF_V1, E2_WARDEN_JUMP_VETO_V1, E3_SETTLE_BASIS_MEASURED_V1, E4_MIRROR_35_V1, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 
 const day = (i: number) => `2026-10-${String(1 + Math.floor(i / 20)).padStart(2, "0")}`;
 const outcome = (net: number | null, filled = net != null && net !== 0, i = 0): ArmOutcome => ({ net, filled, qualified: filled, day: day(i) });
@@ -111,10 +111,10 @@ test("each arm carries its own causal day state; pending fills reserve their ful
   assert.deepEqual({ net: b.settled_net, tightened: b.tightened, protected: b.profit_protected }, { net: 70, tightened: false, protected: true });
 });
 
-test("the three manifests are frozen, CANDIDATE, authority none, with null prospective start and pinned fingerprints", () => {
-  assert.equal(SHADOW_MANIFESTS.length, 3);
+test("the four manifests are frozen, CANDIDATE or CANDIDATE_NOT_COLLECTING, authority none, with null prospective start and pinned fingerprints", () => {
+  assert.equal(SHADOW_MANIFESTS.length, 4);
   for (const m of SHADOW_MANIFESTS) {
-    assert.equal(m.status, "CANDIDATE");
+    assert.ok(m.status === "CANDIDATE" || m.status === "CANDIDATE_NOT_COLLECTING");
     assert.equal(m.authority, "none");
     assert.equal(m.prospective_start_at, null);
     assert.equal(m.gates.min_fills, 250); assert.equal(m.gates.min_days, 30); assert.equal(m.gates.min_paired_control_losses, 25);
@@ -127,10 +127,12 @@ test("the three manifests are frozen, CANDIDATE, authority none, with null prosp
     UNMUTE_DEDUP_SHELF_V1: manifestFingerprint(E1_UNMUTE_DEDUP_SHELF_V1),
     WARDEN_JUMP_VETO_V1: manifestFingerprint(E2_WARDEN_JUMP_VETO_V1),
     SETTLE_BASIS_MEASURED_V1: manifestFingerprint(E3_SETTLE_BASIS_MEASURED_V1),
+    MIRROR_35_V1: manifestFingerprint(E4_MIRROR_35_V1),
   });
   // Pinned: a changed parameter must change the fingerprint and thus this test.
   assert.match(SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1!, /^UNMUTE_DEDUP_SHELF_V1\|v1\|[0-9a-f]{8}\|8arms$/);
   assert.match(SHADOW_MANIFEST_FINGERPRINTS.WARDEN_JUMP_VETO_V1!, /^WARDEN_JUMP_VETO_V1\|v1\|[0-9a-f]{8}\|5arms$/);
   assert.match(SHADOW_MANIFEST_FINGERPRINTS.SETTLE_BASIS_MEASURED_V1!, /^SETTLE_BASIS_MEASURED_V1\|v1\|[0-9a-f]{8}\|4arms$/);
+  assert.match(SHADOW_MANIFEST_FINGERPRINTS.MIRROR_35_V1!, /^MIRROR_35_V1\|v1\|[0-9a-f]{8}\|3arms$/);
   assert.notEqual(manifestFingerprint({ ...E1_UNMUTE_DEDUP_SHELF_V1, arms: E1_UNMUTE_DEDUP_SHELF_V1.arms.map((a) => a.id === "PKG_85" ? { ...a, params: { ...a.params, floor_cents: 86 } } : a) }), SHADOW_MANIFEST_FINGERPRINTS.UNMUTE_DEDUP_SHELF_V1);
 });
