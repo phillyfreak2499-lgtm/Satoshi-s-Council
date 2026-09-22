@@ -59,11 +59,11 @@
    "claim": "Taker fee is 1\u00a2 at every price",
    "audit_A": "ceil(7\u00b7p\u00b7(1\u2212p)) per order: 2\u00a2 from 18\u00a2 to 82\u00a2, 1\u00a2 from 83\u00a2 to 99\u00a2 (C=1); at C=100 the order pays 0.52\u20131.75\u00a2 per contract",
    "audit_B": "1\u00a2 flat",
-   "population_A": "fee-engine KALSHI_TAKER_7PCT_CEIL_CENT_V1 (provenance ASSUMED; schedule not fetched)",
+   "population_A": "fee-engine KALSHI_TAKER_7PCT_CEIL_CENT_V1 (VENUE_TABLE_VERIFIED_2026_07_07; official schedule effective 2026-07-07; KXBTC15M absent from non-standard series table)",
    "population_B": "unstated contract count (consistent with C\u226550 at 80\u201390\u00a2)",
    "status": "AUDIT_B_ERROR",
    "evidence": "docs/FEE_AND_PRICE_PRECISION_2026-09-22.md table; fee-engine.test.ts",
-   "resolution": "For the one-contract paper book B's fee understates cost by 1\u00a2 on every fill below 83\u00a2. Both audits assume the 7% rule; neither fetched Kalshi's schedule."
+   "resolution": "For the one-contract paper book B's fee understates cost by 1\u00a2 on every whole-cent fill from 18\u00a2 through 82\u00a2. The official Kalshi schedule effective 2026-07-07 verifies the charged engine's published one-contract table and default M=1 for KXBTC15M; sub-cent centicent treatment remains separately ASSUMED."
   },
   {
    "claim_id": "C05",
