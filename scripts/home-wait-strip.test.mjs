@@ -87,7 +87,7 @@ test("the strip is homepage-only, shows under an unbooked window, and keeps the 
   assert.match(home, /\{still \? <HomeStill last=\{last\} \/> : null\}<a href="\/desk" className="company-text-link">Read the full decision/);
   assert.match(home, /plainLine\(chair, snap, book\)/, "the chair-words sentence stays");
   assert.match(home, /\{last && !still \? <>Last graded window ·/, "the small snapshot line does not repeat the fact");
-  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\} \/>/);
+  assert.match(read("src/routes/index.tsx"), /<CouncilHome last=\{last\}/);
   assert.doesNotMatch(read("src/components/desk/DeskApp.tsx"), /HomeStill|lastWindowFact/, "/desk is unchanged");
   assert.doesNotMatch(read("src/lib/desk/chair-words.ts"), /HomeStill|lastWindowFact/);
 });
