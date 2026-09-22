@@ -49,7 +49,7 @@ export function ResearchQuietNotice() {
           onClick={dismiss}
           aria-label="Dismiss"
         >
-          \u00d7
+          ×
         </button>
         <p className="company-eyebrow">Notice</p>
         <h2 id={titleId} className="mt-2 font-sans text-title font-medium tracking-tight text-fg">
