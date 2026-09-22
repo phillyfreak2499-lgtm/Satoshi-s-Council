@@ -25,3 +25,14 @@ the SQL emits NULL, never a synthetic value.
 | 11 | audit_manifest.json | docs/audit/audit_manifest.json | yes |
 | 12 | grade_gaps.sql | desk_ledger (interior slots), research_quality | yes |
 | 13 | cited audit | docs/QUANT_AUDIT_2026-09-22.md @ 7972372 | reference only, not ledger data |
+
+## Added 2026-09-22 (external reconciliation pass)
+
+| # | file | surface | UNKNOWN columns |
+|---|---|---|---|
+| 14 | shadow_receipts.sql | desk_shadow_receipts × manifest status | hittable_150ms/500ms (2 s poll) |
+| 15 | skill_status_transitions.sql | prospective SKILL_STATUS system events | nothing before this branch's deploy |
+| 16 | seat_review_snapshot.sql | current review counters and would-be verdict | state at query time only (no history) |
+| 17 | co_speak_identical_ticks.sql | seat pairs directional on the same tick | before 2026-09-21T17:06Z |
+| 18 | chalk_adjusted_wait.sql | Chair WAIT raw vs ex-chalk per checkpoint | — |
+| 19 | gate_and_cap_counterfactuals.sql | 92¢ cap, gate variants on the index-edge proxy, oracle ceiling | model edge at entry |

@@ -1,0 +1,296 @@
+{
+ "version": "EXTERNAL_RECONCILIATION_V1",
+ "as_of": "2026-09-22T00:00:00Z",
+ "branch": "claude/audit-reconcile-external-20260922",
+ "parent_branch": "claude/satoshis-council-audit-9zffy6",
+ "audit_A": "internal repo/database audit (docs/QUANT_AUDIT_2026-09-22.md, docs/EVIDENCE_REPORT_2026-09-22.md)",
+ "audit_B": "independent external Kalshi market-data audit (kx/* data not in this repository; claims as relayed)",
+ "status_legend": [
+  "CONFIRMED",
+  "DIFFERENT_POPULATION",
+  "AUDIT_A_ERROR",
+  "AUDIT_B_ERROR",
+  "UNKNOWN"
+ ],
+ "rule": "Conflicting numbers stay side by side; nothing is averaged. A status names which measurement is wrong or whether the two measure different populations.",
+ "counts": {
+  "CONFIRMED": 10,
+  "DIFFERENT_POPULATION": 2,
+  "AUDIT_A_ERROR": 2,
+  "AUDIT_B_ERROR": 4,
+  "UNKNOWN": 4
+ },
+ "claims": [
+  {
+   "claim_id": "C01",
+   "claim": "Average entry ask of the paper book",
+   "audit_A": "79.72\u00a2 over all 190 fills (82.16\u00a2 over the 137 policy-era one-contract HOLD fills)",
+   "audit_B": "76.5\u00a2 'implied' from net and win count",
+   "population_A": "desk_ledger 190 fills \u2264 2026-09-22T00:00Z, stored entry_cents",
+   "population_B": "net + count arithmetic assuming a flat 1\u00a2 fee, 149 'wins' (positive-net rows) and HOLD identity on 24 exit-priced A0 rows",
+   "status": "AUDIT_B_ERROR",
+   "evidence": "docs/audit/ledger_190_rows_2026-09-22.csv; src/lib/desk/ledger-identity.test.ts",
+   "resolution": "An implied ask cannot be recovered from a headline that pools exit-priced legacy rows; the stored ask is the record."
+  },
+  {
+   "claim_id": "C02",
+   "claim": "Win count",
+   "audit_A": "140 official settlement wins / 190 (117 / 137 policy era)",
+   "audit_B": "149",
+   "population_A": "official_winner = booked side",
+   "population_B": "stored_pnl_cents > 0 (9 legacy early exits closed positive without settling in the money)",
+   "status": "AUDIT_B_ERROR",
+   "evidence": "ledger CSV columns official_win vs stored_pnl_cents",
+   "resolution": "A positive-net exit is not a win (METRIC_CONTRACT.md)."
+  },
+  {
+   "claim_id": "C03",
+   "claim": "Live and shadow fills are commingled in the book",
+   "audit_A": "No: live (entry_cents/ev_cents) and shadow (shadow_entry_cents/shadow_ev_cents) are separate columns; never summed",
+   "audit_B": "commingled",
+   "population_A": "desk_ledger columns",
+   "population_B": "the all-time headline (+92) which pools 24 A0 legacy exit rows and 3 scratches with 166 HOLD rows",
+   "status": "DIFFERENT_POPULATION",
+   "evidence": "ledger CSV ledger_tag/hold_identity; books.server.ts all-time scope",
+   "resolution": "What B saw is legacy-exit pooling in one headline scope, not live/shadow commingling."
+  },
+  {
+   "claim_id": "C04",
+   "claim": "Taker fee is 1\u00a2 at every price",
+   "audit_A": "ceil(7\u00b7p\u00b7(1\u2212p)) per order: 2\u00a2 from 18\u00a2 to 82\u00a2, 1\u00a2 from 83\u00a2 to 99\u00a2 (C=1); at C=100 the order pays 0.52\u20131.75\u00a2 per contract",
+   "audit_B": "1\u00a2 flat",
+   "population_A": "fee-engine KALSHI_TAKER_7PCT_CEIL_CENT_V1 (provenance ASSUMED; schedule not fetched)",
+   "population_B": "unstated contract count (consistent with C\u226550 at 80\u201390\u00a2)",
+   "status": "AUDIT_B_ERROR",
+   "evidence": "docs/FEE_AND_PRICE_PRECISION_2026-09-22.md table; fee-engine.test.ts",
+   "resolution": "For the one-contract paper book B's fee understates cost by 1\u00a2 on every fill below 83\u00a2. Both audits assume the 7% rule; neither fetched Kalshi's schedule."
+  },
+  {
+   "claim_id": "C05",
+   "claim": "Kalshi quotes carry 0.1\u00a2 ticks",
+   "audit_A": "Yes below 10\u00a2 and at/above 90\u00a2 (desk_lag_events raw book); the desk coerces to whole cents before booking",
+   "audit_B": "deci-cent ticks exist",
+   "population_A": "98,209 raw-book rows 2026-09-06\u219222",
+   "population_B": "external kx/* order book",
+   "status": "CONFIRMED",
+   "evidence": "price-precision.ts header; price-precision.test.ts (90.1, 90.4, 90.9, 95.5, 99.1)",
+   "resolution": "28 historical fills at \u226590\u00a2 have an exact ask UNKNOWN to \u00b10.5\u00a2; no fill between 10\u00a2 and 90\u00a2 is affected."
+  },
+  {
+   "claim_id": "C06",
+   "claim": "Settlement strike is the prior window's official settlement value",
+   "audit_A": "Yes on 1,337 of 1,357 windows with a prior ledger row; 9 windows carry the desk's $25-grid proxy strike (round(spot/25)*25, live.ts); 11 early-era windows (2026-09-07\u219210) mismatch by \u2212$314..+$104, cause UNKNOWN; ties never observed (0 rows)",
+   "audit_B": "strike = previous settlement",
+   "population_A": "desk_replay / desk_ledger official_value",
+   "population_B": "external settlement feed",
+   "status": "CONFIRMED",
+   "evidence": "docs/SETTLEMENT_SEMANTICS_2026-09-22.md",
+   "resolution": "The 9 proxy-grid windows are listed in docs/SETTLEMENT_SEMANTICS_2026-09-22.md; whether the official strike differed on them is UNKNOWN; every winner still comes from kalshi-result."
+  },
+  {
+   "claim_id": "C07",
+   "claim": "The 80\u00a2 floor trial beat the 70\u00a2 shadow by +215\u00a2 over 442 windows",
+   "audit_A": "+215 = A(\u2212415 on 91 shared fills: \u2212426 price, +11 fee) + B(+630: 11 losing 70\u00a2-only fills avoided) + C(0) + D(0)",
+   "audit_B": "+215 attributed to 'the floor'",
+   "population_A": "desk_ledger trial rows 2026-09-10T23:00Z\u20132026-09-15T14:05Z (442 windows; 440 with replay)",
+   "population_B": "same window count",
+   "status": "CONFIRMED",
+   "evidence": "docs/audit/market_baseline_2026-09-22.json trial442.decomposition_215; trial-decomposition.test.ts",
+   "resolution": "The arithmetic is confirmed; the interpretation splits: the higher floor cost 415\u00a2 on the shared fills and saved 630\u00a2 by not taking 11 fills that lost."
+  },
+  {
+   "claim_id": "C08",
+   "claim": "The Chair (selector) adds nothing beyond a price floor",
+   "audit_A": "On the 440 trial windows: live Chair +2.25\u00a2/fill (n=91, WR 87.9) vs blind-80 first touch +0.59\u00a2/fill (n=374) vs matched controls +1.05\u00a2/fill (WR 85.3, n=8,801 pooled)",
+   "audit_B": "selector \u2248 floor",
+   "population_A": "MARKET_BASELINE first-touch rules on desk_replay 4 s paths",
+   "population_B": "external market data",
+   "status": "UNKNOWN",
+   "evidence": "docs/SELECTOR_VS_FLOOR_2026-09-22.md",
+   "resolution": "Direction favours the selector; 91 fills cannot separate +2.25 from +1.05 (WR 87.9 vs 85.3, Wilson LB 79.6). Not resolvable from this sample."
+  },
+  {
+   "claim_id": "C09",
+   "claim": "A blind 80\u00a2 first-touch buyer loses in both halves",
+   "audit_A": "MID 180\u2013600 s: TRAIN \u22121.23\u00a2/fill (n=582), TEST \u22121.76 (n=630); FULL 15\u2013900 s: \u22122.77 / \u22121.55",
+   "audit_B": "negative both halves",
+   "population_A": "1,362 replay windows, split 2026-09-14T12:00Z, labelled MARKET_BASELINE",
+   "population_B": "external 1,440-window sample",
+   "status": "CONFIRMED",
+   "evidence": "market_baseline JSON floors",
+   "resolution": "Confirmed on internal data; the counts differ (1,362 vs 1,440) so the populations are not identical."
+  },
+  {
+   "claim_id": "C10",
+   "claim": "MIRROR-35 (buy the 30\u201345\u00a2 side, T\u22125..T\u22122) earns +1.89\u00a2/fill",
+   "audit_A": "TRAIN +1.89\u00a2/fill (n=293) \u2192 TEST \u22120.60 (n=299); ALL +0.63; ~60 cells searched",
+   "audit_B": "+1.89",
+   "population_A": "replay first touch",
+   "population_B": "external",
+   "status": "CONFIRMED",
+   "evidence": "market_baseline JSON mirror35",
+   "resolution": "The train figure reproduces exactly and the sign flips out of sample; discovery-biased. Registered CANDIDATE_NOT_COLLECTING."
+  },
+  {
+   "claim_id": "C11",
+   "claim": "Jump-chase (\u22652\u00a2 rise in 60 s) is profitable",
+   "audit_A": "TRAIN +0.13\u00a2/fill \u2192 TEST \u22121.91",
+   "audit_B": "+0.13 train",
+   "population_A": "replay",
+   "population_B": "external",
+   "status": "CONFIRMED",
+   "evidence": "market_baseline JSON jump_chase_2c_60s",
+   "resolution": "Sign flips; not a candidate."
+  },
+  {
+   "claim_id": "C12",
+   "claim": "Late 95\u201399\u00a2 buying loses",
+   "audit_A": "TRAIN \u22121.72\u00a2/fill (n=432), TEST \u22121.55 (n=414)",
+   "audit_B": "negative",
+   "population_A": "replay",
+   "population_B": "external",
+   "status": "CONFIRMED",
+   "evidence": "market_baseline JSON late_95_99",
+   "resolution": "Confirmed both halves."
+  },
+  {
+   "claim_id": "C13",
+   "claim": "The Chair's WAIT rate is inflated by chalk (\u226599\u00a2) windows",
+   "audit_A": "T\u2212450: 97.4% raw / 97.4% ex-chalk (3 chalk of 387); T\u2212300: 96.6 / 96.6 (9); T\u2212180: 97.2 / 96.6 (64)",
+   "audit_B": "WAIT inflated by chalk",
+   "population_A": "desk_call_quality checkpoints 2026-09-17T23:07Z\u20132026-09-21T23:57Z",
+   "population_B": "unstated",
+   "status": "AUDIT_B_ERROR",
+   "evidence": "docs/sql/exports/chalk_adjusted_wait.sql",
+   "resolution": "Chalk moves the WAIT rate by under one point at every checkpoint. Both denominators are kept."
+  },
+  {
+   "claim_id": "C14",
+   "claim": "1,440-window sample",
+   "audit_A": "1,362 windows with replay paths (1,176 complete) in the bound",
+   "audit_B": "1,440",
+   "population_A": "desk_replay",
+   "population_B": "external kx/* (not in this repo)",
+   "status": "DIFFERENT_POPULATION",
+   "evidence": "market_baseline JSON windows_total",
+   "resolution": "The external sample is not reproducible here; nothing was tuned to either count."
+  },
+  {
+   "claim_id": "C15",
+   "claim": "The seat review is a one-way ratchet",
+   "audit_A": "Yes: every seat with 8+ legs sits under the 15\u00a2 floor; each review that fires demotes; AUTO_SKILL_PROMOTION_ENABLED=false returns nothing to LIVE",
+   "audit_B": "not measured",
+   "population_A": "learner state 2026-09-22T02:48Z + learner.ts",
+   "population_B": "n/a",
+   "status": "CONFIRMED",
+   "evidence": "docs/audit/seat_review_snapshot_2026-09-22.json; docs/SEAT_REVIEW_FREEZE_DECISION_2026-09-22.md",
+   "resolution": "Next reviews by calls-until: PULSE 71 (no LIVE card to bench; debt reset + rethink spawn), TAPE 127, CHAIN 223, INDEX 273 (would bench INDEX.settle_fair, its lower-EV LIVE card), DRIFT 403 (would bench DRIFT.aligned_3h), CASCADE 406, STREAK 497, WHALE 497, STRIKE 499."
+  },
+  {
+   "claim_id": "C16",
+   "claim": "A two-seat quorum is reachable",
+   "audit_A": "In 2,069 seat-read ticks (2026-09-21T17:06Z\u201323:59Z) only DRIFT (334) and INDEX (12) were ever raw-directional, never on the same tick",
+   "audit_B": "not measured",
+   "population_A": "desk_seat_reads (7 h only)",
+   "population_B": "n/a",
+   "status": "CONFIRMED",
+   "evidence": "docs/audit/vote_correlation_2026-09-22.csv",
+   "resolution": "Unreachable on every tick of that population; UNKNOWN before 2026-09-21T17:06Z (no seat reads)."
+  },
+  {
+   "claim_id": "C17",
+   "claim": "A 92\u00a2 cap would help",
+   "audit_A": "15 policy-era fills at \u226592\u00a2, all won, +75\u00a2; cap would have cost 75\u00a2 in-sample (Wilson LB 79.6% vs need 95.0%)",
+   "audit_B": "recommended",
+   "population_A": "137 policy-era HOLD fills",
+   "population_B": "external reasoning",
+   "status": "UNKNOWN",
+   "evidence": "docs/sql/exports/gate_and_cap_counterfactuals.sql",
+   "resolution": "No historical support for the cap; no proof of edge above 92\u00a2 either. Telemetry only; not adopted."
+  },
+  {
+   "claim_id": "C18",
+   "claim": "A price-aware edge gate beats the flat 3\u00a2 gate",
+   "audit_A": "Model edge at entry is not stored (UNKNOWN). On the 89 fills with a settlement-index estimate: no gate +276 (n=89); FLAT_3C proxy +111 (54); QUARTER_OF_WIN +122 (53); FEE_PLUS_2 +59 (51); oracle ceiling +1105",
+   "audit_B": "price-aware gate",
+   "population_A": "index-edge proxy",
+   "population_B": "unstated",
+   "status": "UNKNOWN",
+   "evidence": "gate_and_cap_counterfactuals.sql; counterfactuals.ts",
+   "resolution": "Every gate variant removed more winners than losers on this sample; evaluation only, nothing changed."
+  },
+  {
+   "claim_id": "C19",
+   "claim": "17/17 and 19/19 records prove card edge",
+   "audit_A": "17/17: Wilson LB 81.6% vs need 90.5% at 89.5\u00a2; 19/19: 83.2% vs 84.0% at 82\u00a2 \u2192 PROMISING_INSUFFICIENT",
+   "audit_B": "proof",
+   "population_A": "as quoted",
+   "population_B": "as quoted",
+   "status": "UNKNOWN",
+   "evidence": "docs/audit/wilson_small_n_2026-09-22.csv; evidence-strength.ts",
+   "resolution": "Neither lower bound clears the need. Card-level booked asks are UNKNOWN; the table uses the quoted asks."
+  },
+  {
+   "claim_id": "C20",
+   "claim": "Market Brier by horizon",
+   "audit_A": "450 s 0.165 (dir 75.6%, chalk 0.5%); 300 s 0.133 (80.6%, 3.7%); 180 s 0.104 (84.9%, 20.0%); 60 s 0.048 (93.1%, 62.7%)",
+   "audit_B": "market well calibrated",
+   "population_A": "1,289\u20131,353 windows per horizon",
+   "population_B": "external",
+   "status": "CONFIRMED",
+   "evidence": "market_baseline JSON brier_by_horizon",
+   "resolution": "Reference only."
+  },
+  {
+   "claim_id": "C21",
+   "claim": "Audit A's first draft: fee boundary '1\u00a2 from 82\u00a2'",
+   "audit_A": "corrected to 2\u00a2 at 82\u00a2, 1\u00a2 from 83\u00a2 (a72e158 corrections preamble)",
+   "audit_B": "n/a",
+   "population_A": "fee engine",
+   "population_B": "n/a",
+   "status": "AUDIT_A_ERROR",
+   "evidence": "docs/QUANT_AUDIT_2026-09-22.md corrections",
+   "resolution": "Fixed before this pass; recorded here so the error is not hidden."
+  },
+  {
+   "claim_id": "C22",
+   "claim": "Audit A's first draft counted ev-positive rows as wins in one table",
+   "audit_A": "corrected to official wins (140)",
+   "audit_B": "n/a",
+   "population_A": "ledger",
+   "population_B": "n/a",
+   "status": "AUDIT_A_ERROR",
+   "evidence": "docs/QUANT_AUDIT_2026-09-22.md corrections",
+   "resolution": "Fixed; same definitional trap as C02."
+  }
+ ],
+ "artifacts": {
+  "ledger_190": "docs/audit/ledger_190_rows_2026-09-22.csv",
+  "trial_shadow_only": "docs/audit/trial_shadow70_only_rows_2026-09-22.csv",
+  "market_baseline": "docs/audit/market_baseline_2026-09-22.json",
+  "seat_review_snapshot": "docs/audit/seat_review_snapshot_2026-09-22.json",
+  "vote_correlation": "docs/audit/vote_correlation_2026-09-22.csv",
+  "wilson_small_n": "docs/audit/wilson_small_n_2026-09-22.csv",
+  "mirror35_manifest": "docs/experiments/MIRROR_35_V1.json",
+  "sql_exports": "docs/sql/exports/*.sql (14\u201319 added)"
+ },
+ "production_behaviour_change": "none (Chair, gate, floor, min_speaking, seat statuses, fee engine default: unchanged)",
+ "activated_measurement": [
+  "shadow-lab observer wired in healthz, env-gated SHADOW_LAB_ENABLED (default OFF; not enabled)",
+  "skill-status transition log: engine-side buffer + healthz-kicked drainer to insert-once system events (kill switch SKILL_STATUS_LOG_DISABLED)",
+  "migration 0058: CANDIDATE_NOT_COLLECTING manifest status"
+ ],
+ "not_done_by_design": [
+  "no live floor change",
+  "no 92\u00a2 cap",
+  "no min_speaking change",
+  "no seat restore/demote",
+  "no MIRROR-35 or Shadow Chair v2 promotion",
+  "no gate replacement",
+  "no early exits",
+  "no call-frequency increase",
+  "no tuning to the 1,440-window sample",
+  "no historical fill rewrite",
+  "SEAT_REVIEW_DEMOTION_FROZEN left false in the primary branch (separate optional commit prepared)"
+ ]
+}
