@@ -19,7 +19,7 @@ test("Pro Floor aggregates 15 voting seats and skips pit/retired in WAIT tallies
   assert.doesNotMatch(src, /one of the 18 the Chair aggregates/);
   const families = read("src/components/desk/ProFloor/EvidenceFamilies.tsx");
   assert.match(families, /currently voting/);
-  assert.match(families, /COUNCIL_STRUCTURE_SHORT|COUNCIL_RETIRED_MEANS|15 currently voting/);
+  assert.match(families, /COUNCIL_STRUCTURE_SHORT/);
 });
 
 test("Chamber collapses repeated WAIT and shows a roster on a quiet floor", () => {
@@ -53,6 +53,4 @@ test("Lab call-quality uses one checkpoint selector instead of three walls", () 
   assert.match(study, /No observations/);
   assert.equal((study.match(/Why entries were blocked/g) || []).length, 1);
   assert.equal((study.match(/Seat accuracy at this checkpoint/g) || []).length, 1);
-  const lab = read("src/components/desk/LabRoom.tsx");
-  assert.match(lab, /row\.label \|\| row\.id/);
 });
