@@ -105,3 +105,21 @@ test("exact lane retains extreme venue levels while legacy rounding keeps its hi
   assert.equal(q.yes_ask_exact, 0.5);
   assert.equal(q.no_ask_exact, 0.1);
 });
+
+
+test("unavailable exact sentinels fall back to the executable legacy quote instead of becoming 0¢ prices", () => {
+  const q = interpretKalshiBook(null, {
+    yes_bid: 84,
+    yes_ask: 85,
+    no_bid: 15,
+    no_ask: 16,
+    yes_bid_exact: 0,
+    yes_ask_exact: 0,
+    no_bid_exact: 0,
+    no_ask_exact: 0,
+  });
+  assert.equal(q.yes_bid_exact, 84);
+  assert.equal(q.yes_ask_exact, 85);
+  assert.equal(q.no_bid_exact, 15);
+  assert.equal(q.no_ask_exact, 16);
+});
