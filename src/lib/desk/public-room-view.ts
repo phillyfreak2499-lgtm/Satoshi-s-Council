@@ -48,3 +48,11 @@ export function cleanBoardBody(value: unknown): string {
     .split("\n").map((line) => line.replace(/[^\S\n]+/g, " ").trim()).join("\n")
     .replace(/\n{3,}/g, "\n\n").trim().slice(0, 400);
 }
+
+export type PrivateBoardContactKind = "LEGAL" | "TRADEMARK" | "SECURITY";
+
+/** Exact first-line marker for Board posts that must never enter the public feed. */
+export function privateBoardContactKind(value: unknown): PrivateBoardContactKind | null {
+  const first = String(value ?? "").replace(/\r\n?/g, "\n").split("\n", 1)[0]?.trim();
+  return first === "LEGAL" || first === "TRADEMARK" || first === "SECURITY" ? first : null;
+}
