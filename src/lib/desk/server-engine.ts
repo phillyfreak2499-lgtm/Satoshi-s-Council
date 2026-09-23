@@ -368,6 +368,10 @@ function freshEng(): Eng {
   };
 }
 
+/** Integration-test access to the exact entry functions used by `tick`.
+ * Tests use the normal PGlite fallback, never an injected persistence stub. */
+export const __entryIntegration = { freshEng, applyEntryMode, noteCall };
+
 /** Record a failure with its scope and text: sets the single lastError (kept for
  *  the UI/watchdog) and appends to the bounded ring so recent failures keep
  *  their detail — which window, feed, or write, and why. */

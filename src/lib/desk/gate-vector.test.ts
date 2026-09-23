@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { auditAdmission } from "./admission-audit.ts";
 import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, maxReachableQuorum, reachableQuorum, supporterRows } from "./gate-vector.ts";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
-import type { SelectiveContext } from "./selective-entry.ts";
+import { selectiveBlock, type SelectiveContext } from "./selective-entry.ts";
 import type { ChairResult, SeatId, SeatRow, Snapshot } from "./types";
 
 const now = Date.parse("2026-09-21T15:05:00Z");
@@ -16,7 +17,7 @@ const snap = (extra: Partial<Snapshot> = {}): Snapshot => ({
   ...extra,
 } as Snapshot);
 const seatRow = (seat: SeatId, lean: "UP" | "DOWN" | "WAIT", extra: Partial<SeatRow> = {}): SeatRow =>
-  ({ seat, lean, health: "LIVE", status: "LIVE", folded: false, ...extra }) as SeatRow;
+  ({ seat, lean, health: "LIVE", status: "LIVE", folded: false, weight: 0.1, ...extra }) as SeatRow;
 const chair = (rows: SeatRow[], extra: Partial<ChairResult> = {}): ChairResult => ({
   lean: "UP", score: 0.8, bar: 0.5, hard_fail: false, confidence: 80, calc: "test", gates: [{ id: "bar", label: "bar", pass: true, hard: true, value: "" }],
   quorum: { up: rows.filter((r) => r.lean === "UP" && !r.forced_sit).length, down: rows.filter((r) => r.lean === "DOWN" && !r.forced_sit).length, wait: rows.filter((r) => r.lean === "WAIT").length },
@@ -68,14 +69,55 @@ test("every check is evaluated even when the Chair is WAIT: side-dependent check
   assert.equal(v.checks.find((k) => k.id === "index_fresh")?.pass, true);
 });
 
-test("the family fold runs before the quorum: two same-family seats fold and count as ZERO supporters", () => {
-  const rows = [seatRow("STRIKE", "UP", { folded: true, status: "FOLDED" }), seatRow("INDEX", "UP", { folded: true, status: "FOLDED" }), seatRow("WICK", "WAIT")];
+test("the family fold retains one eligible representative and excludes correlated members", () => {
+  const rows = [seatRow("STRIKE", "UP"), seatRow("INDEX", "UP", { folded: true, status: "FOLDED" }), seatRow("WICK", "WAIT")];
   const q = reachableQuorum(chair(rows), "UP", DEPLOYED_POLICY, "normal");
-  assert.deepEqual(q.supporters, []);
-  assert.deepEqual(q.folded_excluded, ["STRIKE", "INDEX"]);
+  assert.deepEqual(q.supporters, ["STRIKE"]);
+  assert.deepEqual(q.folded_excluded, ["INDEX"]);
   assert.equal(q.reachable, false);
-  assert.equal(q.deficit.supporters, 2);
-  assert.equal(supporterRows(chair(rows), "UP").length, 0);
+  assert.equal(q.deficit.supporters, 1);
+  assert.deepEqual(supporterRows(chair(rows), "UP").map((r) => r.seat), ["STRIKE"]);
+});
+
+test("support eligibility is distinct, fail-closed, and treats a live FADED row consistently", () => {
+  const rows = [
+    seatRow("STRIKE", "UP", { status: "FADED", weight: 0.03 }),
+    seatRow("STRIKE", "UP", { status: "LIVE", weight: 0.04 }),
+    seatRow("INDEX", "UP", { status: "LIVE", weight: 0 }),
+    seatRow("DRIFT", "UP", { status: "INVERT", weight: 0.1 }),
+    seatRow("STREAK", "UP", { forced_sit: true, weight: 0.1 }),
+    seatRow("CHAIN", "UP", { health: "STALE", weight: 0.1 }),
+  ];
+  const q = reachableQuorum(chair(rows), "UP", DEPLOYED_POLICY, "normal");
+  assert.deepEqual(q.supporters, ["STRIKE"]);
+  assert.equal(q.status_excluded.includes("STRIKE"), false, "a counted representative is not also excluded");
+  assert.deepEqual(supporterRows(chair(rows), "UP").map((r) => r.seat), ["STRIKE"]);
+});
+
+test("admission, gate diagnostics, and audit reject every invalid weight shape", () => {
+  const badWeights: unknown[] = [undefined, null, "0.1", true, NaN, Infinity, -Infinity, 0, -0.01];
+  const rows = [seatRow("STRIKE", "UP", { status: "FADED", weight: 0.03 })];
+  const seats = ["INDEX", "DRIFT", "STREAK", "CHAIN", "WICK", "PULSE", "TAPE", "WHALE", "CARRY"] as SeatId[];
+  badWeights.forEach((weight, i) => rows.push(seatRow(seats[i]!, "UP", { weight: weight as number })));
+  const c = chair(rows);
+  const context = confirmed(snap());
+  const q = reachableQuorum(c, "UP", DEPLOYED_POLICY, "normal");
+  assert.deepEqual(q.supporters, ["STRIKE"], "only the positive numeric FADED row counts");
+  assert.match(selectiveBlock(snap(), c, context)!, /two healthy supporters/);
+  assert.equal(gateVector(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, false);
+  assert.equal(auditAdmission(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, false);
+});
+
+test("admission, gate diagnostics, and audit accept positive LIVE and FADED weights", () => {
+  const c = chair([
+    seatRow("STRIKE", "UP", { status: "FADED", weight: 0.03 }),
+    seatRow("STREAK", "UP", { status: "LIVE", weight: 0.04 }),
+  ]);
+  const context = confirmed(snap());
+  assert.deepEqual(supporterRows(c, "UP").map((row) => row.seat), ["STRIKE", "STREAK"]);
+  assert.equal(selectiveBlock(snap(), c, context), null);
+  assert.equal(gateVector(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, true);
+  assert.equal(auditAdmission(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, true);
 });
 
 test("pit crew and CLOCK never count; forced sits are authority exclusions; opposition blocks", () => {

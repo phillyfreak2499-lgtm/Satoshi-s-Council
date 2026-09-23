@@ -39,7 +39,7 @@ const snap = (patch = {}) => ({ as_of: at, close_time: close, secs_left: 455, mi
   lab_fair_yes: 91, lab_age_s: 1, fair_yes: 90, edge_up: 6, edge_down: -8, regime_key: "quiet", session: "US_AM", ...patch });
 const chair = (patch = {}) => ({ lean: "UP", score: .8, bar: .5, hard_fail: false, confidence: 80,
   gates: [], quorum: { up: 2, down: 0, wait: 19 },
-  rows: ["STREAK", "STRIKE"].map(seat => ({ seat, lean: "UP", health: "LIVE", status: "LIVE", folded: false })), ...patch });
+  rows: ["STREAK", "STRIKE"].map(seat => ({ seat, lean: "UP", health: "LIVE", status: "LIVE", folded: false, weight: 0.1 })), ...patch });
 const context = () => ({ calls: [], ready: true, start: close - 900_000, watch: { key: `${ticker}|${close}`, side: "UP", since: at - 8000, last: at, frames: 3, mode: "normal" } });
 const model = (p = .90) => ({ p_market: .815, p_up: p, model_n: 240, adjustment_pp: (p - .815) * 100 });
 const receipt = () => q.captureQuality(snap(), chair(), [{ seat: "TAPE", raw_lean: "UP", lean: "WAIT", raw_conf: 70, confidence: 50, health: "LIVE" }],
