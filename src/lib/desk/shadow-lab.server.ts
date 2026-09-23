@@ -40,7 +40,7 @@ import { chicagoDayOf } from "./economics-book.ts";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
 import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
 import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
-import { JUMP_VETO, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
+import { JUMP_VETO, NULL_FAV_GRACE_SECS, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
 import { INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 import { SHADOW_FEE_FINGERPRINT, receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
@@ -62,13 +62,19 @@ const buildSha = () => process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?
 // ---------------------------------------------------------------------------
 
 /** Insert one receipt; true when the row was new. The primary key is the idempotent key. */
-export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}): Promise<boolean> {
+export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false): Promise<boolean> {
   const rows = await sql<{ experiment: string }>`
     insert into desk_shadow_receipts (experiment, arm, ticker, close_time, kind, decided_at, side, ask_cents, fee_engine, fee_cents, size_at_ask,
       spread_cents, feeds_ok, hittable_150ms, hittable_500ms, official_winner, net_cents, note, payload, build_sha)
-    values (${r.experiment}, ${r.arm}, ${r.ticker}, ${new Date(r.close_ms).toISOString()}::timestamptz, ${r.kind}, ${new Date(r.decided_ms).toISOString()}::timestamptz,
+    select ${r.experiment}, ${r.arm}, ${r.ticker}, ${new Date(r.close_ms).toISOString()}::timestamptz, ${r.kind}, ${new Date(r.decided_ms).toISOString()}::timestamptz,
       ${r.side}, ${r.ask_cents}, ${r.fee_engine}, ${r.fee_cents}, ${r.size_at_ask}, ${r.spread_cents}, ${r.feeds_ok}, ${r.hittable_150ms}, ${r.hittable_500ms},
-      ${r.official_winner}, ${r.net_cents}, ${r.note}, ${JSON.stringify(payload)}::jsonb, ${buildSha()})
+      ${r.official_winner}, ${r.net_cents}, ${r.note}, ${JSON.stringify(payload)}::jsonb, ${buildSha()}
+    where not ${onlyIfUndecided}::boolean or not exists (
+      select 1 from desk_shadow_receipts existing
+      where existing.experiment = ${r.experiment} and existing.arm = ${r.arm}
+        and existing.ticker = ${r.ticker} and existing.close_time = ${new Date(r.close_ms).toISOString()}::timestamptz
+        and existing.kind in ('fill', 'intention', 'veto', 'no_fill')
+    )
     on conflict (experiment, arm, ticker, close_time, kind) do nothing
     returning experiment`;
   return rows.length > 0;
@@ -309,16 +315,17 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const windowKey = `${snap.ticker}|${snap.close_time}`;
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
-    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}) => {
+    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false) => {
       const a = armState(`${r.experiment}|${r.arm}`);
       const k = receiptKey(r);
       if (a.decided.has(k) || pending.has(k)) return;
       pending.add(k);
       writes.push(
-        recordShadowReceipt(sql, r, payload)
+        recordShadowReceipt(sql, r, payload, onlyIfUndecided)
           .then((inserted) => {
-            // A successful insert OR an idempotent DB conflict proves the key is durable.
-            a.decided.add(k);
+            // Unguarded conflicts prove the key is durable. A guarded sit can
+            // instead be blocked by another kind: never cache that as a sit.
+            if (inserted || !onlyIfUndecided) a.decided.add(k);
             if (a.decided.size > 2_000) a.decided = new Set([...a.decided].slice(-1_000));
             return inserted;
           })
@@ -332,7 +339,11 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       // Do not replay an old/future frame, synthesize a missed window, or
       // recalculate a decision after the frozen entry cutoff.
       const observed = st.lastObservedWindow;
+      // One normal poll plus the frozen grace bounds continuity. A long
+      // collector outage is missing evidence, never a manufactured zero.
+      const maxObservationAge = SHADOW_LAB_POLL_MS + NULL_FAV_GRACE_SECS * 1000;
       if (!observed || observed.key !== windowKey || observed.asOf > snap.as_of || snap.as_of > now
+        || now - observed.asOf > maxObservationAge
         || !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
       const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
         [E1, ["PKG_85", "PKG_80", "PKG_88", "PKG_85_OWNER3"]],
@@ -350,7 +361,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
             once(receipt(experiment, arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; receipt-only grace"), {
               secs_left: secs, checkpoint: 180, receipt_only: true,
               last_observed_as_of: observed.asOf, finalized_at: now,
-            });
+            }, true); // Check durable kinds in the INSERT, not just this worker's cache.
           }
         }
       }

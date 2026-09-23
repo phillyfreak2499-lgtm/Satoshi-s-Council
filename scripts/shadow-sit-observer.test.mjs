@@ -34,6 +34,14 @@ function harness(sqlImpl) {
     if (sqlImpl) return sqlImpl(strings, ...values);
     if (!/^\s*insert into desk_shadow_receipts/.test(query)) return [];
     if (c.failOnce) { c.failOnce = false; throw new Error("synthetic receipt write failure"); }
+    // Model only the production INSERT's optional cross-kind guard. The
+    // PGlite test below verifies that guard against actual SQL as well.
+    if (values[20] === true && /where not [\s\S]*or not exists/.test(query)) {
+      const existing = [...durable.values()].some((r) => r.experiment === values[0] && r.arm === values[1]
+        && r.ticker === values[2] && r.close_time === values[3]
+        && ["fill", "intention", "veto", "no_fill"].includes(r.kind));
+      if (existing) return [];
+    }
     const key = values.slice(0, 5).join("|");
     if (durable.has(key)) return [];
     const row = {
@@ -98,7 +106,7 @@ function harness(sqlImpl) {
     await mod.shadowLabTick(options.now ?? snap.as_of);
     assert.equal(JSON.stringify(c.frame), before, "observer must not mutate its input frame");
   };
-  return { c, mod, tick, inserts, queries, state: () => globalObject.__shadowLab__ };
+  return { c, mod, tick, inserts, queries, durable, state: () => globalObject.__shadowLab__ };
 }
 
 const assertSits = (rows, count = 12) => {
@@ -190,6 +198,31 @@ test("observer boundary: every existing durable receipt kind suppresses a grace 
   assert.ok(h.inserts.every((r) => r.experiment !== E1));
 });
 
+test("observer boundary: a long outage is missing evidence, not a zero", async () => {
+  for (const earlier of [600, 450, 300, 200, 194]) {
+    const h = harness(); await h.tick(earlier); const before = h.inserts.length;
+    await h.tick(179);
+    assert.equal(h.inserts.length, before, `no sits after observation at ${earlier}s`);
+  }
+  const boundary = harness(); await boundary.tick(193); await boundary.tick(179);
+  assertSits(boundary.inserts); // 14 s = one 2 s poll plus the 12 s grace.
+  const clock = harness(); await clock.tick(193);
+  await clock.tick(179, { now: close - 178_999 });
+  assert.equal(clock.inserts.length, 0, "age is measured at the observer clock, not only the snapshot clock");
+});
+
+test("observer boundary: another worker's durable kinds suppress a sit without inventing cache keys", async () => {
+  const h = harness(); await h.tick(181);
+  const arms = ["PKG_85", "PKG_80", "PKG_88", "PKG_85_OWNER3"];
+  for (const [i, kind] of ["fill", "intention", "veto", "no_fill"].entries()) {
+    h.durable.set(`other-worker-${i}`, { experiment: E1, arm: arms[i], ticker: "TEST-WINDOW", close_time: new Date(close).toISOString(), kind });
+  }
+  await h.tick(179); await h.tick(170);
+  assertSits(h.inserts, 8);
+  assert.ok(h.inserts.every((r) => r.experiment !== E1));
+  for (const arm of arms) assert.equal(h.state().arms.get(`${E1}|${arm}`).decided.size, 0, "a guarded skip is not a durable no_fill");
+});
+
 test("observer boundary: failed receipt writes remain retryable without duplicating successes", async () => {
   const h = harness(); await h.tick(181); h.c.failOnce = true; await h.tick(179);
   assert.match(h.mod.shadowLabHealth().error, /synthetic receipt write failure/);
@@ -239,5 +272,24 @@ test("observer storage: the real writer persists once in disposable PGlite and n
     assertSits(rows);
     assert.deepEqual((await db.query("select payload from desk_state where id='sentinel'")).rows, [{ payload: { unchanged: true } }]);
     assert.equal((await db.query("select count(*)::int as n from desk_ledger_research")).rows[0].n, 0);
+
+    // Different workers can have different caches. Four durable kinds from
+    // a second worker must suppress a grace sit even when our cache is empty.
+    const otherWindow = close + 900_000;
+    const contender = harness(sql);
+    await contender.tick(181, { closeTime: otherWindow });
+    const arms = ["PKG_85", "PKG_80", "PKG_88", "PKG_85_OWNER3"];
+    for (const [i, kind] of ["fill", "intention", "veto", "no_fill"].entries()) {
+      await db.query(`insert into desk_shadow_receipts (experiment, arm, ticker, close_time, kind, decided_at, fee_engine)
+        values ($1,$2,$3,$4,$5,$6,$7)`, [E1, arms[i], "TEST-WINDOW", new Date(otherWindow).toISOString(), kind, new Date(otherWindow - 181_000).toISOString(), "fixture"]);
+    }
+    await contender.tick(179, { closeTime: otherWindow });
+    await contender.tick(170, { closeTime: otherWindow });
+    assert.equal(contender.mod.shadowLabHealth().error, null);
+    const mixed = (await db.query("select experiment,arm,kind from desk_shadow_receipts where close_time=$1", [new Date(otherWindow).toISOString()])).rows;
+    assert.equal(mixed.length, 12, "4 already durable kinds plus 8 sits, never 16 contradictory rows");
+    assert.equal(mixed.filter((r) => r.experiment === E1).length, 4);
+    assert.deepEqual(mixed.filter((r) => r.experiment === E1).map((r) => r.kind).sort(), ["fill", "intention", "no_fill", "veto"]);
+    assert.deepEqual((await db.query("select payload from desk_state where id='sentinel'")).rows, [{ payload: { unchanged: true } }]);
   } finally { await db.close(); }
 });
