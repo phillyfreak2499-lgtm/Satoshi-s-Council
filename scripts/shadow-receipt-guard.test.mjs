@@ -40,7 +40,7 @@ function productionWriter(db) {
     for (let i = 0; i < values.length; i++) query += `$${i + 1}${strings[i + 1]}`;
     return (await db.query(query, values)).rows;
   };
-  return (r, payload = {}, guarded = false) => exports.recordShadowReceipt(sql, r, payload, guarded);
+  return (r, payload = r.kind === "no_fill" ? { checkpoint: 180 } : {}, guarded = false) => exports.recordShadowReceipt(sql, r, payload, guarded);
 }
 
 async function fresh(run, { seed = false } = {}) {
@@ -72,6 +72,8 @@ test("receipt guard: empty and populated migration reapply never rewrites receip
     await write(row("intention", { ticker: "active" }));
     await write(row("fill", { ticker: "active" }));
     await write(row("no_fill", { ticker: "sit" }));
+    await write(row("no_fill", { ticker: "temporary" }), { basis_bps: 7, edge_cents: 2, secs_left: 400 });
+    await write(row("fill", { ticker: "temporary" }));
     await write(row("wait", { ticker: "ancillary" }));
     // Preserve a genuine pre-migration contradiction; do not pick a winner or delete history.
     await write(row("fill", { ticker: "historical-conflict" }));
@@ -84,6 +86,7 @@ test("receipt guard: empty and populated migration reapply never rewrites receip
       { ticker: "active", decision_class: "active" },
       { ticker: "historical-conflict", decision_class: "conflicted" },
       { ticker: "sit", decision_class: "no_fill" },
+      { ticker: "temporary", decision_class: "active" },
     ]);
     await assert.rejects(write(row("veto", { ticker: "historical-conflict" })), conflict);
     await assert.rejects(write(row("no_fill", { ticker: "active" })), conflict);
@@ -111,7 +114,7 @@ test("receipt guard: real writer rejects both incompatible orderings; duplicates
     }
     const ticker = "valid-active";
     for (const kind of ["intention", "fill", "veto"]) assert.equal(await write(row(kind, { ticker })), true);
-    assert.equal(await write(row("no_fill", { ticker }), {}, true), false, "committed cross-kind grace skips remain benign and uncached");
+    assert.equal(await write(row("no_fill", { ticker }), { checkpoint: 180 }, true), false, "committed cross-kind grace skips remain benign and uncached");
     assert.equal((await db.query("select count(*)::int as n from desk_shadow_receipts where ticker=$1", [ticker])).rows[0].n, 3);
     // Each economic-key component is independent, including the same ticker at a different close.
     for (const overrides of [{ experiment: "OTHER" }, { arm: "OTHER" }, { ticker: "OTHER" }, { close_ms: close + 900_000 }]) {
@@ -140,5 +143,31 @@ test("receipt guard: economic identity cannot change; settlement metadata can", 
     await assert.rejects(db.query("update desk_shadow_receipts set ticker='rewritten'"), (e) => e.code === "23514");
     await db.query("update desk_shadow_receipts set official_winner='UP',net_cents=14");
     assert.deepEqual((await db.query("select kind,official_winner,net_cents from desk_shadow_receipts")).rows, [{ kind: "fill", official_winner: "UP", net_cents: 14 }]);
+  });
+});
+
+
+test("receipt guard: temporary basis/benchmark no_fill observations do not prevent a later valid fill", async () => {
+  await fresh(async (db, write) => {
+    for (const [i, payload] of [
+      { basis_bps: 7, edge_cents: 2, secs_left: 400 },
+      { checkpoint: 300 },
+    ].entries()) {
+      const ticker = `temporary-${i}`;
+      assert.equal(await write(row("no_fill", { ticker }), payload), true);
+      assert.equal(await write(row("fill", { ticker })), true, "existing in-band reevaluation remains allowed");
+      assert.equal(await write(row("fill", { ticker })), false, "later retries remain idempotent");
+      assert.deepEqual((await db.query("select kind from desk_shadow_receipts where ticker=$1 order by kind", [ticker])).rows, [{ kind: "fill" }, { kind: "no_fill" }]);
+      assert.equal((await db.query("select decision_class from desk_shadow_receipt_decisions where ticker=$1", [ticker])).rows[0].decision_class, "active");
+      await assert.rejects(write(row("no_fill", { ticker }), { checkpoint: 180 }), conflict);
+      await assert.rejects(db.query("update desk_shadow_receipts set payload=payload || '{\"checkpoint\":180}'::jsonb where ticker=$1 and kind='no_fill'", [ticker]), (e) => e.code === "23514" && /class is immutable/.test(e.message));
+    }
+    // Exact-cutoff and grace finalizations use the same protected class.
+    for (const [i, payload] of [{ checkpoint: 180 }, { receipt_only: true }].entries()) {
+      const ticker = `terminal-${i}`;
+      assert.equal(await write(row("no_fill", { ticker }), payload), true);
+      await assert.rejects(write(row("fill", { ticker })), conflict);
+      await assert.rejects(db.query("update desk_shadow_receipts set payload='{}'::jsonb where ticker=$1", [ticker]), (e) => e.code === "23514" && /class is immutable/.test(e.message));
+    }
   });
 });

@@ -28,14 +28,14 @@ const economic = (key) => ["RACE_FIXTURE", "ARM", key, "2026-10-01T15:00:00Z"];
 
 // The old and current application INSERT's predicate shape, with the same
 // economic/primary keys. The trigger must protect even legacy unguarded calls.
-const write = (client, key, kind, guarded = kind === "no_fill", ask = null) => client.query(`
-  insert into desk_shadow_receipts (experiment,arm,ticker,close_time,kind,decided_at,fee_engine,ask_cents)
-  select $1,$2,$3,$4::timestamptz,$5,'2026-10-01T14:57:00Z'::timestamptz,'fixture',$7
+const write = (client, key, kind, guarded = kind === "no_fill", ask = null, payload = kind === "no_fill" ? { checkpoint: 180 } : {}) => client.query(`
+  insert into desk_shadow_receipts (experiment,arm,ticker,close_time,kind,decided_at,fee_engine,ask_cents,payload)
+  select $1,$2,$3,$4::timestamptz,$5,'2026-10-01T14:57:00Z'::timestamptz,'fixture',$7,$8::jsonb
   where not $6::boolean or not exists (
     select 1 from desk_shadow_receipts e where e.experiment=$1 and e.arm=$2 and e.ticker=$3
       and e.close_time=$4::timestamptz and e.kind in ('intention','fill','veto','no_fill')
   )
-  on conflict (experiment,arm,ticker,close_time,kind) do nothing returning kind`, [...economic(key), kind, guarded, ask]);
+  on conflict (experiment,arm,ticker,close_time,kind) do nothing returning kind`, [...economic(key), kind, guarded, ask, JSON.stringify(payload)]);
 const kinds = async (key) => (await admin.query("select kind from desk_shadow_receipts where ticker=$1 order by kind", [key])).rows.map((r) => r.kind);
 const snapshot = async () => JSON.stringify((await admin.query("select * from desk_shadow_receipts order by experiment,arm,ticker,close_time,kind")).rows);
 let pidA, pidB;
@@ -63,13 +63,13 @@ async function legacyRace(first, second) {
   } finally { await a.query("ROLLBACK"); await b.query("ROLLBACK"); }
 }
 
-async function overlap(first, second, { rollback = false, duplicate = false, compatible = false, legacy = false } = {}) {
+async function overlap(first, second, { rollback = false, duplicate = false, compatible = false, legacy = false, firstPayload, secondPayload } = {}) {
   const key = `after-${passes}-${first}-${second}`;
   let pending, done = false;
   try {
     await a.query("BEGIN"); await b.query("BEGIN");
-    await write(a, key, first, false);
-    pending = write(b, key, second, legacy ? false : second === "no_fill").then(
+    await write(a, key, first, false, null, firstPayload);
+    pending = write(b, key, second, legacy ? false : second === "no_fill", null, secondPayload).then(
       (value) => { done = true; return { value }; },
       (error) => { done = true; return { error }; },
     );
@@ -111,6 +111,8 @@ try {
   await write(admin, "existing-active", "intention", false);
   await write(admin, "existing-active", "fill", false);
   await write(admin, "existing-sit", "no_fill", false);
+  await write(admin, "existing-basis", "no_fill", false, null, { basis_bps: 7, edge_cents: 2, secs_left: 400 });
+  await write(admin, "existing-basis", "fill", false);
   const history = await snapshot();
   await admin.query(migration);
   await admin.query(migration);
@@ -131,6 +133,15 @@ try {
   await overlap("intention", "no_fill", { legacy: true });
   await overlap("no_fill", "fill", { legacy: true });
 
+  const temporary = { basis_bps: 7, edge_cents: 2, secs_left: 400 };
+  await overlap("no_fill", "fill", { compatible: true, firstPayload: temporary });
+  await overlap("fill", "no_fill", { compatible: true, secondPayload: temporary, legacy: true });
+  await overlap("no_fill", "fill", { compatible: true, firstPayload: { checkpoint: 300 } });
+  // Two no_fill rows can have different meanings: only the terminal one is
+  // mutually exclusive. A same-kind PK conflict must not disguise a class clash.
+  await overlap("no_fill", "no_fill", { firstPayload: temporary });
+  await overlap("no_fill", "no_fill", { secondPayload: temporary, legacy: true });
+
   const failed = "failed-after-claim";
   await assert.rejects(write(admin, failed, "fill", false, 120), (e) => e.code === "23514");
   assert.equal((await admin.query("select count(*)::int as n from desk_shadow_receipt_decisions where ticker=$1", [failed])).rows[0].n, 0);
@@ -138,7 +149,7 @@ try {
   ok("failed receipt rolls back its claim; opposite kind can retry successfully");
 
   const freshContradictions = (await admin.query(`select ticker from desk_shadow_receipts where ticker like 'after-%'
-    group by experiment,arm,ticker,close_time having bool_or(kind='no_fill') and bool_or(kind in ('intention','fill','veto'))`)).rows;
+    group by experiment,arm,ticker,close_time having bool_or(shadow_receipt_decision_class(kind,payload)='no_fill') and bool_or(shadow_receipt_decision_class(kind,payload)='active')`)).rows;
   assert.deepEqual(freshContradictions, []);
   console.log(`Native PostgreSQL validation passed: ${passes} scenarios; two independent writer sessions; explicit uncommitted-write barriers.`);
 } finally {
