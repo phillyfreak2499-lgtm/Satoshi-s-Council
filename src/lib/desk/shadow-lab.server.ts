@@ -30,6 +30,9 @@
  * Sub-second availability is not resolvable at a 2 s poll: hittable flags stay
  * null (UNKNOWN); the ask two seconds later is recorded in the payload as a
  * coarse proxy and labelled as such.
+ * The frozen T-3 grace period (168 < secs < 180) is RECEIPTS ONLY: it
+ * finalizes observed sits without evaluating a Chair, advancing a latch, or
+ * creating a fill. An unobserved/missed window remains missing, not a zero.
  */
 import { getSql, type Sql } from "@/lib/db";
 import { runChair } from "./chair.ts";
@@ -190,13 +193,15 @@ type Observer = {
   activatedAt: number;
   /** Process-local boundary: no arm may use a market already open when this observer session began. */
   sessionStartedAt: number;
+  /** Last successfully evaluated entry-band frame; never invented at a late/restart tick. */
+  lastObservedWindow: { key: string; asOf: number } | null;
   /** SELECTOR ATTRIBUTION v1 (selector-attribution.server.ts): its own table, its own health. */
   attribution: AttributionTracker;
 };
 const globalRef = globalThis as typeof globalThis & { __shadowLab__?: Observer };
 const state = (): Observer => globalRef.__shadowLab__ ??= {
   timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(),
-  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0, attribution: blankAttributionTracker(),
+  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0, lastObservedWindow: null, attribution: blankAttributionTracker(),
 };
 const armState = (id: string): ArmState => { const st = state(); const cur = st.arms.get(id) ?? { watch: null, decided: new Set(), lastAsk: new Map() }; st.arms.set(id, cur); return cur; };
 
@@ -294,7 +299,9 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     } catch (error) {
       st.attribution.error = error instanceof Error ? error.message : String(error);
     }
-    if (!(secs >= 180 && secs <= 600)) return;
+    const inEntryWindow = secs >= 180 && secs <= 600;
+    // Permit the existing T-3 grace only to reach the receipt-only branch below.
+    if (!inEntryWindow && !shouldWriteSitReceipt(secs, false)) return;
     // Prospective means observed prospectively, not merely timestamped after a
     // historical start. Every process restart skips the market already in flight.
     const windowOpen = snap.close_time - 15 * 60_000;
@@ -318,6 +325,40 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
           .finally(() => pending.delete(k)),
       );
     };
+
+    if (!inEntryWindow) {
+      // A poll can jump from 181 s to 179 s and never hit exactly 180 s.
+      // Finalize only a window this session successfully evaluated in-band.
+      // Do not replay an old/future frame, synthesize a missed window, or
+      // recalculate a decision after the frozen entry cutoff.
+      const observed = st.lastObservedWindow;
+      if (!observed || observed.key !== windowKey || observed.asOf > snap.as_of || snap.as_of > now
+        || !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
+      const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
+        [E1, ["PKG_85", "PKG_80", "PKG_88", "PKG_85_OWNER3"]],
+        [E2, ["BASE_NO_VETO", "VETO_8S", "VETO_15S", "VETO_30S"]],
+        [E3, ["BASIS_LIVE_2BPS", "BASIS_5BPS", "BASIS_7BPS", "BASIS_9BPS"]],
+      ];
+      for (const [experiment, arms] of groups) {
+        for (const arm of arms) {
+          const a = armState(`${experiment}|${arm}`);
+          const already = (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+            const k = `${experiment}|${arm}|${windowKey}|${kind}`;
+            return a.decided.has(k) || pending.has(k);
+          });
+          if (!already) {
+            once(receipt(experiment, arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; receipt-only grace"), {
+              secs_left: secs, checkpoint: 180, receipt_only: true,
+              last_observed_as_of: observed.asOf, finalized_at: now,
+            });
+          }
+        }
+      }
+      await Promise.all(writes);
+      if (writes.length) st.lastCapture = now;
+      st.error = null;
+      return;
+    }
 
     // NULL_FAV benchmarks at their frozen checkpoints.
     const cp = scheduledCheckpoint(secs);
@@ -417,6 +458,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       }
     }
     await Promise.all(writes);
+    st.lastObservedWindow = { key: windowKey, asOf: snap.as_of };
     if (writes.length) st.lastCapture = now;
     st.error = null;
   } catch (error) {
