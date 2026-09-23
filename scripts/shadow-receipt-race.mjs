@@ -143,7 +143,7 @@ try {
   console.log(`Native PostgreSQL validation passed: ${passes} scenarios; two independent writer sessions; explicit uncommitted-write barriers.`);
 } finally {
   // Only this randomly generated schema is removed; never public or an existing schema.
-  for (const client of [a, b]) { try { await client.query("ROLLBACK"); } catch {} }
+  for (const client of [a, b]) { try { await client.query("ROLLBACK"); } catch { /* A failed connection may already be closed; preserve the original failure. */ } }
   if (created) await admin.query(`drop schema "${schema}" cascade`);
   await Promise.all(clients.map((client) => client.end().catch(() => {})));
 }
