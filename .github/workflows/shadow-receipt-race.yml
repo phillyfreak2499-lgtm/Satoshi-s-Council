@@ -1,0 +1,51 @@
+name: shadow receipt concurrency
+
+on:
+  push:
+    paths:
+      - 'migrations/**'
+      - 'scripts/shadow-receipt-*'
+      - 'src/lib/desk/shadow-lab.server.ts'
+      - '.github/workflows/shadow-receipt-race.yml'
+  pull_request:
+    paths:
+      - 'migrations/**'
+      - 'scripts/shadow-receipt-*'
+      - 'src/lib/desk/shadow-lab.server.ts'
+      - '.github/workflows/shadow-receipt-race.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadow-receipt-race-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-race:
+    name: shadow receipt race (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: shadow_receipt_ci
+          POSTGRES_PASSWORD: disposable-local-fixture
+          POSTGRES_DB: shadow_receipt_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U shadow_receipt_ci -d shadow_receipt_ci'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # No secrets, production connection strings, application startup or env-file loader.
+      - run: node scripts/shadow-receipt-race.mjs --disposable-local-postgres
