@@ -1,7 +1,7 @@
 /** Owner-selected paper admission policy. Parameters are frozen, not fitted to the four losses. */
 import { paperBookTeamOk } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
-import { EVIDENCE_OF } from "./seats.ts";
+import { familySupport } from "./family-support.ts";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
 
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
@@ -47,7 +47,6 @@ export function dailyAdmission(rows: CallLogRow[], now: number) {
   const history = restoreRiskCalls(rows, []);
   const unique = history.calls;
   const calls = day ? unique.filter(r => chicagoDay(r.t) === day).length : 0;
-  // Grade-day cents follow Books. Integer tenths match the paper ledger's rounding.
   const settled = day ? unique.filter(r => r.settle != null && r.close_time <= now && chicagoDay(r.close_time) === day)
     .sort((a, b) => a.close_time - b.close_time) : [];
   let net = 0, peak = 0, low = 0, wins = 0, losses = 0;
@@ -59,8 +58,6 @@ export function dailyAdmission(rows: CallLogRow[], now: number) {
     if (cents > 0) wins++;
     if (cents < 0) losses++;
   }
-  // A closed prior-day gap is missing research, not exposure in today's book.
-  // Keep it ungraded and visible; never infer a result to release daily admission.
   const unresolved = unique.filter(r => r.settle == null);
   const missingPrior = unresolved.filter(r => day && r.close_time <= now && chicagoDay(r.close_time) < day);
   const currentRisk = unresolved.filter(r => !missingPrior.includes(r));
@@ -73,7 +70,6 @@ export function dailyAdmission(rows: CallLogRow[], now: number) {
     open_risk_cents: openRisk / 10,
     missing_prior_days: missingPrior.map(r => ({ ticker: r.ticker, close_time: r.close_time, status: "MISSING" as const })),
     tightened: low <= SELECTIVE_PARAMS.tighten_at_net_cents * 10,
-    // A day already red when V2 starts can recover; future green entries reserve their full loss.
     profit_protected: net > 0 && (wins >= SELECTIVE_PARAMS.protect_after_wins || peak >= SELECTIVE_PARAMS.protect_after_net_cents * 10),
     reason };
 }
@@ -119,11 +115,9 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   }
   const side = chair.lean;
   const against = side === "UP" ? chair.quorum.down : chair.quorum.up;
-  const rows = chair.rows.filter(r => r.lean === side && r.health === "LIVE" &&
-    !r.folded && !["MUTED", "VETO", "DOWN", "UNCALIBRATED", "FOLDED"].includes(r.status) &&
-    EVIDENCE_OF[r.seat] !== "context");
-  const supporters = new Set(rows.map(r => r.seat));
-  const families = new Set(rows.map(r => EVIDENCE_OF[r.seat]));
+  const support = familySupport(chair.rows, side);
+  const supporters = new Set(support.seats);
+  const families = new Set(support.families);
   if (supporters.size < required.min_speaking || families.size < required.min_families || against > p.max_opposing) {
     return daily.tightened ? "tighter mode: needs four healthy supporters from three evidence groups, with no opposing vote"
       : "needs two healthy supporters from two evidence groups, with no opposing vote";
@@ -141,7 +135,6 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   }
   const ask = side === "UP" ? snap.yes_ask : snap.no_ask;
   const bid = side === "UP" ? snap.yes_bid : snap.no_bid;
-  // Buying YES consumes resting NO bids, and vice versa. Never fall back to a midpoint.
   const touch = side === "UP" ? snap.no_bid_size : snap.yes_bid_size;
   if (![ask, bid, touch, snap.yes_ask, snap.no_ask].every(Number.isFinite) ||
       ask < p.floor_cents || ask >= 99 || bid < 0 || bid > ask || ask - bid > p.max_spread_cents || touch < 1 ||
@@ -162,13 +155,8 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   return null;
 }
 
-/**
- * Track entry confirmation without rewriting the Chair's opinion. The selective
- * gate is intentionally soft in Chair state: it controls whether the paper book
- * may enter, not whether SATOSHI is allowed to say UP or DOWN.
- */
 export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: SelectiveContext): { chair: ChairResult; watch: EntryWatch | null } {
-  if (hasPaperPosition(ctx.calls, snap)) return { chair, watch: null }; // entry rules never sell an existing position
+  if (hasPaperPosition(ctx.calls, snap)) return { chair, watch: null };
   let reason = selectiveBlock(snap, chair, ctx);
   const daily = dailyAdmission(ctx.calls, snap.as_of);
   const required = admissionRequirements(daily);
@@ -191,7 +179,6 @@ export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   return { watch, chair: { ...chair, gates } };
 }
 
-/** Recheck at the actual write boundary, including the confirmation latch. */
 export function selectiveBookOk(snap: Snapshot, chair: ChairResult, ctx: SelectiveContext): boolean {
   if (selectiveBlock(snap, chair, ctx)) return false;
   const w = ctx.watch;
