@@ -215,11 +215,22 @@ export function runChair(
     const pileW = fam.reduce((s, a) => s + a.w, 0);
     if (pileW <= 0) return;
     const scale = loudest.w / pileW;
+    // Folding changes correlation credit, not the Chair score: keep the same
+    // scaled weights, but leave at most one genuinely eligible row available
+    // to entry-support accounting. An ineligible loudest member (for example
+    // UNCALIBRATED, SHADOW/forced-sit, stale, or zero-weight) cannot lend its
+    // authority to the family; choose the loudest eligible member instead.
+    const representative = fam
+      .filter((a) => (a.status === "LIVE" || a.status === "FADED") &&
+        a.vote.health === "LIVE" && !a.vote.forced_sit && Number.isFinite(a.w) && a.w > 0)
+      .reduce<Acc | null>((m, a) => !m || Math.abs(a.w) > Math.abs(m.w) ? a : m, null);
     for (const a of fam) {
       a.w *= scale;
       a.contribution = a.signed * a.w;
-      a.folded = true;
-      if (a.status === "LIVE" || a.status === "UNCALIBRATED") a.status = "FOLDED";
+      if (a !== representative) {
+        a.folded = true;
+        if (a.status === "LIVE" || a.status === "FADED" || a.status === "UNCALIBRATED") a.status = "FOLDED";
+      }
     }
     foldNotes.push(`${label} FOLDED`);
   };

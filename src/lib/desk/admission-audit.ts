@@ -3,6 +3,7 @@ import { paperBookTeamOk } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
 import { EVIDENCE_OF } from "./seats.ts";
+import { eligibleSupportRows } from "./support-eligibility.ts";
 import { admissionRequirements, dailyAdmission, hasPaperPosition, profitRiskBlock, selectiveBookOk, type SelectiveContext } from "./selective-entry.ts";
 import type { ChairResult, Snapshot } from "./types";
 
@@ -14,8 +15,7 @@ export function auditAdmission(s: Snapshot, c: ChairResult, ctx: SelectiveContex
   const daily = dailyAdmission(ctx.calls, s.as_of);
   const required = admissionRequirements(daily);
   const side = c.lean === "UP" || c.lean === "DOWN" ? c.lean : null;
-  const rows = c.rows.filter(r => r.lean === side && r.health === "LIVE" && !r.folded &&
-    !["MUTED", "VETO", "DOWN", "UNCALIBRATED", "FOLDED"].includes(r.status) && EVIDENCE_OF[r.seat] !== "context");
+  const rows = side == null ? [] : eligibleSupportRows(c, side);
   const ask = side === "UP" ? s.yes_ask : s.no_ask;
   const bid = side === "UP" ? s.yes_bid : s.no_bid;
   const touch = side === "UP" ? s.no_bid_size : s.yes_bid_size;

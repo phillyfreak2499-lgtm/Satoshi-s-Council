@@ -2,6 +2,7 @@
 import { paperBookTeamOk } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
 import { EVIDENCE_OF } from "./seats.ts";
+import { eligibleSupportRows } from "./support-eligibility.ts";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
 
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
@@ -119,9 +120,7 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   }
   const side = chair.lean;
   const against = side === "UP" ? chair.quorum.down : chair.quorum.up;
-  const rows = chair.rows.filter(r => r.lean === side && r.health === "LIVE" &&
-    !r.folded && !["MUTED", "VETO", "DOWN", "UNCALIBRATED", "FOLDED"].includes(r.status) &&
-    EVIDENCE_OF[r.seat] !== "context");
+  const rows = eligibleSupportRows(chair, side);
   const supporters = new Set(rows.map(r => r.seat));
   const families = new Set(rows.map(r => EVIDENCE_OF[r.seat]));
   if (supporters.size < required.min_speaking || families.size < required.min_families || against > p.max_opposing) {

@@ -23,6 +23,7 @@ import { paperBookTeamOk } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
 import { SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS } from "./floor-policy.ts";
 import { EVIDENCE_OF, type EvidenceFamily } from "./seats.ts";
+import { eligibleSupportRows } from "./support-eligibility.ts";
 import { admissionRequirements, dailyAdmission, hasPaperPosition, profitRiskBlock, selectiveBlock, type SelectiveContext } from "./selective-entry.ts";
 import type { ChairResult, SeatId, SeatRow, Snapshot } from "./types";
 
@@ -78,8 +79,7 @@ export type GateVector = {
 
 /** Rows that can count as supporters of `side`, mirroring `selectiveBlock` exactly. */
 export function supporterRows(chair: Pick<ChairResult, "rows">, side: "UP" | "DOWN"): SeatRow[] {
-  return chair.rows.filter((r) => r.lean === side && r.health === "LIVE" && !r.folded &&
-    !["MUTED", "VETO", "DOWN", "UNCALIBRATED", "FOLDED"].includes(r.status) && EVIDENCE_OF[r.seat] !== "context");
+  return eligibleSupportRows(chair, side);
 }
 
 export type ReachableQuorum = {
@@ -111,8 +111,8 @@ export function reachableQuorum(chair: Pick<ChairResult, "rows" | "quorum">, sid
   const supporters = [...new Set(rows.map((r) => r.seat))];
   const families = [...new Set(rows.map((r) => EVIDENCE_OF[r.seat]))];
   const sameSide = chair.rows.filter((r) => r.lean === side);
-  const folded = sameSide.filter((r) => (r.folded || r.status === "FOLDED") && r.health === "LIVE" && EVIDENCE_OF[r.seat] !== "context").map((r) => r.seat);
-  const context = sameSide.filter((r) => EVIDENCE_OF[r.seat] === "context").map((r) => r.seat);
+  const folded = [...new Set(sameSide.filter((r) => (r.folded || r.status === "FOLDED") && r.health === "LIVE" && EVIDENCE_OF[r.seat] !== "context" && !supporters.includes(r.seat)).map((r) => r.seat))];
+  const context = [...new Set(sameSide.filter((r) => EVIDENCE_OF[r.seat] === "context").map((r) => r.seat))];
   const status = sameSide.filter((r) => !folded.includes(r.seat) && !context.includes(r.seat) && !supporters.includes(r.seat)).map((r) => r.seat);
   const authority = chair.rows.filter((r) => r.forced_sit === true && r.lean === "WAIT").map((r) => r.seat);
   const opposition = side === "UP" ? chair.quorum.down : chair.quorum.up;

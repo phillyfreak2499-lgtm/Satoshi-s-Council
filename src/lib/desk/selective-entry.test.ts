@@ -27,7 +27,7 @@ const snap = (extra: Partial<Snapshot> = {}): Snapshot => ({
 const chair = (extra: Partial<ChairResult> = {}): ChairResult => ({
   lean: "UP", score: 0.8, bar: 0.5, hard_fail: false, confidence: 80, calc: "test", gates: [],
   quorum: { up: 3, down: 0, wait: 15 },
-  rows: (["STREAK", "STRIKE", "CARRY"] as SeatId[]).map(seat => ({ seat, lean: "UP", health: "LIVE", status: "LIVE", folded: false })),
+  rows: (["STREAK", "STRIKE", "CARRY"] as SeatId[]).map(seat => ({ seat, lean: "UP", health: "LIVE", status: "LIVE", folded: false, weight: 0.1 })),
   ...extra,
 } as ChairResult);
 const ctx = (extra: Partial<SelectiveContext> = {}): SelectiveContext => ({ calls: [], ready: true, start: now - 86_400_000, watch: null, ...extra });
@@ -134,6 +134,19 @@ test("one seat, disagreement, folded or uncalibrated seats cannot manufacture a 
 });
 test("two healthy supporters from two evidence groups clear normal quorum", () => {
   assert.equal(selectiveBlock(snap(), chair({ rows: chair().rows.slice(0, 2) }), ctx()), null);
+});
+test("duplicate, zero-weight, forced-sit, stale, and non-authoritative rows cannot inflate support", () => {
+  const live = chair().rows[0]!;
+  const rows = [live, { ...live },
+    { ...chair().rows[1]!, weight: 0 },
+    { ...chair().rows[2]!, forced_sit: true },
+    { ...chair().rows[1]!, seat: "DRIFT" as SeatId, status: "INVERT" as const },
+    { ...chair().rows[1]!, seat: "CHAIN" as SeatId, health: "STALE" as const }];
+  assert.match(selectiveBlock(snap(), chair({ rows }), ctx())!, /two healthy supporters/);
+});
+test("a genuinely live FADED representative retains supporter authority", () => {
+  const rows = chair().rows.slice(0, 2).map((r, i) => ({ ...r, status: i === 0 ? "FADED" as const : "LIVE" as const, weight: 0.02 }));
+  assert.equal(selectiveBlock(snap(), chair({ rows }), ctx()), null);
 });
 test("three correlated candle seats are only one evidence group", () => {
   const rows = (["WICK", "DRIFT", "PULSE"] as SeatId[]).map(seat => ({ ...chair().rows[0]!, seat }));
