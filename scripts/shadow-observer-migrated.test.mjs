@@ -1,6 +1,6 @@
 /** Run the complete production observer with both receipt migrations.
- * External frames, Chair/gates and attribution are controlled fixtures;
- * observer/arm/checkpoint code and receipt persistence are real. This is not
+ * External frames and Chair/gates are controlled fixtures; observer, attribution,
+ * arm/checkpoint code and both persistence paths are real. This is not
  * proof of predictive quality or a live market/production database test.
  */
 import test from "node:test";
@@ -12,16 +12,17 @@ import ts from "typescript";
 const root = new URL("../", import.meta.url);
 const source = (p) => readFileSync(new URL(p, root), "utf8");
 const close = Date.parse("2026-10-01T15:00:00Z");
-const E1 = "UNMUTE_DEDUP_SHELF_V1";
 const baseline = source("migrations/0057_desk_shadow_lab.sql");
+const attributionMigration = source("migrations/0059_desk_selector_attribution.sql");
 const migration = source("migrations/0060_desk_shadow_receipt_decisions.sql");
 
-async function fixture(run, legacyClassifier = false) {
+async function fixture(run, { legacyClassifier = false, lateClockGuard = false } = {}) {
   const { PGlite } = await import("@electric-sql/pglite");
   const db = new PGlite(); // Always fresh memory: no app db.ts, env files or URL.
   let c, globalObject;
   try {
     await db.exec(baseline);
+    await db.exec(attributionMigration);
     await db.exec(migration);
     if (legacyClassifier) {
       // Mutation witness: reproduce the rejected pre-75f1c36 policy that
@@ -33,7 +34,12 @@ async function fixture(run, legacyClassifier = false) {
     }
     await db.exec(`create table desk_ledger_research (ticker text, close_time timestamptz, winner text, source text);
       create table desk_state (id text primary key, payload jsonb);
-      insert into desk_state values ('sentinel', '{"unchanged":true}');`);
+      insert into desk_state values ('sentinel', '{"unchanged":true}');
+      insert into desk_shadow_manifests (experiment, experiment_version, fingerprint, manifest, frozen_at, prospective_start_at, status)
+      values
+        ('UNMUTE_DEDUP_SHELF_V1', 1, 'fixture-e1', '{}', '2026-09-01', '2026-10-01T14:44:00Z', 'SHADOW'),
+        ('WARDEN_JUMP_VETO_V1', 1, 'fixture-e2', '{}', '2026-09-01', '2026-10-01T14:44:00Z', 'SHADOW'),
+        ('SETTLE_BASIS_MEASURED_V1', 1, 'fixture-e3', '{}', '2026-09-01', '2026-10-01T14:44:00Z', 'SHADOW');`);
     const sql = async (strings, ...values) => {
       let query = strings[0];
       for (let i = 0; i < values.length; i++) query += `$${i + 1}${strings[i + 1]}`;
@@ -45,7 +51,7 @@ async function fixture(run, legacyClassifier = false) {
     c = { frame: null, lean: "WAIT", gates: false, probability: 1, chairCalls: 0, gateCalls: 0, now: close - 181_000, afterFrameNow: null, afterHistoryNow: null };
     class FixtureDate extends Date { static now() { return c.now; } }
     globalObject = {};
-    const policy = { id: "fixture", params: { min_families: 2, confirmation_frames: 3, confirmation_seconds: 8, tight_confirmation_frames: 4, tight_confirmation_seconds: 12 } };
+    const policy = { id: "fixture", params: { floor_cents: 80, min_families: 2, confirmation_frames: 3, confirmation_seconds: 8, tight_confirmation_frames: 4, tight_confirmation_seconds: 12 } };
     const deps = {
       "@/lib/db": { getSql: async () => sql },
       "./server-engine": { getServerFrame: async () => { if (c.afterFrameNow != null) c.now = c.afterFrameNow; return c.frame; } },
@@ -55,14 +61,18 @@ async function fixture(run, legacyClassifier = false) {
       "./gate-vector": {
         DEPLOYED_POLICY: policy, OWNER_REFERENCE_POLICY: policy,
         supporterRows: () => [{ seat: "DRIFT" }, { seat: "CHAIN" }],
-        gateVector: () => { c.gateCalls++; return { mode: "normal", binding_reason: "fixture", checks: [{ id: "fixture", pass: c.gates }] }; },
+        reachableQuorum: () => ({ reachable: true, count: 2, needed: 2 }),
+        gateVector: (_snap, _chair, ctx) => {
+          if (ctx?.watch !== null) c.gateCalls++;
+          return { mode: "normal", binding_reason: "fixture", checks: [{ id: "fixture", pass: c.gates }] };
+        },
       },
-      "./shadow-manifests": { INITIAL_SHADOW_COLLECTION_IDS: [], SHADOW_MANIFESTS: [], SHADOW_MANIFEST_FINGERPRINTS: {} },
+      "./shadow-manifests": {
+        INITIAL_SHADOW_COLLECTION_IDS: ["UNMUTE_DEDUP_SHELF_V1", "WARDEN_JUMP_VETO_V1", "SETTLE_BASIS_MEASURED_V1"],
+        SHADOW_MANIFESTS: [], SHADOW_MANIFEST_FINGERPRINTS: {},
+      },
       "./shadow-lab": { SHADOW_FEE_FINGERPRINT: "fixture", receiptKey: (r) => `${r.experiment}|${r.arm}|${r.ticker}|${r.close_ms}|${r.kind}` },
-      "./selector-attribution.server": {
-        blankAttributionTracker: () => ({ settled: 0, error: null }), attributionHealth: (a) => a,
-        observeSelectorAttribution: async () => {}, settleAttributionRows: async () => 0,
-      },
+      "./counterfactuals": { GATE_VARIANTS: [{ id: "FLAT_3C", threshold: () => 3 }] },
       "./seats": { EVIDENCE_OF: { DRIFT: "trend", CHAIN: "derivs" } },
       "./clock": { SETTLE_BASIS: 0.0002, normCdf: () => c.probability },
       "./math": { clamp: (v, lo, hi) => Math.max(lo, Math.min(hi, v)) },
@@ -70,9 +80,16 @@ async function fixture(run, legacyClassifier = false) {
     const cache = new Map();
     const load = (file) => {
       if (cache.has(file)) return cache.get(file);
-      assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
+      assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts", "selector-attribution.server.ts", "selector-attribution.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
       const exports = {}; cache.set(file, exports);
-      const code = ts.transpileModule(source(file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+      let input = source(file);
+      if (lateClockGuard && file.endsWith("shadow-lab.server.ts")) {
+        const guard = /[ ]{4}\/\/ Validate before either stateful auxiliary observer,[\s\S]*?[ ]{6}\|\| snap\.as_of > now\) return;\n/;
+        const match = input.match(guard);
+        assert.ok(match, "pre-observer clock guard mutation anchor");
+        input = input.replace(guard, "").replace("    const entryOpen = () => {", `${match[0]}    const entryOpen = () => {`);
+      }
+      const code = ts.transpileModule(input, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
       vm.runInNewContext(code, {
         exports, require: (key) => {
           const bare = key.replace(/\.ts$/, "");
@@ -87,25 +104,27 @@ async function fixture(run, legacyClassifier = false) {
       return exports;
     };
     const mod = load("src/lib/desk/shadow-lab.server.ts");
-    const tick = async (secs, { ticker = "FIXTURE", side = "UP", ask = 85, now, demo = false, runtimeClock = false } = {}) => {
+    const tick = async (secs, { ticker = "FIXTURE", side = "UP", ask = 85, now, asOf, demo = false, runtimeClock = false } = {}) => {
       const other = 101 - ask;
       const snap = {
-        as_of: close - secs * 1000, close_time: close, ticker, demo,
+        as_of: asOf ?? close - secs * 1000, close_time: close, ticker, demo,
         yes_ask: side === "UP" ? ask : other, yes_bid: side === "UP" ? ask - 1 : other - 1,
         no_ask: side === "DOWN" ? ask : other, no_bid: side === "DOWN" ? ask - 1 : other - 1,
         no_bid_size: 10, yes_bid_size: 10, spot: 100_000, strike: 99_000, atr: 10,
-        mins_left: secs / 60, spot_age_s: 0,
-        obs: { receipt_ts: close - secs * 1000, gap: "ok" },
+        mins_left: secs / 60, spot_age_s: 0, quote_age_s: 0,
+        fair_yes: 90, yes_mid: 84, lab_fair_yes: 90, lab_age_s: 0, fee_yes: 1, fee_no: 1, edge_up: 4, edge_down: -4,
+        obs: { receipt_ts: asOf ?? close - secs * 1000, gap: "ok" },
         health: { spot_ok: true, kalshi_ok: true, spot: "LIVE", kalshi: "LIVE" },
       };
-      c.frame = { snap, chair: { lean: "WAIT" }, votes: [], learner: { skills: {} }, settings: {}, selective: { ready: true } };
+      c.frame = { snap, chair: { lean: "WAIT", rows: [], confidence: 0, score: 0, bar: 0, sit_mass: 0, quorum: { up: 0, down: 0, wait: 1 } }, call_log: [], votes: [], learner: { skills: {} }, settings: {}, selective: { ready: true, start: close - 900_000 } };
       const before = JSON.stringify(c.frame);
       c.now = now ?? snap.as_of;
       await mod.shadowLabTick(runtimeClock ? undefined : c.now);
       assert.equal(JSON.stringify(c.frame), before, "observer never writes back into the supplied frame");
     };
     const rows = async (ticker) => (await db.query("select * from desk_shadow_receipts where ticker=$1 order by experiment,arm,kind", [ticker])).rows;
-    await run({ db, c, mod, tick, rows, state: () => globalObject.__shadowLab__ });
+    const attributionRows = async (ticker) => (await db.query("select * from desk_selector_attribution where ticker=$1 order by kind", [ticker])).rows;
+    await run({ db, c, mod, tick, rows, attributionRows, state: () => globalObject.__shadowLab__ });
     assert.deepEqual((await db.query("select payload from desk_state where id='sentinel'")).rows, [{ payload: { unchanged: true } }]);
     assert.equal((await db.query("select count(*)::int as n from desk_ledger_research")).rows[0].n, 0);
   } finally { await db.close(); }
@@ -209,7 +228,7 @@ test("migrated observer mutation witness: the rejected broad no_fill guard block
     const after = nullRows(await rows(ticker));
     assert.equal(after.filter((r) => r.kind === "fill").length, 0);
     assert.equal(after.filter((r) => r.kind === "no_fill").length, 3);
-  }, true);
+  }, { legacyClassifier: true });
 });
 
 
@@ -321,4 +340,79 @@ test("migrated observer: future in-band snapshots and nonfinite observer clocks 
       assert.equal(state().lastObservedWindow, null);
     }
   });
+});
+
+const stableReceipts = (rows) => rows.map(({ recorded_at: _recordedAt, ...row }) => row);
+const stableAttribution = (rows) => rows.map(({ recorded_at: _recordedAt, ...row }) => row);
+
+async function clockIsolationSequence({ c, tick, rows, attributionRows, state, mod }, { ticker, polluted, invalidNow }) {
+  if (state()) {
+    state().jump = { yes_ask: null, no_ask: null, last_shock_ms: null, last_shock_side: null, last_shock_cents: null };
+    state().attribution = { boundary_ms: null, boundary_iso: null, windows: new Map(), decided: new Set(), written: 0, failed: 0, settled: 0, error: null, last_write: null };
+  }
+  c.lean = "UP"; c.gates = true;
+
+  // A genuine successful observation seeds both auxiliary observers.  In
+  // particular this writes BLIND_ELIGIBLE through the real attribution SQL.
+  await tick(190, { ticker, ask: 85 });
+  assert.equal(mod.shadowLabHealth().error, null);
+  const attributionBefore = stableAttribution(await attributionRows(ticker));
+  const jumpBefore = JSON.stringify(state().jump);
+  const trackerBefore = JSON.stringify({
+    windows: [...state().attribution.windows],
+    decided: [...state().attribution.decided],
+    written: state().attribution.written,
+    failed: state().attribution.failed,
+  });
+  assert.ok(attributionBefore.some((r) => r.kind === "BLIND_ELIGIBLE"), "positive control exercises the attribution writer");
+  assert.equal(JSON.parse(jumpBefore).yes_ask, 85, "positive control exercises jump observation");
+
+  if (polluted) {
+    // First cover the supplied invalid clock, then a finite observer clock
+    // behind a future-dated quote. Both quotes would be qualifying shocks if
+    // either stateful observer ran before clock validation.
+    await tick(181, { ticker, ask: 95, now: invalidNow });
+    await tick(181, { ticker, ask: 95, now: close - 190_000 });
+    assert.equal(JSON.stringify(state().jump), jumpBefore);
+    assert.equal(JSON.stringify({
+      windows: [...state().attribution.windows],
+      decided: [...state().attribution.decided],
+      written: state().attribution.written,
+      failed: state().attribution.failed,
+    }), trackerBefore);
+    assert.deepEqual(stableAttribution(await attributionRows(ticker)), attributionBefore, "invalid frames perform no attribution SQL writes");
+  }
+
+  // Identical valid continuation in clean and polluted databases. The real
+  // 3-cent shock at 182 seconds is a positive control: E2 must emit vetoes,
+  // so a permanently inactive jump observer cannot satisfy this regression.
+  await tick(186, { ticker, ask: 85 });
+  await tick(182, { ticker, ask: 88 });
+  const receiptRows = stableReceipts(await rows(ticker));
+  const e2 = receiptRows.filter((r) => r.experiment === "WARDEN_JUMP_VETO_V1");
+  assert.ok(e2.some((r) => r.kind === "veto"), "positive control exercises the existing shock veto");
+  return {
+    e2: e2.map((r) => ({ ...r, ticker: "CLOCK" })),
+    attribution: stableAttribution(await attributionRows(ticker)).map((r) => ({ ...r, ticker: "CLOCK" })),
+  };
+}
+
+test("migrated observer: invalid clocks and future price jumps leave real auxiliary observers isolated", async () => {
+  await fixture(async (ctx) => {
+    for (const [i, invalidNow] of [NaN, Infinity, -Infinity, 0, -1].entries()) {
+      const clean = await clockIsolationSequence(ctx, { ticker: `clock-clean-${i}`, polluted: false, invalidNow });
+      const polluted = await clockIsolationSequence(ctx, { ticker: `clock-polluted-${i}`, polluted: true, invalidNow });
+      assert.deepEqual(polluted.e2, clean.e2, `E2 result changed after invalid clock ${String(invalidNow)}`);
+      assert.deepEqual(polluted.attribution, clean.attribution, `attribution changed after invalid clock ${String(invalidNow)}`);
+    }
+  });
+});
+
+test("migrated observer mutation witness: pre-c302 guard ordering fails auxiliary-state isolation", async () => {
+  await fixture(async (ctx) => {
+    await assert.rejects(
+      clockIsolationSequence(ctx, { ticker: "clock-mutated", polluted: true, invalidNow: NaN }),
+      /invalid frames perform no attribution SQL writes|Expected values to be strictly equal/,
+    );
+  }, { lateClockGuard: true });
 });
