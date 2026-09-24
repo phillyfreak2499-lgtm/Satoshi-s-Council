@@ -284,6 +284,7 @@ export async function shadowLabTick(now?: number): Promise<void> {
   const injectedNow = now;
   const currentTime = () => injectedNow ?? Date.now();
   now = currentTime();
+  if (!Number.isFinite(now) || now <= 0) return;
   const st = state();
   if (st.busy) return;
   st.busy = true;
@@ -299,6 +300,13 @@ export async function shadowLabTick(now?: number): Promise<void> {
     const frame = await getServerFrame();
     if (!frame.snap || !frame.chair || frame.snap.demo || !frame.selective.ready) return;
     const { snap, votes, learner, settings } = structuredClone({ snap: frame.snap, votes: frame.votes, learner: frame.learner, settings: frame.settings });
+    // Validate before either stateful auxiliary observer, not merely before
+    // entry. Future shocks or attribution rows must not contaminate later ticks.
+    now = currentTime();
+    if (!Number.isFinite(now) || now <= 0
+      || !Number.isFinite(snap.as_of) || snap.as_of <= 0
+      || !Number.isFinite(snap.close_time) || snap.close_time <= 0
+      || snap.as_of > now) return;
     const secs = (snap.close_time - snap.as_of) / 1000;
     st.jump = observeJump(st.jump, snap.yes_ask, snap.no_ask, snap.as_of);
     // SELECTOR ATTRIBUTION v1: the PRODUCTION Chair vs the blind favourite, on its
