@@ -2,6 +2,7 @@ export const TRAINING_COACHES = [
   { id: "wick", name: "WICK", specialty: "Candle structure", lesson: "Read closed candles, understand their location, and learn when to wait.", available: true },
   { id: "tape", name: "TAPE", specialty: "Order-book pressure", lesson: "Read resting book size, compare pressure over successive snapshots, and learn what the book cannot prove.", available: true },
   { id: "drift", name: "DRIFT", specialty: "Momentum alignment", lesson: "Compare 5m, 15m, and 30m movement to separate aligned momentum from a bounce, pullback, or mixed tape.", available: true },
+  { id: "streak", name: "STREAK", specialty: "Settled chips", lesson: "Count official Kalshi results, ask whether the YES book still agrees, and learn when a streak is a sit.", available: true },
   { id: "odds", name: "ODDS", specialty: "Market pricing", lesson: "Explore prices, probabilities, and the questions behind a paper decision.", available: false },
   { id: "wire", name: "WIRE", specialty: "Market sentiment", lesson: "Explore the Fear & Greed reading and learn why sentiment needs context.", available: false },
 ] as const;
@@ -28,6 +29,17 @@ export const LESSON_ONE = {
     "Location matters more than color — near the top (HIGH), bottom (LOW), or middle (MID) of the recent range.",
     "If you cannot say what would invalidate the read, the read is WAIT.",
     "A lean is not a fill. Matching WICK books nothing.",
+  ],
+} as const;
+
+export const STREAK_LESSON_ONE = {
+  title: "Lesson 01 · Count the chips. Then ask the book.",
+  points: [
+    "Official settles are chips. Spot versus the strike is someone else’s job.",
+    "Live agreement is the YES book, not Bitcoin versus the line.",
+    "A young streak that still agrees with the book can ride. An extended streak (≥5) can fade. A break ends it.",
+    "If the last four chips alternate, or you cannot name the setup, the read is WAIT.",
+    "A lean is not a fill. Matching STREAK books nothing.",
   ],
 } as const;
 
@@ -79,7 +91,7 @@ export function plainSeatNote(input: {
     .replace(/\bHAR DN\b/g, "bear harami (HAR DN)")
     .replace(/\bat MID\b/g, "in the middle of the recent range (MID)")
     .replace(/\bat HIGH\b/g, "near the top of the recent range (HIGH)")
-    .replace(/\bat LOW\b/g, "near the bottom of the recent range (LOW)")
+    .replace(/\bat LOW\b/g, "in the bottom of the recent range (LOW)")
     .replace(/\bwaiting confirm close\b/gi, "waiting for the next candle to close");
 }
 
@@ -132,6 +144,28 @@ export const GUIDED_QUESTIONS: Record<string, GuidedQuestion[]> = {
       a: "One of the teaching timeframes flipping while the others hold, or the feed going stale. Alignment is checked on closed evidence, not on a forming bar.",
     },
   ],
+  streak: [
+    {
+      q: "What is a chip?",
+      a: "One official Kalshi settlement for a closed 15-minute window. STREAK reads the last official results as a tape of chips — not candles, and not the live Bitcoin print versus the strike.",
+    },
+    {
+      q: "Why does the YES book matter?",
+      a: "A settled streak is history. The live YES book is whether that history is still being paid. If the book has already flipped against a young streak, STREAK treats the streak as broken and sits.",
+    },
+    {
+      q: "When do you ride?",
+      a: "When the official streak is young (about 2–4) and the YES mid still agrees with that side. That is a continue setup — a lean, not a booked paper position.",
+    },
+    {
+      q: "When do you fade?",
+      a: "When the official streak is extended (≥5) and the book is still on that side. STREAK looks for the run that has gone too far. Fade is still a lean. The chair still has to clear price, fee, and time.",
+    },
+    {
+      q: "What would change your mind?",
+      a: "The YES book breaking the streak side, the chips flipping into alternating chop, or a streak that is neither young-and-agreed nor extended. If the setup cannot be named, STREAK prints WAIT.",
+    },
+  ],
 };
 
 export function stationCopy(id: string) {
@@ -141,6 +175,6 @@ export function stationCopy(id: string) {
     coach,
     questions: GUIDED_QUESTIONS[coach.id] ?? [],
     role: coach.id === "wick" ? WICK_ROLE_LINE : `${coach.name} teaches the same evidence it votes on the floor.`,
-    lessonOne: coach.id === "wick" ? LESSON_ONE : null,
+    lessonOne: coach.id === "wick" ? LESSON_ONE : coach.id === "streak" ? STREAK_LESSON_ONE : null,
   };
 }
