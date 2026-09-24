@@ -278,7 +278,12 @@ function packageDecision(snap: Snapshot, chair: ChairResult, calls: CallLogRow[]
 }
 
 /** One tick. Exported for the harness; the timer calls it. */
-export async function shadowLabTick(now = Date.now()): Promise<void> {
+export async function shadowLabTick(now?: number): Promise<void> {
+  // Explicit timestamps keep replay/tests deterministic. The timer supplies no
+  // timestamp, so production refreshes the actual clock after asynchronous work.
+  const injectedNow = now;
+  const currentTime = () => injectedNow ?? Date.now();
+  now = currentTime();
   const st = state();
   if (st.busy) return;
   st.busy = true;
@@ -305,9 +310,15 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     } catch (error) {
       st.attribution.error = error instanceof Error ? error.message : String(error);
     }
-    const inEntryWindow = secs >= 180 && secs <= 600;
+    const entryOpen = () => {
+      const wallSecs = (snap.close_time - currentTime()) / 1000;
+      return secs >= 180 && secs <= 600 && wallSecs >= 180 && wallSecs <= 600;
+    };
+    now = currentTime();
+    const inEntryWindow = entryOpen();
+    // A cached in-band frame cannot reopen the actual wall-clock cutoff.
     // Permit the existing T-3 grace only to reach the receipt-only branch below.
-    if (!inEntryWindow && !shouldWriteSitReceipt(secs, false)) return;
+    if (!inEntryWindow && !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
     // Prospective means observed prospectively, not merely timestamped after a
     // historical start. Every process restart skips the market already in flight.
     const windowOpen = snap.close_time - 15 * 60_000;
@@ -316,6 +327,9 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
     const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false) => {
+      // Never start an in-band decision write after an intervening await or
+      // evaluation has crossed the cutoff. Guarded final sits are receipt-only.
+      if (!onlyIfUndecided && !entryOpen()) return;
       const a = armState(`${r.experiment}|${r.arm}`);
       const k = receiptKey(r);
       if (a.decided.has(k) || pending.has(k)) return;
@@ -390,6 +404,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     }
 
     // The E1 package: shadow Chair over unmuted votes, no sticky lean (documented).
+    if (!entryOpen()) { await Promise.all(writes); return; }
     const unmuted = unmuteRoster(votes, learner);
     const fullSettings = { ...settings, poll_ms: SHADOW_LAB_POLL_MS, source: "live", show_faded: false, show_shadow: false, tz: "America/Chicago" } as unknown as Settings;
     const chair = runChair(unmuted.votes, snap, unmuted.learner, fullSettings, "WAIT", []);
@@ -401,6 +416,8 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     for (const p of packages) {
       const a = armState(`${E1}|${p.arm}`);
       const calls = await armCalls(sql, E1, p.arm, snap.as_of);
+      // Database latency must not advance gates/latches against a cached clock.
+      if (!entryOpen()) { await Promise.all(writes); return; }
       const d = packageDecision(snap, chair, calls, a, armPolicy(p.base, p.floor, p.min), st.activatedAt);
       const side = d.side;
       const q = side ? exactSideQuote(snap, side) : null;
@@ -431,6 +448,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     }
 
     // E2 and E3 derive from the PKG_85 stream on the same tick.
+    if (!entryOpen()) { await Promise.all(writes); return; }
     if (pkg85) {
       const base = pkg85;
       once(receipt(E2, "BASE_NO_VETO", snap, base.filled ? "fill" : "intention", base.side, base.ask, base.size, base.spread, true, "PKG_85 stream"), { secs_left: secs });

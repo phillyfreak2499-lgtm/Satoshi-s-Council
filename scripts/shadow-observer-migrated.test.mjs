@@ -38,14 +38,17 @@ async function fixture(run, legacyClassifier = false) {
       let query = strings[0];
       for (let i = 0; i < values.length; i++) query += `$${i + 1}${strings[i + 1]}`;
       assert.doesNotMatch(query, /(?:insert into|update|delete from)\s+desk_(?:ledger|state)\b/i);
-      return (await db.query(query, values)).rows;
+      const result = await db.query(query, values);
+      if (c?.afterHistoryNow != null && /^\s*select[\s\S]*from desk_shadow_receipts/.test(query)) c.now = c.afterHistoryNow;
+      return result.rows;
     };
-    c = { frame: null, lean: "WAIT", gates: false, probability: 1, chairCalls: 0, gateCalls: 0 };
+    c = { frame: null, lean: "WAIT", gates: false, probability: 1, chairCalls: 0, gateCalls: 0, now: close - 181_000, afterFrameNow: null, afterHistoryNow: null };
+    class FixtureDate extends Date { static now() { return c.now; } }
     globalObject = {};
     const policy = { id: "fixture", params: { min_families: 2, confirmation_frames: 3, confirmation_seconds: 8, tight_confirmation_frames: 4, tight_confirmation_seconds: 12 } };
     const deps = {
       "@/lib/db": { getSql: async () => sql },
-      "./server-engine": { getServerFrame: async () => c.frame },
+      "./server-engine": { getServerFrame: async () => { if (c.afterFrameNow != null) c.now = c.afterFrameNow; return c.frame; } },
       "./chair": { runChair: () => { c.chairCalls++; return { lean: c.lean, rows: [], gates: [], quorum: { up: 2, down: 0 } }; } },
       "./economics-book": { chicagoDayOf: (t) => new Date(t).toISOString().slice(0, 10) },
       "./fee-engine": { DEFAULT_FEE_ENGINE: "fixture", feeCents: () => 1, realAskCents: (p) => Number.isFinite(p) && p > 0 && p < 100 },
@@ -77,14 +80,14 @@ async function fixture(run, legacyClassifier = false) {
           assert.ok(key.startsWith("./"), `unexpected dependency ${key}`);
           return load(`src/lib/desk/${bare.slice(2)}.ts`);
         },
-        Date, Math, Number, JSON, Object, Array, Map, Set, Promise, Error, structuredClone, console,
+        Date: FixtureDate, Math, Number, JSON, Object, Array, Map, Set, Promise, Error, structuredClone, console,
         globalThis: globalObject, process: { env: {} },
         setInterval: () => { throw new Error("test must not start timers"); }, clearInterval: () => {},
       });
       return exports;
     };
     const mod = load("src/lib/desk/shadow-lab.server.ts");
-    const tick = async (secs, { ticker = "FIXTURE", side = "UP", ask = 85, now, demo = false } = {}) => {
+    const tick = async (secs, { ticker = "FIXTURE", side = "UP", ask = 85, now, demo = false, runtimeClock = false } = {}) => {
       const other = 101 - ask;
       const snap = {
         as_of: close - secs * 1000, close_time: close, ticker, demo,
@@ -97,7 +100,8 @@ async function fixture(run, legacyClassifier = false) {
       };
       c.frame = { snap, chair: { lean: "WAIT" }, votes: [], learner: { skills: {} }, settings: {}, selective: { ready: true } };
       const before = JSON.stringify(c.frame);
-      await mod.shadowLabTick(now ?? snap.as_of);
+      c.now = now ?? snap.as_of;
+      await mod.shadowLabTick(runtimeClock ? undefined : c.now);
       assert.equal(JSON.stringify(c.frame), before, "observer never writes back into the supplied frame");
     };
     const rows = async (ticker) => (await db.query("select * from desk_shadow_receipts where ticker=$1 order by experiment,arm,kind", [ticker])).rows;
@@ -206,4 +210,87 @@ test("migrated observer mutation witness: the rejected broad no_fill guard block
     assert.equal(after.filter((r) => r.kind === "fill").length, 0);
     assert.equal(after.filter((r) => r.kind === "no_fill").length, 3);
   }, true);
+});
+
+
+test("migrated observer: cached 181-second frame at wall-clock 179 never evaluates late entry", async () => {
+  await fixture(async ({ c, tick, rows, mod, state }) => {
+    const ticker = "cached-cutoff";
+    await tick(181, { ticker });
+    const evaluations = [c.chairCalls, c.gateCalls];
+    const watches = JSON.stringify([...state().arms].map(([id, a]) => [id, a.watch]));
+    c.lean = "UP"; c.gates = true;
+    await tick(181, { ticker, now: close - 179_000 });
+    await tick(181, { ticker, now: close - 178_000 });
+    assert.equal(mod.shadowLabHealth().error, null);
+    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.equal(JSON.stringify([...state().arms].map(([id, a]) => [id, a.watch])), watches);
+    const receipts = await rows(ticker);
+    assert.equal(receipts.length, 12);
+    assert.ok(receipts.every((r) => r.kind === "no_fill" && r.payload.receipt_only === true));
+    assert.ok(receipts.every((r) => r.payload.finalized_at === close - 179_000));
+    await tick(181, { ticker: "cached-unobserved", now: close - 179_000 });
+    assert.equal((await rows("cached-unobserved")).length, 0);
+    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+  });
+});
+
+test("migrated observer: wall-clock grace expiration and future snapshots cannot reopen the entry band", async () => {
+  await fixture(async ({ c, tick, rows }) => {
+    for (const wall of [168, 167, 0]) {
+      const ticker = `cached-expired-${wall}`;
+      c.lean = "WAIT"; c.gates = false;
+      await tick(181, { ticker });
+      const evaluations = [c.chairCalls, c.gateCalls];
+      c.lean = "UP"; c.gates = true;
+      await tick(181, { ticker, now: close - wall * 1000 });
+      assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+      assert.equal((await rows(ticker)).length, 0);
+    }
+    const evaluations = [c.chairCalls, c.gateCalls];
+    await tick(179, { ticker: "future-frame", now: close - 181_000 });
+    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.equal((await rows("future-frame")).length, 0);
+  });
+});
+
+test("migrated observer: production clock refreshes after the awaited frame crosses T-3", async () => {
+  await fixture(async ({ c, tick, rows, mod }) => {
+    const ticker = "awaited-frame-cutoff";
+    await tick(181, { ticker });
+    const evaluations = [c.chairCalls, c.gateCalls];
+    c.lean = "UP"; c.gates = true;
+    c.afterFrameNow = close - 179_000;
+    // Call the same no-argument clock path as the production timer, while the
+    // controlled getServerFrame advances time without a nondeterministic sleep.
+    await tick(181, { ticker, runtimeClock: true });
+    assert.equal(mod.shadowLabHealth().error, null);
+    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    const receipts = await rows(ticker);
+    assert.equal(receipts.length, 12);
+    assert.ok(receipts.every((r) => r.kind === "no_fill" && r.payload.receipt_only === true));
+  });
+});
+
+test("migrated observer: an awaited history query cannot advance confirmation or start a late fill", async () => {
+  await fixture(async ({ c, tick, rows, mod, state }) => {
+    const ticker = "awaited-history-cutoff";
+    c.lean = "UP"; c.gates = true;
+    await tick(190, { ticker }); await tick(186, { ticker });
+    const before = await rows(ticker);
+    assert.ok(before.some((r) => r.kind === "intention"));
+    assert.ok(before.every((r) => r.kind !== "fill"));
+    const gates = c.gateCalls;
+    const watches = JSON.stringify([...state().arms].map(([id, a]) => [id, a.watch]));
+    const observed = JSON.stringify(state().lastObservedWindow);
+    c.afterHistoryNow = close - 179_000;
+    // A third timely snapshot would confirm, but database latency has already
+    // carried the actual observer clock past the unchanged entry cutoff.
+    await tick(182, { ticker, runtimeClock: true });
+    assert.equal(mod.shadowLabHealth().error, null);
+    assert.equal(c.gateCalls, gates);
+    assert.equal(JSON.stringify([...state().arms].map(([id, a]) => [id, a.watch])), watches);
+    assert.equal(JSON.stringify(state().lastObservedWindow), observed);
+    assert.deepEqual(await rows(ticker), before);
+  });
 });
