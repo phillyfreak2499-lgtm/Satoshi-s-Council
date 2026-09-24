@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex,follow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111817">
+  <title>STREAK’s Station · Your Training Desk</title>
+  <meta name="description" content="Sit at STREAK’s six-screen training desk. Count official chips, ask the YES book, and practice when to wait.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23dfb56b' d='M14 2h4v28h-4zM8 9h16v15H8z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../tape/style.css">
+  <style>
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .chip { min-width: 42px; height: 36px; border-radius: 4px; display: grid; place-items: center; font: 600 11px ui-monospace, monospace; border: 1px solid transparent; }
+    .chip.UP { background: rgba(125,206,160,.12); color: #7dcea0; border-color: rgba(125,206,160,.35); }
+    .chip.DOWN { background: rgba(217,137,122,.12); color: #d9897a; border-color: rgba(217,137,122,.35); }
+  </style>
+</head>
+<body class="embedded-desk tape-desk">
+<main id="station" aria-label="STREAK’s six-screen training desk">
+  <header class="hud">
+    <a class="brand" href="/" target="_top"><span class="brand-mark">SC</span><span>SATOSHI’S COUNCIL<small>THE APPRENTICE DESK</small></span></a>
+    <div class="hud-right"><span class="edition">STATION 04</span><button id="sound" class="icon-button" aria-pressed="false" title="Read coach replies aloud">VOICE OFF</button></div>
+  </header>
+  <section class="desk-heading">
+    <div>
+      <div class="eyebrow">SETTLED CHIPS / PERSONAL TRAINING</div>
+      <h1>STREAK’S STATION<span class="cursor">_</span></h1>
+      <p>Your seat. Six screens. One frozen chip tape at a time.</p>
+    </div>
+    <div class="feed-tag" id="feed-tag"><span class="signal"></span><span id="feed-label">FROZEN EXAMPLES · PAPER</span><span id="feed-age"></span></div>
+  </section>
+  <div class="workstation">
+    <nav class="monitor-wall" aria-label="STREAK’s six training screens">
+      <button class="monitor monitor-read" id="why" aria-label="What do you see?">
+        <span class="display">
+          <span class="screen-top"><span>01 / OBSERVE</span><span class="status-dot"></span></span>
+          <span class="screen-title">What do you see?</span>
+          <span class="read-layout"><span><span class="micro-label">STREAK’S RULE</span><strong class="read-mantra">Count the chips.<br>Then ask the book.</strong></span></span>
+          <span class="screen-summary" id="read-preview">Official settles first. The YES book second.</span>
+          <span class="screen-bottom"><span id="read-status">ILLUSTRATED TAPE READY</span><span>Hear the read ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / OBSERVATIONS</span><i></i></span>
+      </button>
+      <button class="monitor monitor-try" id="challenge" aria-label="Let me try">
+        <span class="display">
+          <span class="screen-top"><span>02 / DECIDE</span><span class="screen-tag">PAPER ONLY</span></span>
+          <span class="screen-title">Let me try</span>
+          <span class="try-title">What’s your read?</span>
+          <span class="decision-options" aria-hidden="true"><span>↑ UP</span><span>— WAIT</span><span>↓ DOWN</span></span>
+          <span class="screen-summary">Freeze this tape. Make your call.<br>Then uncover STREAK’s reasoning.</span>
+          <span class="screen-bottom"><span id="try-status">READY TO FREEZE</span><span>Take the seat ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / YOUR TURN</span><i></i></span>
+      </button>
+      <button class="monitor monitor-chat" id="open-chat" aria-label="Ask STREAK">
+        <span class="display">
+          <span class="screen-top"><span>03 / TALK IT THROUGH</span><span class="screen-tag">GUIDED COACH</span></span>
+          <span class="screen-title">Ask STREAK</span>
+          <span class="chat-preview"><span class="micro-label">STREAK ›</span><span id="chat-preview">“Ask me why I’m waiting. The setup matters more than the last chip.”</span></span>
+          <span class="input-preview">Pick a guided question<span>↵</span></span>
+          <span class="screen-bottom"><span>TEXT + OPTIONAL VOICE</span><span>Open questions ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / DIRECT LINE</span><i></i></span>
+      </button>
+      <button class="monitor monitor-chart" id="focus" aria-label="The chip tape">
+        <span class="display">
+          <span class="screen-top"><span>04 / MARKET</span><span>ILLUSTRATED</span></span>
+          <span class="screen-title">The chip tape<span class="title-detail">OFFICIAL / 8</span></span>
+          <span class="screen-summary" id="tape-preview">Last official settles, not spot versus strike.</span>
+          <span class="screen-bottom"><span>KALSHI SETTLES</span><span>Expand tape ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / OFFICIAL TAPE</span><i></i></span>
+      </button>
+      <button class="monitor monitor-notes" id="notes" aria-label="STREAK’s notes">
+        <span class="display">
+          <span class="screen-top"><span>05 / EVIDENCE</span><span>FRESH</span></span>
+          <span class="screen-title">STREAK’s notes</span>
+          <span class="notes-grid">
+            <span><span class="micro-label">SETUP</span><strong id="note-decision">—</strong></span>
+            <span><span class="micro-label">BOOK</span><strong id="note-location">—</strong></span>
+          </span>
+          <span class="note-excerpt" id="note-excerpt">Name the setup or sit.</span>
+          <span class="screen-bottom"><span>FROM THE STREAK SEAT</span><span>Open notebook ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / RESEARCH LOG</span><i></i></span>
+      </button>
+      <button class="monitor monitor-practice" id="practice" aria-label="Practice">
+        <span class="display">
+          <span class="screen-top"><span>06 / TRAIN</span><span class="screen-tag">ILLUSTRATED / NOT LIVE</span></span>
+          <span class="screen-title">Practice</span>
+          <span class="practice-caption">FOUR FROZEN TAPES<span>LESSON 01</span></span>
+          <span class="screen-bottom"><span id="practice-status">LEARN AT YOUR PACE</span><span id="practice-action">Enter practice ↗</span></span>
+        </span>
+        <span class="bezel"><span>STREAK / TRAINING MODE</span><i></i></span>
+      </button>
+    </nav>
+    <div class="desk-surface" aria-hidden="true">
+      <div class="monitor-stand stand-left"></div>
+      <div class="monitor-stand stand-middle"></div>
+      <div class="monitor-stand stand-right"></div>
+      <div class="keyboard"><div class="keys" id="keyboard-keys"></div><div class="spacebar"></div></div>
+      <div class="mousepad"><div class="mouse"></div></div>
+      <div class="tape-notebook"><span>FIELD NOTES / 04</span><strong>Chips. Book.<br>Named setup.</strong></div>
+      <div class="tape-sticky">A hot streak can ride.<br>A break ends it.<small>— STREAK</small></div>
+      <div class="desk-label">SC / STRUCTURE DESK 04</div>
+    </div>
+  </div>
+  <section class="coach" aria-label="Latest reply from STREAK">
+    <div class="coach-top"><span class="audio-wave" aria-hidden="true">▂▅▃▇▃▅▂</span><span class="coach-name">STREAK</span><span class="talk-state" id="talk-state">ON THE LINE</span></div>
+    <p id="coach-line" aria-live="polite">I’m right here. Pick a screen and we’ll work through it together. Official chips only—there’s no rush to make a call.</p>
+  </section>
+  <footer class="footer"><span>BITCOIN ONLY · PAPER RESEARCH · NOT FINANCIAL ADVICE</span><span>GUIDED COACH PREVIEW · SELECT ANY SCREEN</span></footer>
+</main>
+<dialog id="read-dialog" aria-labelledby="read-title">
+  <div class="dialog-head"><div><div class="eyebrow">01 / STREAK’S OBSERVATION</div><h2 id="read-title">What do you see?</h2></div><button class="close" aria-label="Close">×</button></div>
+  <div id="obs-chips" class="chip-row"></div>
+  <p id="read-copy" class="observation-copy"></p>
+  <p class="description">The live seat reads official Kalshi settles. These practice tapes are frozen illustrations, not the current window.</p>
+</dialog>
+<dialog id="challenge-dialog" aria-labelledby="challenge-title">
+  <div class="dialog-head"><div><div class="eyebrow">FROZEN MOMENT · PAPER PRACTICE</div><h2 id="challenge-title">Your turn at the desk</h2></div><button class="close" aria-label="Close">×</button></div>
+  <p id="challenge-stamp" class="description"></p>
+  <div id="challenge-chips" class="chip-row"></div>
+  <p class="question-title">What should STREAK print on this tape?</p>
+  <p class="description">Name the setup first. This is an exercise in understanding the seat, not predicting the next settlement.</p>
+  <div class="call-buttons"><button data-call="UP">LEAN UP</button><button data-call="WAIT">WAIT</button><button data-call="DOWN">LEAN DOWN</button></div>
+  <div id="challenge-result" aria-live="polite"></div>
+  <p class="description">A lean is not a fill. No order is placed.</p>
+</dialog>
+<dialog id="chat-dialog" aria-labelledby="chat-title">
+  <div class="dialog-head"><div><div class="eyebrow">PULL UP A CHAIR</div><h2 id="chat-title">Talk it through with STREAK</h2></div><button class="close" aria-label="Close">×</button></div>
+  <div class="chat-history" id="chat-history" role="log" aria-live="polite"></div>
+  <div class="suggestions">
+    <button data-question="What is a chip?">What is a chip?</button>
+    <button data-question="Why does the YES book matter?">Why the book?</button>
+    <button data-question="When do you ride?">When ride?</button>
+    <button data-question="When do you fade?">When fade?</button>
+    <button data-question="What would change your mind?">What changes your mind?</button>
+  </div>
+  <p class="description">Guided responses use STREAK’s teaching library. Open-ended AI conversation is not connected.</p>
+</dialog>
+<dialog id="notes-dialog" aria-labelledby="notes-title">
+  <div class="dialog-head"><div><div class="eyebrow">FROM THE ACTUAL STREAK SEAT</div><h2 id="notes-title">What’s on my desk</h2></div><button class="close" aria-label="Close">×</button></div>
+  <div id="notes-content"></div>
+  <p class="description">A named setup is an observation. STREAK’s printed lean still has to clear the desk’s gates. A lean is not a fill.</p>
+</dialog>
+<dialog id="tape-dialog" aria-labelledby="tape-title">
+  <div class="dialog-head"><div><div class="eyebrow">04 / OFFICIAL TAPE</div><h2 id="tape-title">The chip tape</h2></div><button class="close" aria-label="Close">×</button></div>
+  <div id="tape-chips" class="chip-row"></div>
+  <p id="tape-copy" class="description"></p>
+  <p class="description">STREAK does not read Bitcoin versus the strike. It reads official chips, then asks whether the YES book has already quit the run.</p>
+</dialog>
+<dialog id="practice-dialog" aria-labelledby="practice-title">
+  <div class="dialog-head"><div><div class="eyebrow">06 / TRAIN · ILLUSTRATED / NOT LIVE</div><h2 id="practice-title">Four frozen tapes</h2></div><button class="close" aria-label="Close">×</button></div>
+  <div class="suggestions" id="case-buttons"></div>
+  <div id="practice-chips" class="chip-row"></div>
+  <p id="practice-meta" class="description"></p>
+  <div class="call-buttons"><button data-call="UP">LEAN UP</button><button data-call="WAIT">WAIT</button><button data-call="DOWN">LEAN DOWN</button></div>
+  <div id="practice-result" aria-live="polite"></div>
+  <p class="description">Grade yourself on the frozen tape, not a live window. Paper only.</p>
+</dialog>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
