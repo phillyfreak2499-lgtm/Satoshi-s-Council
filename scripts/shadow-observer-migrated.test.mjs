@@ -242,7 +242,7 @@ test("migrated observer: cached 181-second frame at wall-clock 179 never evaluat
     await tick(181, { ticker, now: close - 179_000 });
     await tick(181, { ticker, now: close - 178_000 });
     assert.equal(mod.shadowLabHealth().error, null);
-    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
     assert.equal(JSON.stringify([...state().arms].map(([id, a]) => [id, a.watch])), watches);
     const receipts = await rows(ticker);
     assert.equal(receipts.length, 12);
@@ -250,7 +250,7 @@ test("migrated observer: cached 181-second frame at wall-clock 179 never evaluat
     assert.ok(receipts.every((r) => r.payload.finalized_at === close - 179_000));
     await tick(181, { ticker: "cached-unobserved", now: close - 179_000 });
     assert.equal((await rows("cached-unobserved")).length, 0);
-    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
   });
 });
 
@@ -260,15 +260,15 @@ test("migrated observer: wall-clock grace expiration and future snapshots cannot
       const ticker = `cached-expired-${wall}`;
       c.lean = "WAIT"; c.gates = false;
       await tick(181, { ticker });
-      const evaluations = [c.chairCalls, c.gateCalls];
+      const evaluations = [c.chairCalls,c.gateCalls];
       c.lean = "UP"; c.gates = true;
       await tick(181, { ticker, now: close - wall * 1000 });
-      assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+      assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
       assert.equal((await rows(ticker)).length, 0);
     }
-    const evaluations = [c.chairCalls, c.gateCalls];
+    const evaluations = [c.chairCalls,c.gateCalls];
     await tick(179, { ticker: "future-frame", now: close - 181_000 });
-    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
     assert.equal((await rows("future-frame")).length, 0);
   });
 });
@@ -277,14 +277,14 @@ test("migrated observer: production clock refreshes after the awaited frame cros
   await fixture(async ({ c, tick, rows, mod }) => {
     const ticker = "awaited-frame-cutoff";
     await tick(181, { ticker });
-    const evaluations = [c.chairCalls, c.gateCalls];
+    const evaluations = [c.chairCalls,c.gateCalls];
     c.lean = "UP"; c.gates = true;
     c.afterFrameNow = close - 179_000;
     // Call the same no-argument clock path as the production timer, while the
     // controlled getServerFrame advances time without a nondeterministic sleep.
     await tick(181, { ticker, runtimeClock: true });
     assert.equal(mod.shadowLabHealth().error, null);
-    assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+    assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
     const receipts = await rows(ticker);
     assert.equal(receipts.length, 12);
     assert.ok(receipts.every((r) => r.kind === "no_fill" && r.payload.receipt_only === true));
@@ -333,9 +333,9 @@ test("migrated observer: future in-band snapshots and nonfinite observer clocks 
     const cases = [close - 183_000, NaN, Infinity, -Infinity];
     for (const [i, now] of cases.entries()) {
       const ticker = `invalid-clock-${i}`;
-      const evaluations = [c.chairCalls, c.gateCalls];
+      const evaluations = [c.chairCalls,c.gateCalls];
       await tick(181, { ticker, now });
-      assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+      assert.deepEqual([c.chairCalls,c.gateCalls], evaluations);
       assert.equal((await rows(ticker)).length, 0);
       assert.equal(state().lastObservedWindow, null);
     }
@@ -368,10 +368,15 @@ async function clockIsolationSequence({ c, tick, rows, attributionRows, state, m
   assert.equal(JSON.parse(jumpBefore).yes_ask, 85, "positive control exercises jump observation");
 
   if (polluted) {
-    // First cover the supplied invalid clock, then a finite observer clock
-    // behind a future-dated quote. Both quotes would be qualifying shocks if
-    // either stateful observer ran before clock validation.
-    await tick(181, { ticker, ask: 95, now: invalidNow });
+    // Start with a valid runtime clock; invalidate it inside getServerFrame
+    // so this reaches the post-await guard instead of the pre-frame guard.
+    c.afterFrameNow = invalidNow;
+    try {
+      await tick(181, { ticker, ask: 95, runtimeClock: true });
+    } finally {
+      c.afterFrameNow = null;
+    }
+    // Retain the independent finite-clock future-snapshot case.
     await tick(181, { ticker, ask: 95, now: close - 190_000 });
     assert.equal(JSON.stringify(state().jump), jumpBefore);
     assert.equal(JSON.stringify({
