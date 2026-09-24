@@ -1,11 +1,12 @@
 import { useParams } from "@tanstack/react-router";
 import { stationCopy } from "@/lib/desk/training";
+import { WickPatternDrill } from "./WickPatternDrill";
 
 export function TrainingStation() {
   const { coach: id } = useParams({ from: "/training/$coach" });
   const copy = stationCopy(id);
   if (!copy) return null;
-  const { coach, questions, role, lessonOne } = copy;
+  const { coach, questions, role, lessonOne, lessonTwo } = copy;
   return (
     <main id="training-main" className="bg-bg text-fg">
       <div className="gutter flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface py-3">
@@ -27,6 +28,17 @@ export function TrainingStation() {
             </ol>
           </div>
         ) : null}
+
+        {lessonTwo ? (
+          <div className="mt-6 rounded-md border border-wait/30 bg-surface p-5 sm:p-6">
+            <h2 className="font-sans text-title font-medium">{lessonTwo.title}</h2>
+            <ol className="mt-4 list-decimal space-y-2 pl-5 font-sans text-body leading-relaxed text-fg">
+              {lessonTwo.points.map((point) => <li key={point}>{point}</li>)}
+            </ol>
+          </div>
+        ) : null}
+
+        {coach.id === "wick" ? <WickPatternDrill /> : null}
 
         {questions.length ? (
           <div className="mt-8">
