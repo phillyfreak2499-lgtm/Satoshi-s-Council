@@ -1,5 +1,5 @@
 import { useParams } from "@tanstack/react-router";
-import { LESSON_ONE, stationCopy } from "@/lib/desk/training";
+import { stationCopy } from "@/lib/desk/training";
 
 export function TrainingStation() {
   const { coach: id } = useParams({ from: "/training/$coach" });
@@ -21,9 +21,9 @@ export function TrainingStation() {
 
         {lessonOne ? (
           <div className="mt-8 rounded-md border border-wait/30 bg-surface p-5 sm:p-6">
-            <h2 className="font-sans text-title font-medium">{LESSON_ONE.title}</h2>
+            <h2 className="font-sans text-title font-medium">{lessonOne.title}</h2>
             <ol className="mt-4 list-decimal space-y-2 pl-5 font-sans text-body leading-relaxed text-fg">
-              {LESSON_ONE.points.map((point) => <li key={point}>{point}</li>)}
+              {lessonOne.points.map((point) => <li key={point}>{point}</li>)}
             </ol>
           </div>
         ) : null}
