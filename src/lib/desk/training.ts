@@ -32,6 +32,17 @@ export const LESSON_ONE = {
   ],
 } as const;
 
+export const WICK_LESSON_TWO = {
+  title: "Lesson 02 · Name the shape.",
+  points: [
+    "Name the closed candle before you lean. Shape is not a vote.",
+    "WICK’s first shapes: hammer, shooting star, doji, dragonfly, gravestone, engulfing, harami.",
+    "Desk codes stay in parentheses: HAM, SHOOT, DOJI, DRAG, GRAV, ENG UL, ENG DN, HAR UL.",
+    "Location is the next lesson. Do not treat a hammer and a hanging man as different shapes yet.",
+    "A named pattern is still not a fill.",
+  ],
+} as const;
+
 export const STREAK_LESSON_ONE = {
   title: "Lesson 01 · Count the chips. Then ask the book.",
   points: [
@@ -91,7 +102,7 @@ export function plainSeatNote(input: {
     .replace(/\bHAR DN\b/g, "bear harami (HAR DN)")
     .replace(/\bat MID\b/g, "in the middle of the recent range (MID)")
     .replace(/\bat HIGH\b/g, "near the top of the recent range (HIGH)")
-    .replace(/\bat LOW\b/g, "in the bottom of the recent range (LOW)")
+    .replace(/\bat LOW\b/g, "near the bottom of the recent range (LOW)")
     .replace(/\bwaiting confirm close\b/gi, "waiting for the next candle to close");
 }
 
@@ -114,6 +125,18 @@ export const GUIDED_QUESTIONS: Record<string, GuidedQuestion[]> = {
     {
       q: "What is lesson one?",
       a: "Close first. Then a read. You do not need the live market to take it — the illustrated practice example is labeled and frozen.",
+    },
+    {
+      q: "What is lesson two?",
+      a: "Name the shape. Eight frozen closed candles: hammer, shooting star, doji, dragonfly, gravestone, bull engulfing, bear engulfing, bull harami. No lean yet. Location is lesson three.",
+    },
+    {
+      q: "What is a hammer?",
+      a: "A small body with a long lower tail after the bar has closed (HAM). Price sold off and came back. WICK names the shape first. Whether that hammer sits at a LOW or a HIGH is the next lesson.",
+    },
+    {
+      q: "What is an engulfing candle?",
+      a: "A closed body that covers the prior closed body. Green covering red is ENG UL. Red covering green is ENG DN. Two closed bars. Still not a fill.",
     },
   ],
   tape: [
@@ -176,5 +199,6 @@ export function stationCopy(id: string) {
     questions: GUIDED_QUESTIONS[coach.id] ?? [],
     role: coach.id === "wick" ? WICK_ROLE_LINE : `${coach.name} teaches the same evidence it votes on the floor.`,
     lessonOne: coach.id === "wick" ? LESSON_ONE : coach.id === "streak" ? STREAK_LESSON_ONE : null,
+    lessonTwo: coach.id === "wick" ? WICK_LESSON_TWO : null,
   };
 }
