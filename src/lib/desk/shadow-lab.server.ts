@@ -30,6 +30,9 @@
  * Sub-second availability is not resolvable at a 2 s poll: hittable flags stay
  * null (UNKNOWN); the ask two seconds later is recorded in the payload as a
  * coarse proxy and labelled as such.
+ * The frozen T-3 grace period (168 < secs < 180) is RECEIPTS ONLY: it
+ * finalizes observed sits without evaluating a Chair, advancing a latch, or
+ * creating a fill. An unobserved/missed window remains missing, not a zero.
  */
 import { getSql, type Sql } from "@/lib/db";
 import { runChair } from "./chair.ts";
@@ -37,7 +40,7 @@ import { chicagoDayOf } from "./economics-book.ts";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
 import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
 import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
-import { JUMP_VETO, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
+import { JUMP_VETO, NULL_FAV_GRACE_SECS, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
 import { INITIAL_SHADOW_COLLECTION_IDS, SHADOW_MANIFESTS, SHADOW_MANIFEST_FINGERPRINTS } from "./shadow-manifests.ts";
 import { SHADOW_FEE_FINGERPRINT, receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
@@ -59,13 +62,19 @@ const buildSha = () => process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?
 // ---------------------------------------------------------------------------
 
 /** Insert one receipt; true when the row was new. The primary key is the idempotent key. */
-export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}): Promise<boolean> {
+export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false): Promise<boolean> {
   const rows = await sql<{ experiment: string }>`
     insert into desk_shadow_receipts (experiment, arm, ticker, close_time, kind, decided_at, side, ask_cents, fee_engine, fee_cents, size_at_ask,
       spread_cents, feeds_ok, hittable_150ms, hittable_500ms, official_winner, net_cents, note, payload, build_sha)
-    values (${r.experiment}, ${r.arm}, ${r.ticker}, ${new Date(r.close_ms).toISOString()}::timestamptz, ${r.kind}, ${new Date(r.decided_ms).toISOString()}::timestamptz,
+    select ${r.experiment}, ${r.arm}, ${r.ticker}, ${new Date(r.close_ms).toISOString()}::timestamptz, ${r.kind}, ${new Date(r.decided_ms).toISOString()}::timestamptz,
       ${r.side}, ${r.ask_cents}, ${r.fee_engine}, ${r.fee_cents}, ${r.size_at_ask}, ${r.spread_cents}, ${r.feeds_ok}, ${r.hittable_150ms}, ${r.hittable_500ms},
-      ${r.official_winner}, ${r.net_cents}, ${r.note}, ${JSON.stringify(payload)}::jsonb, ${buildSha()})
+      ${r.official_winner}, ${r.net_cents}, ${r.note}, ${JSON.stringify(payload)}::jsonb, ${buildSha()}
+    where not ${onlyIfUndecided}::boolean or not exists (
+      select 1 from desk_shadow_receipts existing
+      where existing.experiment = ${r.experiment} and existing.arm = ${r.arm}
+        and existing.ticker = ${r.ticker} and existing.close_time = ${new Date(r.close_ms).toISOString()}::timestamptz
+        and existing.kind in ('fill', 'intention', 'veto', 'no_fill')
+    )
     on conflict (experiment, arm, ticker, close_time, kind) do nothing
     returning experiment`;
   return rows.length > 0;
@@ -190,13 +199,15 @@ type Observer = {
   activatedAt: number;
   /** Process-local boundary: no arm may use a market already open when this observer session began. */
   sessionStartedAt: number;
+  /** Last successfully evaluated entry-band frame; never invented at a late/restart tick. */
+  lastObservedWindow: { key: string; asOf: number } | null;
   /** SELECTOR ATTRIBUTION v1 (selector-attribution.server.ts): its own table, its own health. */
   attribution: AttributionTracker;
 };
 const globalRef = globalThis as typeof globalThis & { __shadowLab__?: Observer };
 const state = (): Observer => globalRef.__shadowLab__ ??= {
   timer: null, starting: false, busy: false, arms: new Map(), jump: blankJumpVeto(),
-  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0, attribution: blankAttributionTracker(),
+  lastSettle: 0, lastCapture: null, error: null, activatedAt: 0, sessionStartedAt: 0, lastObservedWindow: null, attribution: blankAttributionTracker(),
 };
 const armState = (id: string): ArmState => { const st = state(); const cur = st.arms.get(id) ?? { watch: null, decided: new Set(), lastAsk: new Map() }; st.arms.set(id, cur); return cur; };
 
@@ -267,7 +278,13 @@ function packageDecision(snap: Snapshot, chair: ChairResult, calls: CallLogRow[]
 }
 
 /** One tick. Exported for the harness; the timer calls it. */
-export async function shadowLabTick(now = Date.now()): Promise<void> {
+export async function shadowLabTick(now?: number): Promise<void> {
+  // Explicit timestamps keep replay/tests deterministic. The timer supplies no
+  // timestamp, so production refreshes the actual clock after asynchronous work.
+  const injectedNow = now;
+  const currentTime = () => injectedNow ?? Date.now();
+  now = currentTime();
+  if (!Number.isFinite(now) || now <= 0) return;
   const st = state();
   if (st.busy) return;
   st.busy = true;
@@ -283,6 +300,13 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const frame = await getServerFrame();
     if (!frame.snap || !frame.chair || frame.snap.demo || !frame.selective.ready) return;
     const { snap, votes, learner, settings } = structuredClone({ snap: frame.snap, votes: frame.votes, learner: frame.learner, settings: frame.settings });
+    // Validate before either stateful auxiliary observer, not merely before
+    // entry. Future shocks or attribution rows must not contaminate later ticks.
+    now = currentTime();
+    if (!Number.isFinite(now) || now <= 0
+      || !Number.isFinite(snap.as_of) || snap.as_of <= 0
+      || !Number.isFinite(snap.close_time) || snap.close_time <= 0
+      || snap.as_of > now) return;
     const secs = (snap.close_time - snap.as_of) / 1000;
     st.jump = observeJump(st.jump, snap.yes_ask, snap.no_ask, snap.as_of);
     // SELECTOR ATTRIBUTION v1: the PRODUCTION Chair vs the blind favourite, on its
@@ -294,7 +318,16 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     } catch (error) {
       st.attribution.error = error instanceof Error ? error.message : String(error);
     }
-    if (!(secs >= 180 && secs <= 600)) return;
+    const entryOpen = () => {
+      const wallNow = currentTime();
+      const wallSecs = (snap.close_time - wallNow) / 1000;
+      return snap.as_of <= wallNow && secs >= 180 && secs <= 600 && wallSecs >= 180 && wallSecs <= 600;
+    };
+    now = currentTime();
+    const inEntryWindow = entryOpen();
+    // A cached in-band frame cannot reopen the actual wall-clock cutoff.
+    // Permit the existing T-3 grace only to reach the receipt-only branch below.
+    if (!inEntryWindow && !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
     // Prospective means observed prospectively, not merely timestamped after a
     // historical start. Every process restart skips the market already in flight.
     const windowOpen = snap.close_time - 15 * 60_000;
@@ -302,22 +335,64 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     const windowKey = `${snap.ticker}|${snap.close_time}`;
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
-    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}) => {
+    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false) => {
+      // Never start an in-band decision write after an intervening await or
+      // evaluation has crossed the cutoff. Guarded final sits are receipt-only.
+      if (!onlyIfUndecided && !entryOpen()) return;
       const a = armState(`${r.experiment}|${r.arm}`);
       const k = receiptKey(r);
       if (a.decided.has(k) || pending.has(k)) return;
       pending.add(k);
       writes.push(
-        recordShadowReceipt(sql, r, payload)
+        recordShadowReceipt(sql, r, payload, onlyIfUndecided)
           .then((inserted) => {
-            // A successful insert OR an idempotent DB conflict proves the key is durable.
-            a.decided.add(k);
+            // Unguarded conflicts prove the key is durable. A guarded sit can
+            // instead be blocked by another kind: never cache that as a sit.
+            if (inserted || !onlyIfUndecided) a.decided.add(k);
             if (a.decided.size > 2_000) a.decided = new Set([...a.decided].slice(-1_000));
             return inserted;
           })
           .finally(() => pending.delete(k)),
       );
     };
+
+    if (!inEntryWindow) {
+      // A poll can jump from 181 s to 179 s and never hit exactly 180 s.
+      // Finalize only a window this session successfully evaluated in-band.
+      // Do not replay an old/future frame, synthesize a missed window, or
+      // recalculate a decision after the frozen entry cutoff.
+      const observed = st.lastObservedWindow;
+      // One normal poll plus the frozen grace bounds continuity. A long
+      // collector outage is missing evidence, never a manufactured zero.
+      const maxObservationAge = SHADOW_LAB_POLL_MS + NULL_FAV_GRACE_SECS * 1000;
+      if (!observed || observed.key !== windowKey || observed.asOf > snap.as_of || snap.as_of > now
+        || now - observed.asOf > maxObservationAge
+        || !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
+      const groups: ReadonlyArray<readonly [string, readonly string[]]> = [
+        [E1, ["PKG_85", "PKG_80", "PKG_88", "PKG_85_OWNER3"]],
+        [E2, ["BASE_NO_VETO", "VETO_8S", "VETO_15S", "VETO_30S"]],
+        [E3, ["BASIS_LIVE_2BPS", "BASIS_5BPS", "BASIS_7BPS", "BASIS_9BPS"]],
+      ];
+      for (const [experiment, arms] of groups) {
+        for (const arm of arms) {
+          const a = armState(`${experiment}|${arm}`);
+          const already = (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+            const k = `${experiment}|${arm}|${windowKey}|${kind}`;
+            return a.decided.has(k) || pending.has(k);
+          });
+          if (!already) {
+            once(receipt(experiment, arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; receipt-only grace"), {
+              secs_left: secs, checkpoint: 180, receipt_only: true,
+              last_observed_as_of: observed.asOf, finalized_at: now,
+            }, true); // Check durable kinds in the INSERT, not just this worker's cache.
+          }
+        }
+      }
+      await Promise.all(writes);
+      if (writes.length) st.lastCapture = now;
+      st.error = null;
+      return;
+    }
 
     // NULL_FAV benchmarks at their frozen checkpoints.
     const cp = scheduledCheckpoint(secs);
@@ -338,6 +413,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     }
 
     // The E1 package: shadow Chair over unmuted votes, no sticky lean (documented).
+    if (!entryOpen()) { await Promise.all(writes); return; }
     const unmuted = unmuteRoster(votes, learner);
     const fullSettings = { ...settings, poll_ms: SHADOW_LAB_POLL_MS, source: "live", show_faded: false, show_shadow: false, tz: "America/Chicago" } as unknown as Settings;
     const chair = runChair(unmuted.votes, snap, unmuted.learner, fullSettings, "WAIT", []);
@@ -349,6 +425,8 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     for (const p of packages) {
       const a = armState(`${E1}|${p.arm}`);
       const calls = await armCalls(sql, E1, p.arm, snap.as_of);
+      // Database latency must not advance gates/latches against a cached clock.
+      if (!entryOpen()) { await Promise.all(writes); return; }
       const d = packageDecision(snap, chair, calls, a, armPolicy(p.base, p.floor, p.min), st.activatedAt);
       const side = d.side;
       const q = side ? exactSideQuote(snap, side) : null;
@@ -379,6 +457,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
     }
 
     // E2 and E3 derive from the PKG_85 stream on the same tick.
+    if (!entryOpen()) { await Promise.all(writes); return; }
     if (pkg85) {
       const base = pkg85;
       once(receipt(E2, "BASE_NO_VETO", snap, base.filled ? "fill" : "intention", base.side, base.ask, base.size, base.spread, true, "PKG_85 stream"), { secs_left: secs });
@@ -417,6 +496,7 @@ export async function shadowLabTick(now = Date.now()): Promise<void> {
       }
     }
     await Promise.all(writes);
+    st.lastObservedWindow = { key: windowKey, asOf: snap.as_of };
     if (writes.length) st.lastCapture = now;
     st.error = null;
   } catch (error) {

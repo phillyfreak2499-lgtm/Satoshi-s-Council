@@ -212,7 +212,8 @@ test("rail 6: shadow collection cannot start before verified atomic prospective 
   assert.match(server, /shadow manifest fingerprint mismatch/);
   assert.match(server, /shadow manifest fee fingerprint mismatch/);
   assert.match(server, /a\.decided\.has\(k\) \|\| pending\.has\(k\)/);
-  assert.match(server, /recordShadowReceipt\(sql, r, payload\)[\s\S]*\.then\(\(inserted\) => \{[\s\S]*a\.decided\.add\(k\)/);
+  assert.match(server, /recordShadowReceipt\(sql, r, payload, onlyIfUndecided\)[\s\S]*\.then\(\(inserted\) => \{[\s\S]*if \(inserted \|\| !onlyIfUndecided\) a\.decided\.add\(k\)/);
+  assert.match(server, /\.finally\(\(\) => pending\.delete\(k\)\)/);
   assert.doesNotMatch(server.slice(server.indexOf("activateInitialShadowCollection"), server.indexOf("/**\n * Settle fill receipts")), /MIRROR_35_V1/);
   assert.match(manifests, /INITIAL_SHADOW_COLLECTION_IDS/);
   const targetBlock = manifests.slice(manifests.indexOf("INITIAL_SHADOW_COLLECTION_IDS"), manifests.indexOf("/** The three-active rule"));
