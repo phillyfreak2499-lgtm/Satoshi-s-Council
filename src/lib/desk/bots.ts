@@ -38,6 +38,8 @@ export type BotCtx = {
   trendDay: boolean;
   quiet: boolean;
   feats: FeatMap;
+  /** Inactive research hook: receives the complete vote already produced by a rule. */
+  captureEvaluatedVote?: (vote: Vote) => void;
 };
 
 function T(ctx: BotCtx, id: string): number {
@@ -208,7 +210,10 @@ function pickLiveAndPaper(
     if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42)
       continue;
     const got = tryEval(ctx, evalId, s.id);
-    if (got) fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
+    if (got) {
+      ctx.captureEvaluatedVote?.(got.v);
+      fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
+    }
   }
   fired.sort((a, b) => b.score - a.score);
   const keepWait =
@@ -223,6 +228,7 @@ function pickLiveAndPaper(
   for (const s of others) {
     const got = tryEval(ctx, evalId, s.id);
     if (!got) continue;
+    ctx.captureEvaluatedVote?.(got.v);
     papers.push({
       id: s.id,
       lean: got.lean,
@@ -1291,11 +1297,46 @@ const FNS: Record<SeatId, (ctx: BotCtx) => Vote> = {
 export { detectQuiet, detectTrendDay } from "./context";
 
 export function runBots(snap: Snapshot, learner: Learner): Vote[] {
+  return runBotsInternal(snap, learner);
+}
+
+function runBotsInternal(
+  snap: Snapshot,
+  learner: Learner,
+  captureEvaluatedVote?: (vote: Vote) => void,
+): Vote[] {
   const trendDay = detectTrendDay(snap);
   const quiet = detectQuiet(snap);
   const feats = featOf(snap, trendDay, quiet);
   learner.last_feats = feats;
   learner.last_regime = snap.regime_key;
-  const ctx: BotCtx = { snap, learner, trendDay, quiet, feats };
+  const ctx: BotCtx = { snap, learner, trendDay, quiet, feats, captureEvaluatedVote };
   return (Object.keys(FNS) as SeatId[]).map((id) => FNS[id](ctx));
+}
+
+export type EvaluatedCandidateFrame = Readonly<{
+  version: "E1_RECOVERY_V1_INACTIVE";
+  ticker: string;
+  close_time: number;
+  as_of: number;
+  votes: readonly Vote[];
+  evaluated: readonly Vote[];
+}>;
+
+/**
+ * Opt-in research capture. It runs each bot once and retains full, same-frame
+ * votes that pickLiveAndPaper already evaluated; it does not rerun rules or
+ * change the default runBots result shape.
+ */
+export function runBotsWithEvaluatedCandidates(snap: Snapshot, learner: Learner): EvaluatedCandidateFrame {
+  const evaluated: Vote[] = [];
+  const votes = runBotsInternal(snap, learner, (vote) => evaluated.push({
+    ...vote,
+    features: { ...vote.features },
+    evidence: [...vote.evidence],
+    thresh_used: vote.thresh_used.map((threshold) => ({ ...threshold })),
+    paper: vote.paper.map((paper) => ({ ...paper })),
+    shadow: vote.shadow ? { ...vote.shadow } : null,
+  }));
+  return { version: "E1_RECOVERY_V1_INACTIVE", ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of, votes, evaluated };
 }
