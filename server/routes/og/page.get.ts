@@ -8,6 +8,7 @@ const PAGES: Record<string, [string, string]> = {
   "/training/tape": ["TAPE TRAINING DESK", "RESTING SIZE / BOOK PRESSURE / PAPER PRACTICE"],
   "/training/drift": ["DRIFT TRAINING DESK", "5M / 15M / 30M MOMENTUM ALIGNMENT"],
   "/training/wick": ["WICK TRAINING DESK", "CLOSED CANDLES / SIX SCREENS / YOUR PACE"],
+  "/training/streak": ["STREAK TRAINING DESK", "OFFICIAL CHIPS / YES BOOK / PAPER PRACTICE"],
   "/lab": ["THE LAB", "FROZEN EXPERIMENTS / MATCHED EVIDENCE"],
   "/arena": ["THE ARENA", "YOUR PAPER CALL / THE ROOM / THE CHAIR"],
   "/about": ["MEET THE COUNCIL", "21 SEATS / 15 VOTE / 3 RETIRED / 3 PIT CREW"],
