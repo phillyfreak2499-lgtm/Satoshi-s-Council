@@ -311,8 +311,9 @@ export async function shadowLabTick(now?: number): Promise<void> {
       st.attribution.error = error instanceof Error ? error.message : String(error);
     }
     const entryOpen = () => {
-      const wallSecs = (snap.close_time - currentTime()) / 1000;
-      return secs >= 180 && secs <= 600 && wallSecs >= 180 && wallSecs <= 600;
+      const wallNow = currentTime();
+      const wallSecs = (snap.close_time - wallNow) / 1000;
+      return snap.as_of <= wallNow && secs >= 180 && secs <= 600 && wallSecs >= 180 && wallSecs <= 600;
     };
     now = currentTime();
     const inEntryWindow = entryOpen();

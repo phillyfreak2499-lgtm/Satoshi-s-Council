@@ -294,3 +294,31 @@ test("migrated observer: an awaited history query cannot advance confirmation or
     assert.deepEqual(await rows(ticker), before);
   });
 });
+
+test("migrated observer: exact 180-second wall cutoff remains eligible with an older in-band frame", async () => {
+  await fixture(async ({ c, tick, rows, mod }) => {
+    const ticker = "exact-wall-cutoff";
+    c.lean = "UP"; c.gates = true;
+    await tick(190, { ticker }); await tick(186, { ticker });
+    const gates = c.gateCalls;
+    await tick(181, { ticker, now: close - 180_000 });
+    assert.equal(mod.shadowLabHealth().error, null);
+    assert.ok(c.gateCalls > gates);
+    assert.ok((await rows(ticker)).some((r) => r.arm === "PKG_85" && r.kind === "fill"));
+  });
+});
+
+test("migrated observer: future in-band snapshots and nonfinite observer clocks fail closed", async () => {
+  await fixture(async ({ c, tick, rows, state }) => {
+    c.lean = "UP"; c.gates = true;
+    const cases = [close - 183_000, NaN, Infinity, -Infinity];
+    for (const [i, now] of cases.entries()) {
+      const ticker = `invalid-clock-${i}`;
+      const evaluations = [c.chairCalls, c.gateCalls];
+      await tick(181, { ticker, now });
+      assert.deepEqual([c.chairCalls, c.gateCalls], evaluations);
+      assert.equal((await rows(ticker)).length, 0);
+      assert.equal(state().lastObservedWindow, null);
+    }
+  });
+});
