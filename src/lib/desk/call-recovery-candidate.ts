@@ -28,16 +28,26 @@ export type RecoveryProjection = Readonly<{
 
 /**
  * Builds an inactive E1 projection from full votes captured by the producer.
- * No evidence is borrowed from a selected SIT vote. Absent or raw-WAIT cards
- * remain absent, and the real frame, votes, and learner are never modified.
+ * No evidence is borrowed from a selected SIT vote. Absent, health-suppressed,
+ * raw-WAIT cards and explicit producer holds remain absent, and the real frame,
+ * votes, and learner are never modified.
  */
 export function projectInactiveE1Recovery(
   frame: EvaluatedCandidateFrame,
   learner: Learner,
 ): RecoveryProjection {
   const rank = new Map<string, number>(E1_ROSTER_CARDS.map((id, index) => [id, index]));
+  const heldSeats = new Set(
+    frame.votes
+      .filter((vote) => vote.hypothesis === "clock-owned window" || vote.hypothesis === "in-window path revision")
+      .map((vote) => vote.seat),
+  );
   const directional = frame.evaluated
-    .filter((vote) => rank.has(vote.skill_used) && (vote.raw_lean ?? vote.lean) !== "WAIT")
+    .filter((vote) =>
+      !heldSeats.has(vote.seat) &&
+      rank.has(vote.skill_used) &&
+      (vote.lean === "UP" || vote.lean === "DOWN"),
+    )
     .sort((a, b) => (rank.get(a.skill_used)! - rank.get(b.skill_used)!) || a.skill_used.localeCompare(b.skill_used));
   const candidates: RecoveryCandidate[] = [];
   const heard = new Set<SeatId>();
