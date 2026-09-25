@@ -209,7 +209,7 @@ function pickLiveAndPaper(
       paper: vote.paper.map((paper) => ({ ...paper })),
       shadow: vote.shadow ? { ...vote.shadow } : null,
     };
-    ctx.captureEvaluatedVote(applyHealth(cloned, healthOf(ctx.snap, kind), ctx));
+    ctx.captureEvaluatedVote(applyHealth(brierScale(cloned, ctx), healthOf(ctx.snap, kind), ctx));
   };
   // A card on a research hold is evaluated and graded like any other — it rides
   // the paper list below — but it is not in the pool the chair can be given, so
