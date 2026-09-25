@@ -194,10 +194,23 @@ function ucbScore(card: { n: number; status: string }, score: number, parentN: n
 function pickLiveAndPaper(
   ctx: BotCtx,
   seat: SeatId,
+  kind: "spot" | "kalshi" | "derivs" | "mixed" | "meta",
   evalId: (id: string) => Fired | null,
   wait: Vote,
 ): Vote {
   const learner = ctx.learner;
+  const captureEvaluated = (vote: Vote) => {
+    if (!ctx.captureEvaluatedVote) return;
+    const cloned: Vote = {
+      ...vote,
+      features: { ...vote.features },
+      evidence: [...vote.evidence],
+      thresh_used: vote.thresh_used.map((threshold) => ({ ...threshold })),
+      paper: vote.paper.map((paper) => ({ ...paper })),
+      shadow: vote.shadow ? { ...vote.shadow } : null,
+    };
+    ctx.captureEvaluatedVote(applyHealth(cloned, healthOf(ctx.snap, kind), ctx));
+  };
   // A card on a research hold is evaluated and graded like any other — it rides
   // the paper list below — but it is not in the pool the chair can be given, so
   // a new or high-stakes hypothesis earns its authority before it has any.
@@ -211,7 +224,7 @@ function pickLiveAndPaper(
       continue;
     const got = tryEval(ctx, evalId, s.id);
     if (got) {
-      ctx.captureEvaluatedVote?.(got.v);
+      captureEvaluated(got.v);
       fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
     }
   }
@@ -228,7 +241,7 @@ function pickLiveAndPaper(
   for (const s of others) {
     const got = tryEval(ctx, evalId, s.id);
     if (!got) continue;
-    ctx.captureEvaluatedVote?.(got.v);
+    captureEvaluated(got.v);
     papers.push({
       id: s.id,
       lean: got.lean,
@@ -706,7 +719,7 @@ function dslSeat(
     owned && (seat === "STRIKE" || seat === "CHEAP" || seat === "ODDS" || seat === "FADE")
       ? owned
       : wait;
-  return applyHealth(pickLiveAndPaper(ctx, seat, evalId, use), h, ctx);
+  return applyHealth(pickLiveAndPaper(ctx, seat, kind, evalId, use), h, ctx);
 }
 
 function driftBot(ctx: BotCtx): Vote {
