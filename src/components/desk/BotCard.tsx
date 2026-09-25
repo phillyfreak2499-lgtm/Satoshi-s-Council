@@ -5,6 +5,9 @@ import { readScalp, scalpAvg, askCents } from "@/lib/desk/scalp";
 import { FULL_N, calibNOf, seatCalib } from "@/lib/desk/math";
 import { useDesk } from "@/lib/desk/store";
 import { HealthDot, LeanChip, Field, MinsLeft } from "./bits";
+import { SeatLeanMeter, SeatLeanMini } from "./SeatLeanMeter";
+import { seatFactFor } from "@/lib/desk/pro-floor";
+import { seatDirectionalLean } from "@/lib/desk/seat-lean";
 import { Eyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
@@ -24,8 +27,12 @@ export function BotCard({
   compact?: boolean;
 }) {
   const meta = SEAT_BY_ID[seat];
-  const learner = useDesk().learner;
+  const frame = useDesk();
+  const learner = frame.learner;
   const [open, setOpen] = useState(false);
+  // Presentation only: the seat's own read as the frame retains it, beside what the Chair heard.
+  const row = frame.chair?.rows.find((r) => r.seat === seat);
+  const lean = seatDirectionalLean(seatFactFor(seat, vote, row, learner.knobs, snap.as_of), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of });
   const whisper = vote.forced_sit && vote.raw_lean && vote.raw_lean !== "WAIT" ? `${vote.raw_lean} ${vote.raw_conf ?? ""}`.trim() : null;
   if (compact && !open && !focused) {
     return (
@@ -40,6 +47,7 @@ export function BotCard({
             {seat} <span className="text-subtle">{meta.callsign}</span>
           </span>
           <LeanChip lean={vote.lean} />
+          <SeatLeanMini lean={lean} className="shrink-0" />
           {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
           <span className="min-w-0 flex-1 truncate font-mono text-micro text-muted">{vote.hypothesis || vote.reasoning}</span>
           <HealthDot h={vote.health} />
@@ -91,6 +99,9 @@ export function BotCard({
           </div>
         </div>
         <Eyes seat={seat} snap={snap} vote={vote} />
+        <div className="border-t border-border px-3 py-2">
+          <SeatLeanMeter key={`${snap.ticker}:${snap.close_time}`} lean={lean} mode="pro" feedAgeS={vote.feed_age_s} showDisclaimer />
+        </div>
         {seat === "WICK" || seat === "TAPE" ? <a href={`/training/${seat.toLowerCase()}`} className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with {seat} ↗</a> : null}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 p-3">

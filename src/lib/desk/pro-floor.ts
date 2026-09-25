@@ -701,6 +701,16 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   };
 }
 
+/**
+ * One seat's facts from whatever the caller holds: the vote alone (a seat page
+ * before the Chair frame arrives), or the vote beside its Chair row. The same
+ * precedence as `seatFacts`, exposed so a per-seat surface never builds a
+ * second read model of its own.
+ */
+export function seatFactFor(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined, knobs: Record<string, SeatKnobs> | undefined, asOf: number): SeatFact {
+  return seatFact(seat, vote, row, knobs, asOf);
+}
+
 /** Every seat on the Council, in the repo's own family order. All 21. */
 export function seatFacts(chair: ChairResult, votes: readonly Vote[], knobs: Record<string, SeatKnobs> | undefined, asOf: number): SeatFact[] {
   const voteBy = new Map<SeatId, Vote>(votes.map((v) => [v.seat, v]));

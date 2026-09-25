@@ -13,10 +13,13 @@
  * On a phone the table becomes stacked cards, so no critical number needs
  * sideways scrolling.
  */
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
 import type { SeatId } from "@/lib/desk/types";
 import { Panel } from "./panels";
+import { SeatLeanMini } from "../SeatLeanMeter";
+import { DIRECTIONAL_LEAN_DISCLAIMER, seatDirectionalLean, type LeanWindow } from "@/lib/desk/seat-lean";
 
 function voiceTone(s: SeatFact): string {
   switch (s.voice) {
@@ -54,10 +57,11 @@ function statusText(s: SeatFact): string {
   return VOICE_LABEL[s.voice];
 }
 
-function Cells({ s }: { s: SeatFact }) {
+function Cells({ s, lean }: { s: SeatFact; lean: ReactNode }) {
   return (
     <>
       <span className="font-mono text-micro tabular text-muted">{rawText(s)}</span>
+      {lean}
       <span className={cn("font-mono text-micro tabular", voiceTone(s))}>{s.final_lean}</span>
       <span className="font-mono text-micro tabular text-muted">
         {s.final_conf ?? "—"}
@@ -72,19 +76,21 @@ function Cells({ s }: { s: SeatFact }) {
   );
 }
 
-export function CouncilEvidenceTape({ facts, onJump }: { facts: ProFloorFacts; onJump: (seat: SeatId) => void }) {
+export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloorFacts; onJump: (seat: SeatId) => void; window: LeanWindow }) {
+  const leanOf = (s: SeatFact) => seatDirectionalLean(s, window);
   return (
     <Panel
       id="tape"
       title="Council evidence tape"
-      note="Every seat, raw read beside final voice. RAW is what the specialist saw; FINAL VOICE is what the Chair heard. An asterisk marks a recorded confidence the pipeline rewrote on a forced sit."
+      note={`Every seat, raw read beside final voice. RAW is what the specialist saw; FINAL VOICE is what the Chair heard. An asterisk marks a recorded confidence the pipeline rewrote on a forced sit. LEAN is the raw read on one 0–100 scale. ${DIRECTIONAL_LEAN_DISCLAIMER}`}
       right={<span className="font-mono text-micro text-subtle">{facts.seats.length} seats</span>}
     >
       {/* Desktop: a real table. */}
       <div className="mt-3 hidden sm:block">
-        <div className="grid grid-cols-[6rem_5.5rem_5.5rem_3.5rem_1fr] gap-2 border-b border-border px-1 pb-1 font-mono text-micro uppercase tracking-wider text-subtle">
+        <div className="grid grid-cols-[6rem_5.5rem_7rem_5.5rem_3.5rem_1fr] gap-2 border-b border-border px-1 pb-1 font-mono text-micro uppercase tracking-wider text-subtle">
           <span>seat</span>
           <span>raw read</span>
+          <span>lean</span>
           <span>final voice</span>
           <span>conf</span>
           <span>status / why</span>
@@ -95,13 +101,13 @@ export function CouncilEvidenceTape({ facts, onJump }: { facts: ProFloorFacts; o
               <button
                 type="button"
                 onClick={() => onJump(s.seat)}
-                className="grid min-h-11 w-full grid-cols-[6rem_5.5rem_5.5rem_3.5rem_1fr] items-center gap-2 border-b border-border px-1 text-left hover:bg-surface-2/60"
+                className="grid min-h-11 w-full grid-cols-[6rem_5.5rem_7rem_5.5rem_3.5rem_1fr] items-center gap-2 border-b border-border px-1 text-left hover:bg-surface-2/60"
                 aria-label={`${s.seat}, raw ${rawText(s)}, final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
               >
                 <span className="truncate font-mono text-micro text-fg">
                   {s.seat} <span className="text-subtle">{s.callsign}</span>
                 </span>
-                <Cells s={s} />
+                <Cells s={s} lean={<SeatLeanMini lean={leanOf(s)} />} />
               </button>
             </li>
           ))}
@@ -131,6 +137,10 @@ export function CouncilEvidenceTape({ facts, onJump }: { facts: ProFloorFacts; o
               <div className="mt-0.5 flex items-baseline justify-between gap-2 font-mono text-micro text-subtle">
                 <span>raw {rawText(s)}</span>
                 <span className="truncate">{statusText(s)}</span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-2 font-mono text-micro text-subtle">
+                <span>lean</span>
+                <SeatLeanMini lean={leanOf(s)} />
               </div>
             </button>
           </li>
