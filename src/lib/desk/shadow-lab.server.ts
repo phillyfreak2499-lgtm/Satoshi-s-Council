@@ -213,7 +213,8 @@ const armState = (id: string): ArmState => { const st = state(); const cur = st.
 
 const E1 = "UNMUTE_DEDUP_SHELF_V1", E2 = "WARDEN_JUMP_VETO_V1", E3 = "SETTLE_BASIS_MEASURED_V1";
 
-function exactSideQuote(snap: Snapshot, side: "UP" | "DOWN") {
+/** The exact-price measurement lane for one side (shared with the mid-recovery recorder). */
+export function exactSideQuote(snap: Snapshot, side: "UP" | "DOWN") {
   const up = side === "UP";
   const decisionAsk = up ? snap.yes_ask : snap.no_ask;
   const decisionBid = up ? snap.yes_bid : snap.no_bid;
@@ -235,7 +236,7 @@ const receipt = (experiment: string, arm: string, snap: Snapshot, kind: ShadowRe
 });
 
 /** The arm's own risk history, from its own fill receipts, as the day-state functions expect it. */
-async function armCalls(sql: Sql, experiment: string, arm: string, asOf: number): Promise<CallLogRow[]> {
+export async function armCalls(sql: Sql, experiment: string, arm: string, asOf: number): Promise<CallLogRow[]> {
   const day = chicagoDayOf(asOf);
   const rows = await sql<{ ticker: string; close_ms: number | string; decided_ms: number | string; side: "UP" | "DOWN"; ask_cents: number; net_cents: number | null; official_winner: "UP" | "DOWN" | null }>`
     select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, (extract(epoch from decided_at) * 1000)::bigint as decided_ms, side, ask_cents, net_cents, official_winner
