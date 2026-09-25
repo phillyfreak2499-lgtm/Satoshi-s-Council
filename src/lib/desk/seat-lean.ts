@@ -241,12 +241,20 @@ export function leanValueText(lean: SeatLean): string {
   return `${lean.seat}: ${leanAnnouncement(lean)}`;
 }
 
-/** Guided Floor: speakers first, then the strongest research reads, then the quiet seats. Order only; no second opinion. */
+/**
+ * Guided Floor display order: every directional read ranked by its strength
+ * (distance from the neutral 50) whatever its status — a stronger research-only
+ * read shows before a weaker SPEAKING one — then the neutral seats, then the
+ * seats with no read. Ties break on the seat id so the order is deterministic.
+ * Presentation order only: it changes no status, no authority and no score.
+ */
 export function guidedLeanOrder(a: SeatLean, b: SeatLean): number {
-  const rank = (l: SeatLean) => (l.isAuthorizedSpeaker ? 0 : l.score != null && l.direction !== "NEUTRAL" ? 1 : l.score != null ? 2 : 3);
+  const rank = (l: SeatLean) => (l.score != null && l.direction !== "NEUTRAL" ? 0 : l.score != null ? 1 : 2);
   const d = rank(a) - rank(b);
   if (d) return d;
-  return Math.abs((b.score ?? 50) - 50) - Math.abs((a.score ?? 50) - 50);
+  const strength = Math.abs((b.score ?? LEAN_CENTER) - LEAN_CENTER) - Math.abs((a.score ?? LEAN_CENTER) - LEAN_CENTER);
+  if (strength) return strength;
+  return a.seat < b.seat ? -1 : a.seat > b.seat ? 1 : 0;
 }
 
 /** How many directional reads the Guided Floor shows before the rest fold; the strongest come first. */
@@ -261,7 +269,9 @@ export const LEAN_SUMMARY_LABEL = "Directional Lean";
  * One line for a normal reader, beside (never instead of) the technical status.
  * Presentation only: it reads the lean the read model already produced and
  * decides nothing. The direction word is the research direction; "count" is
- * whether SATOSHI counted the read, which the status already proves.
+ * whether SATOSHI counted the read, which the status already proves. Only
+ * BELOW BAR proves a strength reason; a plain SUPPRESSED read is one the frame
+ * cannot explain, so its line names no reason.
  */
 export function leanPlainLine(lean: Pick<SeatLean, "score" | "direction" | "status" | "stale">): string {
   const noRead = lean.score == null || lean.direction === "NEUTRAL";
@@ -269,7 +279,8 @@ export function leanPlainLine(lean: Pick<SeatLean, "score" | "direction" | "stat
   const word = DIRECTION_WORD[lean.direction];
   const line =
     lean.status === "SPEAKING" ? `${word} read — SATOSHI counted it.`
-    : lean.status === "BELOW BAR" || lean.status === "SUPPRESSED" ? `${word} read — not strong enough for SATOSHI to count.`
+    : lean.status === "BELOW BAR" ? `${word} read — not strong enough for SATOSHI to count.`
+    : lean.status === "SUPPRESSED" ? `${word} read — SATOSHI did not count it.`
     : lean.status === "RESEARCH READ" ? "Directional research read — SATOSHI has not counted it."
     : `${word} research read — SATOSHI does not count this seat this window.`;
   return lean.stale ? `${line} Read exists, but the supporting feed is stale.` : line;

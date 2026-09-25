@@ -193,7 +193,8 @@ test("8. the plain-language status copy maps from the frame's own status and dir
   const cases = [
     [lean({ raw_lean: "DOWN", raw_conf: 60 }), "Bearish read — not strong enough for SATOSHI to count."],
     [lean(), "Bullish read — not strong enough for SATOSHI to count."],
-    [lean({ suppression: "authority" }), "Bullish read — not strong enough for SATOSHI to count."],
+    [lean({ suppression: "authority" }), "Bullish read — SATOSHI did not count it."],
+    [lean({ suppression: null }), "Bullish read — SATOSHI did not count it."],
     [lean({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: false }), "Directional research read — SATOSHI has not counted it."],
     [lean({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }), "Bullish read — SATOSHI counted it."],
     [lean({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, health: "STALE", health_warning: true }), "Bullish read — SATOSHI counted it. Read exists, but the supporting feed is stale."],
@@ -236,4 +237,79 @@ test("10. no Chair, booking, learner or experiment module references the present
   assert.equal(lean({ raw_lean: "DOWN", raw_conf: 70 }).score, 15);
   assert.equal(lean({ raw_lean: "WAIT", raw_conf: 0 }).score, 50);
   assert.equal(lean({ raw_retained: false }).score, null);
+});
+
+// ---------------------------------------------------------------------------
+// Codex P2 on #334: unknown suppression reasons stay unexplained; Guided ranks by strength.
+// ---------------------------------------------------------------------------
+
+test("11. only BELOW BAR earns strength-based copy; a plain SUPPRESSED read names no reason the frame cannot prove", () => {
+  const belowBar = lean({ suppression: "below-speak-bar" });
+  assert.equal(belowBar.status, "BELOW BAR");
+  assert.equal(leanPlainLine(belowBar), "Bullish read — not strong enough for SATOSHI to count.");
+  for (const suppression of ["authority", "correlated", "unknown", null, undefined]) {
+    const suppressed = lean({ suppression });
+    assert.equal(suppressed.status, "SUPPRESSED", String(suppression));
+    const line = leanPlainLine(suppressed);
+    assert.equal(line, "Bullish read — SATOSHI did not count it.");
+    assert.doesNotMatch(line, /strong|weak|low|bar|confidence/i, "no invented reason");
+  }
+  assert.equal(leanPlainLine(lean({ suppression: "authority", raw_lean: "DOWN", raw_conf: 60 })), "Bearish read — SATOSHI did not count it.");
+  assert.equal(leanPlainLine(lean({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: false })), "Directional research read — SATOSHI has not counted it.");
+  assert.equal(leanPlainLine(lean({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true })), "Bullish read — SATOSHI counted it.");
+  // STALE appends its warning to every directional line, unchanged.
+  for (const [over, base] of [
+    [{ suppression: "authority" }, "Bullish read — SATOSHI did not count it."],
+    [{ suppression: "below-speak-bar" }, "Bullish read — not strong enough for SATOSHI to count."],
+    [{ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }, "Bullish read — SATOSHI counted it."],
+  ]) {
+    assert.equal(leanPlainLine(lean({ ...over, health: "STALE", health_warning: true })), `${base} Read exists, but the supporting feed is stale.`);
+  }
+  assert.equal(leanPlainLine(lean({ suppression: "authority", raw_retained: false, health: "STALE", health_warning: true })), "No qualifying directional read right now.", "no read means no warning to append");
+  const { SeatLeanMeter } = load("src/components/desk/SeatLeanMeter.tsx", CSS);
+  const pro = text(renderToString(React.createElement(SeatLeanMeter, { lean: lean({ suppression: "authority" }), mode: "pro" })));
+  assert.match(pro, /Status: SUPPRESSED/);
+  assert.match(pro, /Bullish read — SATOSHI did not count it\./);
+  assert.doesNotMatch(pro, /not strong enough/);
+});
+
+test("12. Guided ranks every directional read by strength: a weak SPEAKING read sits behind stronger research-only reads", () => {
+  const speaking = (seat, callsign, side, conf) => lean({ seat, callsign, raw_lean: side, raw_conf: conf, voice: "speaking", suppression: null, final_lean: side, final_conf_transformed: false, aggregated: true });
+  const research = (seat, callsign, side, conf, over = {}) => lean({ seat, callsign, raw_lean: side, raw_conf: conf, ...over });
+  const leans = [
+    speaking("TAPE", "TPE", "UP", 56),                                   // 78 → 28: SPEAKING but weak
+    research("DRIFT", "VEC", "UP", 90),                                   // 95 → 45: BELOW BAR
+    research("WICK", "PIN", "DOWN", 88, { skill_status: "SHADOW" }),      // 6 → 44: SHADOW
+    research("CHAIN", "CHN", "DOWN", 80, { skill_status: "BENCH" }),      // 10 → 40: BENCH
+    research("STRIKE", "STK", "UP", 70, { suppression: "authority" }),    // 85 → 35: SUPPRESSED
+    speaking("CARRY", "CRY", "DOWN", 66),                                 // 17 → 33: SPEAKING
+    sitting("ODDS", "ODD"), down("INDEX", "IDX"),
+  ];
+  const before = JSON.stringify(leans);
+  const sorted = [...leans].sort(guidedLeanOrder);
+  assert.deepEqual(sorted.map((l) => l.seat), ["DRIFT", "WICK", "CHAIN", "STRIKE", "CARRY", "TAPE", "ODDS", "INDEX"]);
+  assert.equal(sorted[0].isAuthorizedSpeaker, false, "the strongest read is research-only and still shows first");
+  assert.equal(sorted.findIndex((l) => l.seat === "TAPE"), 5, "the weak SPEAKING read is behind four stronger reads");
+  const html = renderToString(React.createElement(SpecialistLeans, { leans, waiting: true }));
+  const [visible, ...folds] = html.split("<details");
+  for (const seat of ["DRIFT", "WICK", "CHAIN", "STRIKE"]) assert.match(visible, new RegExp(`\\b${seat}\\b`), `${seat} visible`);
+  for (const seat of ["CARRY", "TAPE", "ODDS", "INDEX"]) assert.doesNotMatch(visible, new RegExp(`\\b${seat}\\b`), `${seat} folded`);
+  assert.equal(folds.length, 2, "one fold for the extra directional reads, one for the quiet seats");
+  assert.match(text(folds[0]), /2 more directional reads CARRY CRY .* TAPE TPE /, "the extra directional reads, strongest first");
+  assert.match(text(folds[1]), /2 seats are neutral or without a read ODDS ODD .* INDEX IDX /, "neutral before no read");
+  // Display order changes nothing about the seats themselves.
+  assert.equal(JSON.stringify(leans), before, "sorting mutates no lean");
+  assert.deepEqual(sorted.map((l) => [l.seat, l.status, l.isAuthorizedSpeaker, l.score]).sort(), leans.map((l) => [l.seat, l.status, l.isAuthorizedSpeaker, l.score]).sort(), "status, authority and score are untouched");
+  assert.equal(leans.find((l) => l.seat === "TAPE").status, "SPEAKING");
+  assert.equal(leans.find((l) => l.seat === "DRIFT").status, "BELOW BAR");
+});
+
+test("13. Guided tie ordering is deterministic and mirrored strengths tie", () => {
+  const research = (seat, callsign, side, conf) => lean({ seat, callsign, raw_lean: side, raw_conf: conf });
+  const tied = [research("WICK", "PIN", "DOWN", 70), research("DRIFT", "VEC", "UP", 70), research("CHAIN", "CHN", "UP", 70), sitting("TAPE", "TPE"), sitting("ODDS", "ODD"), down("VEL", "VEL"), down("INDEX", "IDX")];
+  for (const input of [tied, [...tied].reverse(), [tied[2], tied[0], tied[6], tied[1], tied[4], tied[5], tied[3]]]) {
+    assert.deepEqual([...input].sort(guidedLeanOrder).map((l) => l.seat), ["CHAIN", "DRIFT", "WICK", "ODDS", "TAPE", "INDEX", "VEL"], "equal strength orders by seat id; neutral before no read");
+  }
+  assert.equal(guidedLeanOrder(tied[0], tied[1]) + guidedLeanOrder(tied[1], tied[0]), 0, "antisymmetric");
+  assert.equal(guidedLeanOrder(tied[0], tied[0]), 0);
 });
