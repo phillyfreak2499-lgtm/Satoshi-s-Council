@@ -46,7 +46,7 @@ test("actual producer -> recovery adapter -> actual Chair retains full paper-car
   assert.ok(candidate.vote.reasoning);
   assert.deepEqual(candidate.vote.features, frame.evaluated.find((item) => item.skill_used === paper.id).features);
   assert.deepEqual(frame.votes.find((item) => item.seat === "DRIFT"), selected, "projection does not mutate the frame");
-  const chair = m.runChair(recovery.simulated.votes, snapshot(), recovery.simulated.learner, m.DEFAULT_SEATS);
+  const chair = m.runChair(recovery.simulated.votes, snapshot(), recovery.simulated.learner, m.DEFAULT_SETTINGS);
   assert.equal(chair.lean, "UP", "the actual Chair can hear the recovered vote in this controlled frame");
   assert.equal(chair.gates.find((gate) => gate.id === "quiet").pass, false, "the exact remaining Chair blocker is the quiet gate");
   assert.equal(recovery.active, false, "a Chair lean is not presented as a qualified fill or activated order");
@@ -73,4 +73,40 @@ test("candidate selection is deterministic, one per seat, and paper-only disconn
   }
   assert.equal(m.projectInactiveE1Recovery({ ...frame, evaluated: [] }, learner).candidates.length, 0,
     "paper metadata cannot invent unavailable full provenance");
+});
+
+test("explicit clock and in-window revision holds stay excluded from recovery", async (t) => {
+  const m = await modules(t);
+  const learner = m.freshLearner();
+  const clockHeld = vote("STRIKE", "SIT", "WAIT", "SIT");
+  clockHeld.hypothesis = "clock-owned window";
+  const revisionHeld = vote("DRIFT", "SIT", "WAIT", "SIT");
+  revisionHeld.hypothesis = "in-window path revision";
+  const frame = {
+    version: "E1_RECOVERY_V1_INACTIVE",
+    ticker: "T",
+    close_time: 2,
+    as_of: 1,
+    votes: [clockHeld, revisionHeld],
+    evaluated: [
+      vote("STRIKE", "STRIKE.itm_time", "UP"),
+      vote("DRIFT", "DRIFT.aligned_3h", "UP"),
+    ],
+  };
+  assert.equal(m.projectInactiveE1Recovery(frame, learner).candidates.length, 0);
+});
+
+test("health-suppressed evaluated votes cannot become recovery candidates", async (t) => {
+  const m = await modules(t);
+  const learner = m.freshLearner();
+  learner.skills["DRIFT.aligned_3h"].status = "SHADOW";
+  const stale = snapshot({
+    health: { ...snapshot().health, spot: "STALE" },
+    spot_age_s: 30,
+  });
+  const frame = m.runBotsWithEvaluatedCandidates(stale, learner);
+  const drift = frame.evaluated.find((item) => item.skill_used === "DRIFT.aligned_3h");
+  assert.ok(drift, "producer still evaluates the DRIFT research card");
+  assert.equal(drift.lean, "WAIT", "captured candidate includes producer stale-health treatment");
+  assert.equal(m.projectInactiveE1Recovery(frame, learner).candidates.some((item) => item.card_id === "DRIFT.aligned_3h"), false);
 });
