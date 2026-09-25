@@ -100,9 +100,11 @@ test("the Guided meter speaks plainly: a word, a plain status, one reason, no nu
   assert.match(t, /DIRECTIONAL LEAN Bearish/);
   assert.doesNotMatch(t, /\b20 ·/, "no number in Guided");
   assert.doesNotMatch(t, /Research read:|Card:|Strength:/);
-  assert.match(t, /Status: Research only — SATOSHI did not hear this vote\./);
+  assert.match(t, /Status: Bearish read — not strong enough for SATOSHI to count\./, "Guided prefers the plain-language status");
+  assert.doesNotMatch(t, /Status: BELOW BAR/);
   assert.match(t, /trend holds on 15\/30/);
   assert.match(html, /aria-valuenow="20"/, "assistive tech still gets the value");
+  assert.match(html, /aria-valuetext="DRIFT: Directional Lean 20 of 100, bearish, research read DOWN\. Research only — SATOSHI did not hear this vote\."/, "the announcement is unchanged");
 });
 
 test("NO READ renders as an image with text and no marker; STALE is printed beside a stale read", () => {
@@ -154,11 +156,11 @@ test("every meter element is keyed by the complete window identity plus the seat
   assert.match(meterSrc, /<span\s+key=\{key\}/);
   assert.match(read("src/components/desk/BotCard.tsx"), /<SeatLeanMeter key=\{leanKey\(lean\)\}/, "the seat card remounts the meter per window");
   assert.match(read("src/components/desk/BotCard.tsx"), /<SeatLeanMini key=\{leanKey\(lean\)\}/);
-  assert.equal((read("src/components/desk/GuidedFloorView.tsx").match(/key=\{leanKey\(l\)\}/g) ?? []).length, 2);
+  assert.equal((read("src/components/desk/SpecialistLeans.tsx").match(/key=\{leanKey\(l\)\}/g) ?? []).length, 4, "every Guided list keys on the full window identity plus the seat");
   const tape = read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx");
   assert.equal((tape.match(/<li key=\{leanKey\(lean\)\}/g) ?? []).length, 2);
   assert.doesNotMatch(tape, /key=\{s\.seat\}/, "no row keyed by seat alone");
-  assert.doesNotMatch(read("src/components/desk/GuidedFloorView.tsx"), /\$\{l\.window\.ticker\}:\$\{l\.seat\}/, "no row keyed by ticker and seat alone");
+  assert.doesNotMatch(read("src/components/desk/SpecialistLeans.tsx"), /\$\{l\.window\.ticker\}:\$\{l\.seat\}/, "no row keyed by ticker and seat alone");
 });
 
 test("the evidence-row button announces the lean in its own accessible name, and the nested mini form is decorative", () => {
@@ -192,12 +194,12 @@ test("a directional vote without a Chair row is announced as a research read, ne
   const noRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: false }), WINDOW);
   const html = renderToString(React.createElement(SeatLeanMeter, { lean: noRow, mode: "pro" }));
   assert.match(text(html), /Status: RESEARCH READ/);
-  assert.match(text(html), /No Chair row yet, so SATOSHI has not aggregated it\./);
-  assert.doesNotMatch(text(html), /SATOSHI heard/);
+  assert.match(text(html), /Directional research read — SATOSHI has not counted it\./);
+  assert.doesNotMatch(text(html), /SATOSHI heard|SATOSHI counted/);
   assert.match(html, /aria-valuenow="85"/, "the read itself still shows");
   const withRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }), WINDOW);
   assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "pro" }))), /Status: SPEAKING/);
-  assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "guided" }))), /Status: SATOSHI heard this read\./);
+  assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "guided" }))), /Status: Bullish read — SATOSHI counted it\./);
   for (const l of [noRow, withRow]) {
     const t = text(renderToString(React.createElement(SeatLeanMeter, { lean: l, mode: "pro", showDisclaimer: true })));
     assert.match(t, /It is not a probability and not a SATOSHI call\./);
@@ -220,7 +222,7 @@ test("the surfaces share one read model and the verdict and paper-position surfa
   assert.doesNotMatch(model, /from "\.\/(chair|bots|learner|book-floor|server-engine|persist)/, "the read model never touches decision modules");
   assert.doesNotMatch(model, /fact\.[a-z_]+\s*=[^=]/, "no assignment into the input");
   assert.doesNotMatch(model, /Date\.now|fetch\(|localStorage|setInterval/);
-  for (const file of ["src/components/desk/BotCard.tsx", "src/components/desk/ProFloor/CouncilEvidenceTape.tsx", "src/components/desk/GuidedFloorView.tsx"]) {
+  for (const file of ["src/components/desk/BotCard.tsx", "src/components/desk/ProFloor/CouncilEvidenceTape.tsx", "src/components/desk/GuidedFloorView.tsx", "src/routes/seat.$id.tsx"]) {
     assert.match(read(file), /seatDirectionalLean/, `${file} uses the shared read model`);
     assert.doesNotMatch(read(file), /50 \+ |\/ 2\b/, `${file} never re-derives the score`);
   }
