@@ -522,6 +522,8 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
             snap={frame.snap}
             chair={frame.chair}
             callLog={frame.call_log}
+            votes={frame.votes}
+            knobs={frame.learner.knobs}
             demo={frame.settings.source === "demo"}
             last={last}
             onPro={() => setFloorMode("pro")}

@@ -24,12 +24,24 @@ test("training station renders lesson text and guided questions without the ifra
   const station = read("src/components/desk/TrainingStation.tsx");
   assert.match(station, /stationCopy/);
   assert.match(station, /Guided questions/);
-  assert.match(station, /LESSON_ONE/);
+  // The lessons reach the page through stationCopy, not by importing a constant by name:
+  // Lesson 01 and Lesson 02 both render from the copy the station is handed.
+  assert.match(station, /const \{ coach, questions, role, lessonOne, lessonTwo \} = copy;/);
+  assert.match(station, /\{lessonOne \? \(/);
+  assert.match(station, /\{lessonTwo \? \(/);
+  assert.match(station, /\{lessonOne\.points\.map\(\(point\) => <li key=\{point\}>\{point\}<\/li>\)\}/);
   assert.match(station, /Open-ended AI conversation is not connected/);
   assert.match(station, /training-desk/);
-  const { stationCopy, plainSeatNote, WICK_ROLE_LINE } = load("src/lib/desk/training.ts");
+  const { stationCopy, plainSeatNote, WICK_ROLE_LINE, LESSON_ONE, WICK_LESSON_TWO, STREAK_LESSON_ONE } = load("src/lib/desk/training.ts");
   const wick = stationCopy("wick");
   assert.equal(wick.coach.name, "WICK");
+  assert.deepEqual(wick.lessonOne, LESSON_ONE, "WICK's station carries Lesson 01");
+  assert.deepEqual(wick.lessonTwo, WICK_LESSON_TWO, "and Lesson 02");
+  assert.match(wick.lessonOne.title, /^Lesson 01 · /);
+  assert.match(wick.lessonTwo.title, /^Lesson 02 · /);
+  assert.deepEqual(stationCopy("streak").lessonOne, STREAK_LESSON_ONE, "STREAK's station carries its Lesson 01");
+  assert.equal(stationCopy("streak").lessonTwo, null);
+  assert.equal(stationCopy("odds"), null, "a closed station has no copy");
   assert.ok(wick.questions.length >= 3);
   assert.match(wick.questions[0].q, /waiting/i);
   assert.match(WICK_ROLE_LINE, /reads candles on the floor/);

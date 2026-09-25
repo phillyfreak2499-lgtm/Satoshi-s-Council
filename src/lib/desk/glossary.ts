@@ -520,6 +520,14 @@ export const GLOSS: Record<string, Gloss> = {
     body: "This seat’s rolling average of cents between calls. A factor in how loud SATOSHI hears them — not the rank itself.",
   },
   "field.phase": { title: "phase", body: "ENTRY / MID / FINAL of this 15-minute window." },
+  "field.directional lean": {
+    title: "Directional Lean",
+    body: "A seat's own research read on one 0–100 scale: 0 strongly bearish, 50 neutral, 100 strongly bullish. It is not a probability and not a SATOSHI call. A read the Chair never heard still shows here as research context.",
+  },
+  "term.directional-lean": {
+    title: "Directional Lean",
+    body: "Directional Lean shows research direction and intensity. It is not a probability and not a SATOSHI call.",
+  },
   "field.hypothesis": { title: "hypothesis", body: "What this seat (or the chair) believes will happen, in one line." },
   "field.evidence": { title: "evidence", body: "The facts it used. Not the conclusion — the inputs." },
   "field.counter": { title: "counter", body: "The best argument against this read. If you can't name one, the read is sloppy." },
