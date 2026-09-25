@@ -38,6 +38,8 @@ export type BotCtx = {
   trendDay: boolean;
   quiet: boolean;
   feats: FeatMap;
+  /** Inactive research hook: receives the complete vote already produced by a rule. */
+  captureEvaluatedVote?: (vote: Vote) => void;
 };
 
 function T(ctx: BotCtx, id: string): number {
@@ -192,10 +194,23 @@ function ucbScore(card: { n: number; status: string }, score: number, parentN: n
 function pickLiveAndPaper(
   ctx: BotCtx,
   seat: SeatId,
+  kind: "spot" | "kalshi" | "derivs" | "mixed" | "meta",
   evalId: (id: string) => Fired | null,
   wait: Vote,
 ): Vote {
   const learner = ctx.learner;
+  const captureEvaluated = (vote: Vote) => {
+    if (!ctx.captureEvaluatedVote) return;
+    const cloned: Vote = {
+      ...vote,
+      features: { ...vote.features },
+      evidence: [...vote.evidence],
+      thresh_used: vote.thresh_used.map((threshold) => ({ ...threshold })),
+      paper: vote.paper.map((paper) => ({ ...paper })),
+      shadow: vote.shadow ? { ...vote.shadow } : null,
+    };
+    ctx.captureEvaluatedVote(applyHealth(brierScale(cloned, ctx), healthOf(ctx.snap, kind), ctx));
+  };
   // A card on a research hold is evaluated and graded like any other — it rides
   // the paper list below — but it is not in the pool the chair can be given, so
   // a new or high-stakes hypothesis earns its authority before it has any.
@@ -208,7 +223,10 @@ function pickLiveAndPaper(
     if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42)
       continue;
     const got = tryEval(ctx, evalId, s.id);
-    if (got) fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
+    if (got) {
+      captureEvaluated(got.v);
+      fired.push({ id: s.id, score: ucbScore(s, skillScore(s), parentN), got });
+    }
   }
   fired.sort((a, b) => b.score - a.score);
   const keepWait =
@@ -223,6 +241,7 @@ function pickLiveAndPaper(
   for (const s of others) {
     const got = tryEval(ctx, evalId, s.id);
     if (!got) continue;
+    captureEvaluated(got.v);
     papers.push({
       id: s.id,
       lean: got.lean,
@@ -677,7 +696,7 @@ function wickBot(ctx: BotCtx): Vote {
       confluence: pending ? round(pending.confluence, 2) : 0,
     },
   });
-  return applyHealth(pickLiveAndPaper(ctx, "WICK", evalId, wait), h, ctx);
+  return applyHealth(pickLiveAndPaper(ctx, "WICK", "spot", evalId, wait), h, ctx);
 }
 
 function dslSeat(
@@ -700,7 +719,7 @@ function dslSeat(
     owned && (seat === "STRIKE" || seat === "CHEAP" || seat === "ODDS" || seat === "FADE")
       ? owned
       : wait;
-  return applyHealth(pickLiveAndPaper(ctx, seat, evalId, use), h, ctx);
+  return applyHealth(pickLiveAndPaper(ctx, seat, kind, evalId, use), h, ctx);
 }
 
 function driftBot(ctx: BotCtx): Vote {
@@ -1291,11 +1310,46 @@ const FNS: Record<SeatId, (ctx: BotCtx) => Vote> = {
 export { detectQuiet, detectTrendDay } from "./context";
 
 export function runBots(snap: Snapshot, learner: Learner): Vote[] {
+  return runBotsInternal(snap, learner);
+}
+
+function runBotsInternal(
+  snap: Snapshot,
+  learner: Learner,
+  captureEvaluatedVote?: (vote: Vote) => void,
+): Vote[] {
   const trendDay = detectTrendDay(snap);
   const quiet = detectQuiet(snap);
   const feats = featOf(snap, trendDay, quiet);
   learner.last_feats = feats;
   learner.last_regime = snap.regime_key;
-  const ctx: BotCtx = { snap, learner, trendDay, quiet, feats };
+  const ctx: BotCtx = { snap, learner, trendDay, quiet, feats, captureEvaluatedVote };
   return (Object.keys(FNS) as SeatId[]).map((id) => FNS[id](ctx));
+}
+
+export type EvaluatedCandidateFrame = Readonly<{
+  version: "E1_RECOVERY_V1_INACTIVE";
+  ticker: string;
+  close_time: number;
+  as_of: number;
+  votes: readonly Vote[];
+  evaluated: readonly Vote[];
+}>;
+
+/**
+ * Opt-in research capture. It runs each bot once and retains full, same-frame
+ * votes that pickLiveAndPaper already evaluated; it does not rerun rules or
+ * change the default runBots result shape.
+ */
+export function runBotsWithEvaluatedCandidates(snap: Snapshot, learner: Learner): EvaluatedCandidateFrame {
+  const evaluated: Vote[] = [];
+  const votes = runBotsInternal(snap, learner, (vote) => evaluated.push({
+    ...vote,
+    features: { ...vote.features },
+    evidence: [...vote.evidence],
+    thresh_used: vote.thresh_used.map((threshold) => ({ ...threshold })),
+    paper: vote.paper.map((paper) => ({ ...paper })),
+    shadow: vote.shadow ? { ...vote.shadow } : null,
+  }));
+  return { version: "E1_RECOVERY_V1_INACTIVE", ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of, votes, evaluated };
 }
