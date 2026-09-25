@@ -696,7 +696,7 @@ function wickBot(ctx: BotCtx): Vote {
       confluence: pending ? round(pending.confluence, 2) : 0,
     },
   });
-  return applyHealth(pickLiveAndPaper(ctx, "WICK", evalId, wait), h, ctx);
+  return applyHealth(pickLiveAndPaper(ctx, "WICK", "spot", evalId, wait), h, ctx);
 }
 
 function dslSeat(
