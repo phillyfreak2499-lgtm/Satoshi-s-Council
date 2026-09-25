@@ -3,6 +3,7 @@ import {
   DIRECTIONAL_LEAN_DISCLAIMER,
   DIRECTIONAL_LEAN_LABEL,
   DIRECTION_WORD,
+  leanKey,
   leanValueText,
   researchReadWord,
   type SeatLean,
@@ -13,8 +14,9 @@ import "./SeatLeanMeter.css";
 
 /**
  * The Directional Lean instrument. A display of one seat's research read; it
- * decides nothing. Keyed by the window it was read in, so a new window starts
- * from a fresh element rather than sliding from the old marker.
+ * decides nothing. The root element is keyed by the complete window identity
+ * (ticker, close time) plus the seat, so a new window is a new element and the
+ * marker never slides from a previous window's value.
  */
 export function SeatLeanMeter({
   lean,
@@ -38,8 +40,9 @@ export function SeatLeanMeter({
   const style = { "--lean-position": `${lean.score ?? 50}%` } as CSSProperties;
   const word = DIRECTION_WORD[lean.direction];
   const side = researchReadWord(lean);
+  const key = leanKey(lean);
   return (
-    <div className={cn("seat-lean", empty && "seat-lean--empty", className)} data-seat={lean.seat} data-window={lean.window.ticker} style={style}>
+    <div key={key} className={cn("seat-lean", empty && "seat-lean--empty", className)} data-seat={lean.seat} data-window={lean.window.ticker} data-lean-key={key} style={style}>
       <div className="seat-lean__head">
         <span id={`${id}-label`} className="seat-lean__label">{DIRECTIONAL_LEAN_LABEL}</span>
         <span className="seat-lean__value" data-direction={lean.direction}>
@@ -86,16 +89,25 @@ export function SeatLeanMeter({
   );
 }
 
-/** A folded-row or table-cell form: the number and a short track, nothing else. */
-export function SeatLeanMini({ lean, className }: { lean: SeatLean; className?: string }) {
+/**
+ * A folded-row or table-cell form: the number and a short track, nothing else.
+ * Inside an element that already carries the lean in its accessible name (a
+ * labelled row button), pass `decorative` so this form is hidden from assistive
+ * tech and the two never conflict.
+ */
+export function SeatLeanMini({ lean, className, decorative = false }: { lean: SeatLean; className?: string; decorative?: boolean }) {
   const empty = lean.score == null;
   const style = { "--lean-position": `${lean.score ?? 50}%` } as CSSProperties;
+  const key = leanKey(lean);
   return (
     <span
+      key={key}
       className={cn("seat-lean seat-lean--mini", empty && "seat-lean--empty", className)}
       style={style}
-      role="img"
-      aria-label={leanValueText(lean)}
+      data-lean-key={key}
+      role={decorative ? undefined : "img"}
+      aria-hidden={decorative ? true : undefined}
+      aria-label={decorative ? undefined : leanValueText(lean)}
       title={`${DIRECTIONAL_LEAN_LABEL} · ${DIRECTIONAL_LEAN_DISCLAIMER}`}
     >
       <span className="seat-lean__value" data-direction={lean.direction} aria-hidden="true">{empty ? "—" : lean.score}</span>

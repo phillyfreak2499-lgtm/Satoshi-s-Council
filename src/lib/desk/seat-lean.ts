@@ -7,6 +7,10 @@
  * filter) and `raw_conf` (its untransformed strength, 0–92 by `directionalConf`).
  * Both are carried on every vote by `sitUnlessSure` in bots.ts, so a read the
  * Chair never heard is still on the frame and can be shown as research context.
+ * A lean is computed ONLY when the frame genuinely retained both raw fields
+ * (`raw_retained` on the seat fact). Nothing is rebuilt from the final vote or
+ * its confidence, nothing is inferred from paper or shadow metadata, and a
+ * missing strength is never read as zero: a partial or legacy frame is NO READ.
  *
  * WHAT IT IS NOT. Not a probability, not a win chance, not SATOSHI's verdict and
  * not a paper position. It decides nothing, weighs nothing, and never feeds the
@@ -18,14 +22,17 @@
  *   DOWN with strength s → 50 − s / 2
  *   WAIT                 → 50 (NEUTRAL: the seat itself read no direction)
  *   no read on the frame → null (NO READ: a DOWN feed silenced the seat, or the
- *                          frame carries no raw read)
+ *                          frame did not retain both raw fields)
  * with s / 2 rounded to a whole number first, then clamped to 0–100. Equal strengths on
  * opposite sides mirror around 50. A mirror of `raw_conf`, nothing more.
  *
  * STATUS comes from the pro-floor voice (the pipeline's own precedence): a seat
- * is an authorized speaker only when the Chair aggregated its vote on this
- * frame. Everything else is research only, and the status says which reason
- * the frame proves. A STALE feed is flagged beside the read, never hidden.
+ * is an authorized speaker only when its final voice is directional AND the
+ * frame carries the Chair row that aggregated it (`aggregated`). A directional
+ * vote with no Chair row yet is RESEARCH READ, never SPEAKING, because nothing
+ * on the frame proves SATOSHI heard it. Everything else is research only, and
+ * the status says which reason the frame proves. A STALE feed is flagged
+ * beside the read, never hidden.
  *
  * WINDOWS. A lean is stamped with the window it was read in. Nothing carries
  * across a ticker or close-time change: the caller rebuilds from the current
@@ -47,6 +54,7 @@ export type LeanDirection = "BULLISH" | "BEARISH" | "NEUTRAL" | "NO_READ";
 /** Truthful seat states, each one the frame can prove. */
 export type SeatLeanStatus =
   | "SPEAKING"
+  | "RESEARCH READ"
   | "BELOW BAR"
   | "SUPPRESSED"
   | "SHADOW"
@@ -89,6 +97,7 @@ export type SeatLean = {
 
 const STATUS_PLAIN: Readonly<Record<SeatLeanStatus, string>> = Object.freeze({
   SPEAKING: "SATOSHI heard this read.",
+  "RESEARCH READ": "Directional read on the frame. No Chair row yet, so SATOSHI has not aggregated it.",
   "BELOW BAR": RESEARCH_ONLY_LINE,
   SUPPRESSED: RESEARCH_ONLY_LINE,
   SHADOW: "Shadow rule — research only, never a vote.",
@@ -105,11 +114,16 @@ function clampScore(n: number): number {
   return Math.min(LEAN_MAX, Math.max(LEAN_MIN, Math.round(n)));
 }
 
-/** The one mapping. Exported so a test can pin it and a surface can never re-derive it. */
-export function leanScore(side: Lean | null, strength: number | null): number | null {
-  if (side == null) return null;
+/**
+ * The one mapping. Exported so a test can pin it and a surface can never
+ * re-derive it. Both inputs must be genuinely present: a side that is a Lean
+ * and a finite strength. A missing strength is null, never zero.
+ */
+export function leanScore(side: Lean | null | undefined, strength: number | null | undefined): number | null {
+  if (side !== "UP" && side !== "DOWN" && side !== "WAIT") return null;
+  if (typeof strength !== "number" || !Number.isFinite(strength)) return null;
   if (side === "WAIT") return LEAN_CENTER;
-  const s = typeof strength === "number" && Number.isFinite(strength) ? Math.max(0, strength) : 0;
+  const s = Math.max(0, strength);
   // Round the half-offset once, then mirror it, so UP and DOWN at the same
   // strength sit the same distance from 50 (Math.round(49.5) is 50 but
   // Math.round(50.5) is 51, which would tilt odd strengths bullish).
@@ -127,7 +141,9 @@ export function leanDirection(score: number | null): LeanDirection {
 function statusOf(fact: SeatFact): SeatLeanStatus {
   switch (fact.voice) {
     case "speaking":
-      return "SPEAKING";
+      // A directional final voice is SPEAKING only with the Chair row that proves
+      // the aggregation. Without the row the frame shows a read, not a hearing.
+      return fact.aggregated === true ? "SPEAKING" : "RESEARCH READ";
     case "unhealthy":
       return "DOWN";
     case "benched":
@@ -157,8 +173,11 @@ function statusOf(fact: SeatFact): SeatLeanStatus {
  */
 export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLean {
   const silenced = fact.voice === "unhealthy" || fact.health === "DOWN";
-  const researchSide: Lean | null = silenced ? null : fact.raw_lean;
-  const sourceStrength = silenced ? null : fact.raw_conf;
+  // Only what the frame genuinely retained: both raw fields, or nothing.
+  const retained = !silenced && fact.raw_retained === true && typeof fact.raw_conf === "number" && Number.isFinite(fact.raw_conf)
+    && (fact.raw_lean === "UP" || fact.raw_lean === "DOWN" || fact.raw_lean === "WAIT");
+  const researchSide: Lean | null = retained ? fact.raw_lean : null;
+  const sourceStrength = retained ? fact.raw_conf : null;
   const score = leanScore(researchSide, sourceStrength);
   const status = statusOf(fact);
   return {
@@ -170,7 +189,7 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
     sourceStrength,
     status,
     statusPlain: STATUS_PLAIN[status],
-    isAuthorizedSpeaker: fact.voice === "speaking",
+    isAuthorizedSpeaker: fact.voice === "speaking" && fact.aggregated === true,
     stale: fact.health_warning === true,
     heardLean: fact.final_lean,
     reason: fact.why ?? "",
@@ -206,11 +225,27 @@ export function researchReadWord(lean: Pick<SeatLean, "researchSide" | "directio
   return "NEUTRAL";
 }
 
+/**
+ * The accessible announcement without the seat name, for a parent element that
+ * already names the seat (a labelled row button). One helper, so no surface
+ * carries its own wording of the lean.
+ */
+export function leanAnnouncement(lean: Pick<SeatLean, "score" | "direction" | "researchSide" | "stale" | "statusPlain">): string {
+  if (lean.score == null) return `no directional read. ${lean.statusPlain}`;
+  const side = researchReadWord(lean);
+  return `Directional Lean ${lean.score} of 100, ${DIRECTION_WORD[lean.direction].toLowerCase()}, research read ${side}${lean.stale ? ", stale feed" : ""}. ${lean.statusPlain}`;
+}
+
 /** One sentence for assistive tech and for a text-only fallback. */
 export function leanValueText(lean: SeatLean): string {
-  if (lean.score == null) {
-    return `${lean.seat}: no directional read. ${lean.statusPlain}`;
-  }
-  const side = researchReadWord(lean);
-  return `${lean.seat}: Directional Lean ${lean.score} of 100, ${DIRECTION_WORD[lean.direction].toLowerCase()}, research read ${side}${lean.stale ? ", stale feed" : ""}. ${lean.statusPlain}`;
+  return `${lean.seat}: ${leanAnnouncement(lean)}`;
+}
+
+/**
+ * The identity of one rendered meter: the complete window plus the seat. A
+ * meter element keyed by this remounts on any ticker or close-time change, so
+ * no marker ever slides from a previous window's value.
+ */
+export function leanKey(lean: Pick<SeatLean, "seat" | "window">): string {
+  return `${lean.window.ticker}|${lean.window.close_time}|${lean.seat}`;
 }

@@ -5,8 +5,11 @@
  * DIRECTIONAL LEAN, the disclaimer says it is not a probability and not a
  * SATOSHI call, no forbidden word (confidence, probability, odds, chance)
  * appears, the meter carries meter semantics with a text value, NO READ is an
- * image with text, and the Guided form speaks plainly. It also pins that the
- * SATOSHI verdict and paper-position surfaces are untouched by the feature.
+ * image with text, and the Guided form speaks plainly. Every meter element is
+ * keyed by the complete window identity plus the seat; a labelled row button
+ * announces the lean in its own name; a directional vote without a Chair row
+ * is never announced as heard; a frame without both raw fields is NO READ. It
+ * also pins that the SATOSHI verdict and paper-position surfaces are untouched.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -39,12 +42,29 @@ function load(rel, extra = {}) {
   return run(join(process.cwd(), rel));
 }
 
-const { seatDirectionalLean } = load("src/lib/desk/seat-lean.ts");
-const { SeatLeanMeter, SeatLeanMini } = load("src/components/desk/SeatLeanMeter.tsx", { "./SeatLeanMeter.css": {} });
+const CSS = { "./SeatLeanMeter.css": {} };
+/**
+ * The tape needs only pro-floor's two label maps at runtime (its other imports
+ * are types). pro-floor itself pulls the whole desk math, which this plain
+ * loader cannot evaluate, so the two maps are taken verbatim from the source.
+ */
+function proFloorLabels() {
+  const src = read("src/lib/desk/pro-floor.ts");
+  const pick = (name) => { const start = src.indexOf(`export const ${name}`); return src.slice(start, src.indexOf("});", start) + 3); };
+  const code = ts.transpileModule(`${pick("VOICE_LABEL")}\n${pick("SUPPRESSION_LABEL")}`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  vm.runInNewContext(code, { exports });
+  return exports;
+}
+const { seatDirectionalLean, leanKey } = load("src/lib/desk/seat-lean.ts");
+const { SeatLeanMeter, SeatLeanMini } = load("src/components/desk/SeatLeanMeter.tsx", CSS);
+const { CouncilEvidenceTape } = load("src/components/desk/ProFloor/CouncilEvidenceTape.tsx", { ...CSS, "@/lib/desk/pro-floor": proFloorLabels() });
 const text = (html) => html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const unescape = (s) => s.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+const keyRe = (key) => new RegExp(`data-lean-key="${key.replace(/[|]/g, "\\|")}"`);
 const WINDOW = { ticker: "KXBTC15M-26SEP2514-T85000", close_time: 1_790_000_000_000, as_of: 1_789_999_500_000 };
 const fact = (over = {}) => ({
-  seat: "DRIFT", callsign: "VEC", family: "structure", eyes: "ret 5/15/30", raw_lean: "UP", raw_conf: 70, final_lean: "WAIT", final_conf: 70,
+  seat: "DRIFT", callsign: "VEC", family: "structure", eyes: "ret 5/15/30", raw_lean: "UP", raw_conf: 70, raw_retained: true, final_lean: "WAIT", final_conf: 70,
   final_conf_transformed: true, voice: "suppressed", suppression: "below-speak-bar", health_warning: false, speak_bar: 52, aggregated: true,
   health: "LIVE", status: "LIVE", weight: 0, contribution: 0, why: "trend holds on 15/30", skill_used: "DRIFT.aligned_3h", skill_status: "LIVE", ...over,
 });
@@ -56,7 +76,7 @@ test("the Pro meter prints the label, the number, the research side, the status 
   const t = text(html);
   assert.match(t, /DIRECTIONAL LEAN/);
   assert.match(t, /85 · Bullish/);
-  assert.match(t, /Research read: UP/);
+  assert.match(t, /Bearish Bullish Research read: UP/, "the scale is labelled at both ends");
   assert.match(t, /Status: BELOW BAR/);
   assert.match(t, /Card: DRIFT\.aligned_3h/);
   assert.match(t, /Strength: 70/);
@@ -70,7 +90,6 @@ test("the Pro meter prints the label, the number, the research side, the status 
   assert.match(html, /aria-valuenow="85"/);
   assert.match(html, /aria-valuetext="DRIFT: Directional Lean 85 of 100, bullish, research read UP\. Research only — SATOSHI did not hear this vote\."/);
   assert.match(html, /--lean-position:85%/);
-  assert.match(t, /Bearish Bullish Research read/, "the scale is labelled at both ends");
   for (const banned of FORBIDDEN) assert.doesNotMatch(t.replace(/It is not a probability/, ""), banned);
 });
 
@@ -109,13 +128,89 @@ test("the mini form carries the full text for assistive tech and never a forbidd
   for (const banned of FORBIDDEN) assert.doesNotMatch(html.replace(/It is not a probability/, ""), banned);
 });
 
-test("a new window is a new element: the meter is keyed by the window it was read in", () => {
-  const a = seatDirectionalLean(fact(), WINDOW);
-  const b = seatDirectionalLean(fact({ raw_lean: "WAIT", raw_conf: 0, voice: "waiting", suppression: null, final_conf_transformed: false }), { ...WINDOW, ticker: "NEXT", close_time: WINDOW.close_time + 900_000 });
-  assert.match(renderToString(React.createElement(SeatLeanMeter, { lean: a })), /data-window="KXBTC15M-26SEP2514-T85000"/);
-  assert.match(renderToString(React.createElement(SeatLeanMeter, { lean: b })), /data-window="NEXT"/);
-  assert.match(read("src/components/desk/BotCard.tsx"), /<SeatLeanMeter key=\{`\$\{snap\.ticker\}:\$\{snap\.close_time\}`\}/, "the seat card remounts the meter per window");
-  assert.match(read("src/components/desk/GuidedFloorView.tsx"), /key=\{`\$\{l\.window\.ticker\}:\$\{l\.seat\}`\}/);
+test("every meter element is keyed by the complete window identity plus the seat, so a new window is a new element", () => {
+  const w = WINDOW;
+  const cases = [
+    ["same seat, new close_time", { ...w, close_time: w.close_time + 900_000 }],
+    ["same ticker, corrected close_time", { ...w, close_time: w.close_time + 1 }],
+    ["new ticker", { ...w, ticker: "KXBTC15M-26SEP2515-T85100" }],
+  ];
+  const base = seatDirectionalLean(fact(), w);
+  const baseKey = `${w.ticker}|${w.close_time}|DRIFT`;
+  assert.equal(leanKey(base), baseKey);
+  assert.match(renderToString(React.createElement(SeatLeanMeter, { lean: base })), keyRe(baseKey));
+  assert.match(renderToString(React.createElement(SeatLeanMini, { lean: base })), keyRe(baseKey));
+  for (const [name, win] of cases) {
+    const next = seatDirectionalLean(fact(), win);
+    assert.notEqual(leanKey(next), baseKey, name);
+    assert.match(renderToString(React.createElement(SeatLeanMeter, { lean: next })), keyRe(leanKey(next)), name);
+    assert.match(renderToString(React.createElement(SeatLeanMini, { lean: next })), keyRe(leanKey(next)), name);
+  }
+  // The root elements carry the key themselves, and every parent list keys on it too.
+  const meterSrc = read("src/components/desk/SeatLeanMeter.tsx");
+  assert.match(meterSrc, /<div key=\{key\}[^>]*data-lean-key=\{key\}/);
+  assert.match(meterSrc, /<span\s+key=\{key\}/);
+  assert.match(read("src/components/desk/BotCard.tsx"), /<SeatLeanMeter key=\{leanKey\(lean\)\}/, "the seat card remounts the meter per window");
+  assert.match(read("src/components/desk/BotCard.tsx"), /<SeatLeanMini key=\{leanKey\(lean\)\}/);
+  assert.equal((read("src/components/desk/GuidedFloorView.tsx").match(/key=\{leanKey\(l\)\}/g) ?? []).length, 2);
+  const tape = read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx");
+  assert.equal((tape.match(/<li key=\{leanKey\(lean\)\}/g) ?? []).length, 2);
+  assert.doesNotMatch(tape, /key=\{s\.seat\}/, "no row keyed by seat alone");
+  assert.doesNotMatch(read("src/components/desk/GuidedFloorView.tsx"), /\$\{l\.window\.ticker\}:\$\{l\.seat\}/, "no row keyed by ticker and seat alone");
+});
+
+test("the evidence-row button announces the lean in its own accessible name, and the nested mini form is decorative", () => {
+  const seats = [
+    fact({ seat: "DRIFT", callsign: "VEC" }),
+    fact({ seat: "WICK", callsign: "PIN", raw_lean: "DOWN", raw_conf: 60 }),
+    fact({ seat: "TAPE", callsign: "TPE", raw_lean: "WAIT", raw_conf: 0, final_lean: "WAIT", final_conf_transformed: false, voice: "waiting", suppression: null, skill_used: "SIT", skill_status: "SIT" }),
+    fact({ seat: "INDEX", callsign: "IDX", voice: "unhealthy", suppression: "feed", health: "DOWN", raw_lean: "WAIT", raw_conf: 0, final_lean: "WAIT" }),
+  ];
+  const html = renderToString(React.createElement(CouncilEvidenceTape, { facts: { seats }, onJump: () => {}, window: WINDOW }));
+  const labels = [...html.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map((m) => unescape(m[1]));
+  assert.equal(labels.length, 8, "four seats, desktop and phone rows");
+  const byName = (seat) => labels.filter((l) => l.startsWith(`${seat},`));
+  assert.equal(byName("DRIFT").length, 2);
+  for (const l of byName("DRIFT")) assert.match(l, /^DRIFT, raw UP 70, Directional Lean 85 of 100, bullish, research read UP\. Research only — SATOSHI did not hear this vote\. Final WAIT, /);
+  for (const l of byName("WICK")) assert.match(l, /Directional Lean 20 of 100, bearish, research read DOWN\. Research only — SATOSHI did not hear this vote\. Final WAIT, /);
+  for (const l of byName("TAPE")) assert.match(l, /Directional Lean 50 of 100, neutral, research read NEUTRAL\. Sitting — no direction read\. Final WAIT, /);
+  for (const l of byName("INDEX")) assert.match(l, /^INDEX, raw WAIT, no directional read\. Feed down — no read this frame\. Final WAIT, /);
+  for (const l of labels) assert.match(l, /\. Open its desk\.$/, "the status and the action stay in the name");
+  // The nested mini forms are hidden from assistive tech, so nothing conflicts with the button's name.
+  const minis = [...html.matchAll(/<span[^>]*class="seat-lean seat-lean--mini[^"]*"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(minis.length, 8);
+  for (const m of minis) {
+    assert.match(m, /aria-hidden="true"/);
+    assert.doesNotMatch(m, /role="img"|aria-label=/);
+  }
+  assert.match(text(html), /It is not a probability and not a SATOSHI call\./);
+});
+
+test("a directional vote without a Chair row is announced as a research read, never as heard by SATOSHI", () => {
+  const noRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: false }), WINDOW);
+  const html = renderToString(React.createElement(SeatLeanMeter, { lean: noRow, mode: "pro" }));
+  assert.match(text(html), /Status: RESEARCH READ/);
+  assert.match(text(html), /No Chair row yet, so SATOSHI has not aggregated it\./);
+  assert.doesNotMatch(text(html), /SATOSHI heard/);
+  assert.match(html, /aria-valuenow="85"/, "the read itself still shows");
+  const withRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }), WINDOW);
+  assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "pro" }))), /Status: SPEAKING/);
+  assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "guided" }))), /Status: SATOSHI heard this read\./);
+  for (const l of [noRow, withRow]) {
+    const t = text(renderToString(React.createElement(SeatLeanMeter, { lean: l, mode: "pro", showDisclaimer: true })));
+    assert.match(t, /It is not a probability and not a SATOSHI call\./);
+  }
+});
+
+test("a fact without both retained raw fields renders NO READ, never a manufactured number", () => {
+  for (const over of [{ raw_retained: false }, { raw_retained: true, raw_conf: null }, { raw_retained: true, raw_conf: Number.NaN }, { raw_retained: true, raw_lean: null }]) {
+    const partial = seatDirectionalLean(fact(over), WINDOW);
+    const html = renderToString(React.createElement(SeatLeanMeter, { lean: partial, mode: "pro" }));
+    assert.match(text(html), /NO READ/, JSON.stringify(over));
+    assert.match(html, /role="img"/);
+    assert.doesNotMatch(html, /aria-valuenow/);
+    assert.doesNotMatch(text(html), /85 · |50 · Neutral/);
+  }
 });
 
 test("the surfaces share one read model and the verdict and paper-position surfaces are untouched", () => {
@@ -127,10 +222,12 @@ test("the surfaces share one read model and the verdict and paper-position surfa
     assert.match(read(file), /seatDirectionalLean/, `${file} uses the shared read model`);
     assert.doesNotMatch(read(file), /50 \+ |\/ 2\b/, `${file} never re-derives the score`);
   }
+  assert.match(read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx"), /leanAnnouncement\(lean\)/, "the row name reuses the one announcement helper");
   assert.match(read("src/components/desk/GuidedFloorView.tsx"), /seatFacts\(chair, votes, knobs, snap\.as_of\)\.filter\(\(f\) => f\.aggregated\)/);
   assert.match(read("src/components/desk/GuidedFloorView.tsx"), /\{read\.label === "WAIT" \? <Tip k="term\.wait">WAIT<\/Tip> : read\.label\}/, "the SATOSHI read heading is unchanged");
   assert.doesNotMatch(read("src/components/desk/ProFloor/PaperPositionCard.tsx"), /seat-lean|SeatLean/, "the paper position card does not carry the meter");
   assert.doesNotMatch(read("src/components/desk/ProFloor/ProChairCard.tsx"), /seat-lean|SeatLean/, "the Chair card does not carry the meter");
+  assert.doesNotMatch(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /seat-lean|SeatLean/, "family cards stay out of scope");
   assert.doesNotMatch(read("src/lib/desk/chair.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/bots.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/book-floor.ts"), /seat-lean|SeatLean/);

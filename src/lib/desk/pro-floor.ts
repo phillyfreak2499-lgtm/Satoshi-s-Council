@@ -560,6 +560,14 @@ export type SeatFact = {
    */
   raw_lean: Lean | null;
   raw_conf: number | null;
+  /**
+   * True only when the vote itself carried BOTH raw fields: a `raw_lean` that is
+   * a Lean and a finite `raw_conf`. `raw_lean`/`raw_conf` above may be filled
+   * from the final vote for an ordinary speaker (the tape's convention); this
+   * flag says whether the frame genuinely retained the seat's own read, so a
+   * surface that must never reconstruct one can refuse to.
+   */
+  raw_retained: boolean;
   /** The vote the Chair actually heard. */
   final_lean: Lean;
   /**
@@ -630,6 +638,10 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
    */
   const rawLean = vote?.raw_lean ?? (forced ? null : finalLean);
   const rawConf = num(vote?.raw_conf) ?? (forced ? null : finalConf);
+  const rawRetained =
+    vote != null &&
+    (vote.raw_lean === "UP" || vote.raw_lean === "DOWN" || vote.raw_lean === "WAIT") &&
+    num(vote.raw_conf) != null;
   const health: FeedHealth = vote?.health ?? row?.health ?? "DOWN";
   const status = row?.status ?? null;
   const rawDirectional = rawLean === "UP" || rawLean === "DOWN";
@@ -683,6 +695,7 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     eyes: meta.eyes,
     raw_lean: rawLean,
     raw_conf: rawConf,
+    raw_retained: rawRetained,
     final_lean: finalLean,
     final_conf: finalConf,
     final_conf_transformed: forced,

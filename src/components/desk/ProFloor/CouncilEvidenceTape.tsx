@@ -19,7 +19,7 @@ import { SUPPRESSION_LABEL, VOICE_LABEL, type ProFloorFacts, type SeatFact } fro
 import type { SeatId } from "@/lib/desk/types";
 import { Panel } from "./panels";
 import { SeatLeanMini } from "../SeatLeanMeter";
-import { DIRECTIONAL_LEAN_DISCLAIMER, seatDirectionalLean, type LeanWindow } from "@/lib/desk/seat-lean";
+import { DIRECTIONAL_LEAN_DISCLAIMER, leanAnnouncement, leanKey, seatDirectionalLean, type LeanWindow } from "@/lib/desk/seat-lean";
 
 function voiceTone(s: SeatFact): string {
   switch (s.voice) {
@@ -96,33 +96,38 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
           <span>status / why</span>
         </div>
         <ul>
-          {facts.seats.map((s) => (
-            <li key={s.seat}>
+          {facts.seats.map((s) => {
+            const lean = leanOf(s);
+            return (
+            <li key={leanKey(lean)}>
               <button
                 type="button"
                 onClick={() => onJump(s.seat)}
                 className="grid min-h-11 w-full grid-cols-[6rem_5.5rem_7rem_5.5rem_3.5rem_1fr] items-center gap-2 border-b border-border px-1 text-left hover:bg-surface-2/60"
-                aria-label={`${s.seat}, raw ${rawText(s)}, final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
+                aria-label={`${s.seat}, raw ${rawText(s)}, ${leanAnnouncement(lean)} Final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
               >
                 <span className="truncate font-mono text-micro text-fg">
                   {s.seat} <span className="text-subtle">{s.callsign}</span>
                 </span>
-                <Cells s={s} lean={<SeatLeanMini lean={leanOf(s)} />} />
+                <Cells s={s} lean={<SeatLeanMini lean={lean} decorative />} />
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </div>
 
       {/* Phone: stacked rows, nothing clipped. */}
       <ul className="mt-3 sm:hidden">
-        {facts.seats.map((s) => (
-          <li key={s.seat} className="border-b border-border">
+        {facts.seats.map((s) => {
+          const lean = leanOf(s);
+          return (
+          <li key={leanKey(lean)} className="border-b border-border">
             <button
               type="button"
               onClick={() => onJump(s.seat)}
               className="w-full py-2 text-left"
-              aria-label={`${s.seat}, raw ${rawText(s)}, final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
+              aria-label={`${s.seat}, raw ${rawText(s)}, ${leanAnnouncement(lean)} Final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-mono text-micro text-fg">
@@ -140,11 +145,12 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
               </div>
               <div className="mt-0.5 flex items-center gap-2 font-mono text-micro text-subtle">
                 <span>lean</span>
-                <SeatLeanMini lean={leanOf(s)} />
+                <SeatLeanMini lean={lean} decorative />
               </div>
             </button>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       <p className="mt-2 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ChairResult, CallLogRow, SeatKnobs, Snapshot, Vote } from "@/lib/desk/types";
 import { seatFacts } from "@/lib/desk/pro-floor";
-import { DIRECTIONAL_LEAN_DISCLAIMER, seatDirectionalLeans, type SeatLean } from "@/lib/desk/seat-lean";
+import { DIRECTIONAL_LEAN_DISCLAIMER, leanKey, seatDirectionalLeans, type SeatLean } from "@/lib/desk/seat-lean";
 import { SeatLeanMeter } from "./SeatLeanMeter";
 import type { BooksWindow } from "@/lib/desk/books";
 import { bookState } from "@/lib/desk/book-floor";
@@ -124,7 +124,7 @@ function SpecialistLeans({ leans }: { leans: SeatLean[] }) {
       {directional.length ? (
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {directional.map((l) => (
-            <li key={`${l.window.ticker}:${l.seat}`} className="rounded-sm border border-border bg-surface-2 p-3">
+            <li key={leanKey(l)} className="rounded-sm border border-border bg-surface-2 p-3">
               <div className="flex items-baseline justify-between gap-2">
                 <a href={`/seat/${l.seat}`} className="font-mono text-ui text-fg underline-offset-4 hover:underline">
                   {l.seat} <span className="text-subtle">{l.callsign}</span>
@@ -142,7 +142,7 @@ function SpecialistLeans({ leans }: { leans: SeatLean[] }) {
           <summary className="min-h-11 cursor-pointer py-2">{quiet.length} {quiet.length === 1 ? "seat is" : "seats are"} neutral or without a read</summary>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
             {quiet.map((l) => (
-              <li key={`${l.window.ticker}:${l.seat}`} className="rounded-sm border border-border bg-surface-2 p-3">
+              <li key={leanKey(l)} className="rounded-sm border border-border bg-surface-2 p-3">
                 <a href={`/seat/${l.seat}`} className="font-mono text-ui text-fg underline-offset-4 hover:underline">{l.seat} <span className="text-subtle">{l.callsign}</span></a>
                 <SeatLeanMeter lean={l} mode="guided" className="mt-2" />
               </li>

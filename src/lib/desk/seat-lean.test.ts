@@ -13,8 +13,10 @@ import {
   DIRECTIONAL_LEAN_DISCLAIMER,
   DIRECTIONAL_LEAN_LABEL,
   DIRECTION_WORD,
+  leanAnnouncement,
   leanDirection,
   leanIsCurrent,
+  leanKey,
   leanScore,
   leanValueText,
   researchReadWord,
@@ -37,6 +39,7 @@ function fact(over: Partial<SeatFact> = {}): SeatFact {
     eyes: "ret 5/15/30",
     raw_lean: "UP",
     raw_conf: 70,
+    raw_retained: true,
     final_lean: "UP",
     final_conf: 70,
     final_conf_transformed: false,
@@ -122,7 +125,7 @@ test("3. WAIT maps to 50 and NEUTRAL; an absent raw read is NO READ with no numb
   assert.equal(sit.direction, "NEUTRAL");
   assert.equal(sit.status, "SIT");
   assert.equal(researchReadWord(sit), "NEUTRAL");
-  const none = seatDirectionalLean(fact({ raw_lean: null, raw_conf: null, final_lean: "WAIT", voice: "waiting" }), WINDOW);
+  const none = seatDirectionalLean(fact({ raw_lean: null, raw_conf: null, raw_retained: false, final_lean: "WAIT", voice: "waiting" }), WINDOW);
   assert.equal(none.score, null);
   assert.equal(none.direction, "NO_READ");
   assert.equal(researchReadWord(none), "NO READ");
@@ -142,7 +145,10 @@ test("5. the score clamps to 0–100 and rounds to a whole number", () => {
   assert.equal(leanScore("UP", 250), 100);
   assert.equal(leanScore("DOWN", 250), 0);
   assert.equal(leanScore("UP", -30), 50, "a negative strength has no intensity");
-  assert.equal(leanScore("UP", Number.NaN), 50);
+  assert.equal(leanScore("UP", Number.NaN), null, "a non-finite strength is no number, never zero");
+  assert.equal(leanScore("UP", null), null);
+  assert.equal(leanScore("UP", undefined), null);
+  assert.equal(leanScore("WAIT", null), null, "even a WAIT needs its retained strength to print 50");
   assert.equal(leanScore("UP", 45), 73);
   assert.equal(leanScore("DOWN", 45), 27);
   for (const s of [0, 3.3, 45, 92, 1000]) {
@@ -178,6 +184,110 @@ test("6b. a forced sit without a retained raw read is never reconstructed", () =
   assert.equal(l.researchSide, null);
 });
 
+test("6c. raw field availability: both retained or NO READ, never rebuilt from the final vote and never zero", () => {
+  const base = { lean: "UP" as const, confidence: 70, forced_sit: false };
+  // raw_lean missing
+  let f = seatFactFor("DRIFT", vote({ ...base, raw_lean: undefined, raw_conf: 70 }), row(), undefined, WINDOW.as_of);
+  assert.equal(f.raw_retained, false);
+  assert.equal(f.raw_lean, "UP", "the tape's own fallback column still fills from the final vote");
+  let l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, null, "the meter refuses the fallback");
+  assert.equal(l.direction, "NO_READ");
+  assert.equal(l.researchSide, null);
+  assert.equal(l.sourceStrength, null);
+  // raw_conf missing
+  f = seatFactFor("DRIFT", vote({ ...base, raw_lean: "UP", raw_conf: undefined }), row(), undefined, WINDOW.as_of);
+  assert.equal(f.raw_retained, false);
+  l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, null);
+  assert.equal(l.direction, "NO_READ");
+  // raw_conf non-finite
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    f = seatFactFor("DRIFT", vote({ ...base, raw_lean: "UP", raw_conf: bad }), row(), undefined, WINDOW.as_of);
+    assert.equal(f.raw_retained, false, `raw_conf ${bad} is not retained`);
+    l = seatDirectionalLean(f, WINDOW);
+    assert.equal(l.score, null, `raw_conf ${bad} gives no number`);
+    assert.equal(l.direction, "NO_READ");
+  }
+  // both present
+  f = seatFactFor("DRIFT", vote({ ...base, raw_lean: "UP", raw_conf: 70 }), row(), undefined, WINDOW.as_of);
+  assert.equal(f.raw_retained, true);
+  l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, 85);
+  // a legacy or partial frame: a directional final vote with no raw fields at all is NO READ, not a false 50 and not a false 85
+  f = seatFactFor("DRIFT", vote({ ...base, raw_lean: undefined, raw_conf: undefined }), row(), undefined, WINDOW.as_of);
+  l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, null);
+  assert.notEqual(l.direction, "NEUTRAL");
+  // a WAIT final vote with no raw fields is NO READ too, never a manufactured Neutral 50
+  f = seatFactFor("DRIFT", vote({ lean: "WAIT", confidence: 0, raw_lean: undefined, raw_conf: undefined, skill_used: "SIT", skill_status: "SIT" }), row({ lean: "WAIT", conf: 0 }), undefined, WINDOW.as_of);
+  l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, null);
+  assert.equal(l.direction, "NO_READ");
+  // paper and shadow metadata never stand in for a raw read
+  f = seatFactFor("DRIFT", vote({ lean: "WAIT", confidence: 70, forced_sit: true, raw_lean: undefined, raw_conf: undefined, shadow: { id: "DRIFT.aligned_3h", lean: "UP", confidence: 66 }, paper: [{ id: "DRIFT.aligned_3h", lean: "UP", confidence: 66, status: "SHADOW" }] }), row({ lean: "WAIT", forced_sit: true, conf: 70, shadow_lean: "UP" }), undefined, WINDOW.as_of);
+  l = seatDirectionalLean(f, WINDOW);
+  assert.equal(l.score, null);
+  assert.equal(l.researchSide, null);
+  // the facts the read model needs are on the fact, and a fact claiming retained without a finite strength still gets no number
+  l = seatDirectionalLean(fact({ raw_retained: true, raw_conf: null }), WINDOW);
+  assert.equal(l.score, null);
+});
+
+test("6d. SPEAKING needs the Chair row: a directional vote without one is RESEARCH READ", () => {
+  const v = vote({ lean: "UP", confidence: 70, raw_lean: "UP", raw_conf: 70 });
+  // No Chair row on the frame yet: the fact is not aggregated.
+  const noRow = seatFactFor("DRIFT", v, undefined, undefined, WINDOW.as_of);
+  assert.equal(noRow.voice, "speaking", "pro-floor's voice column is unchanged");
+  assert.equal(noRow.aggregated, false);
+  let l = seatDirectionalLean(noRow, WINDOW);
+  assert.equal(l.status, "RESEARCH READ");
+  assert.equal(l.isAuthorizedSpeaker, false);
+  assert.equal(l.score, 85, "the read itself still shows");
+  assert.doesNotMatch(l.statusPlain, /SATOSHI heard/);
+  assert.match(l.statusPlain, /No Chair row yet/);
+  assert.doesNotMatch(leanAnnouncement(l), /SATOSHI heard/);
+  // With the aggregated Chair row: SPEAKING.
+  const withRow = seatFactFor("DRIFT", v, row(), undefined, WINDOW.as_of);
+  assert.equal(withRow.aggregated, true);
+  l = seatDirectionalLean(withRow, WINDOW);
+  assert.equal(l.status, "SPEAKING");
+  assert.equal(l.isAuthorizedSpeaker, true);
+  assert.equal(l.statusPlain, "SATOSHI heard this read.");
+  // The disclaimer is the same sentence in both cases.
+  assert.equal(seatDirectionalLean(noRow, WINDOW).disclaimer, seatDirectionalLean(withRow, WINDOW).disclaimer);
+  // A non-voter or retired seat with a directional voice is never a speaker even with a row-shaped fact.
+  const crew = seatDirectionalLean(fact({ seat: "WARDEN", voice: "speaking", aggregated: false }), WINDOW);
+  assert.equal(crew.status, "RESEARCH READ");
+  assert.equal(crew.isAuthorizedSpeaker, false);
+});
+
+test("6e. one meter identity per complete window and seat", () => {
+  const base = seatDirectionalLean(fact(), WINDOW);
+  const sameSeatNewClose = seatDirectionalLean(fact(), { ...WINDOW, close_time: WINDOW.close_time + 900_000 });
+  const sameTickerCorrectedClose = seatDirectionalLean(fact(), { ...WINDOW, close_time: WINDOW.close_time + 1 });
+  const newTicker = seatDirectionalLean(fact(), { ...WINDOW, ticker: "KXBTC15M-26SEP2515-T85100" });
+  const otherSeat = seatDirectionalLean(fact({ seat: "WICK" }), WINDOW);
+  assert.equal(leanKey(base), `${WINDOW.ticker}|${WINDOW.close_time}|DRIFT`);
+  assert.equal(leanKey(base), leanKey(seatDirectionalLean(fact(), { ...WINDOW })), "same window, same identity");
+  assert.notEqual(leanKey(base), leanKey(sameSeatNewClose));
+  assert.notEqual(leanKey(base), leanKey(sameTickerCorrectedClose));
+  assert.notEqual(leanKey(base), leanKey(newTicker));
+  assert.notEqual(leanKey(base), leanKey(otherSeat));
+});
+
+test("6f. the accessible announcement covers bullish, bearish, neutral and NO READ, with the status", () => {
+  const bull = seatDirectionalLean(fact(), WINDOW);
+  assert.equal(leanAnnouncement(bull), "Directional Lean 85 of 100, bullish, research read UP. SATOSHI heard this read.");
+  const bear = seatDirectionalLean(fact({ raw_lean: "DOWN", raw_conf: 60, final_lean: "WAIT", final_conf_transformed: true, voice: "suppressed", suppression: "below-speak-bar" }), WINDOW);
+  assert.equal(leanAnnouncement(bear), "Directional Lean 20 of 100, bearish, research read DOWN. Research only — SATOSHI did not hear this vote.");
+  const neutral = seatDirectionalLean(fact({ raw_lean: "WAIT", raw_conf: 0, final_lean: "WAIT", voice: "waiting", skill_used: "SIT", skill_status: "SIT" }), WINDOW);
+  assert.equal(leanAnnouncement(neutral), "Directional Lean 50 of 100, neutral, research read NEUTRAL. Sitting — no direction read.");
+  const none = seatDirectionalLean(fact({ voice: "unhealthy", health: "DOWN", raw_lean: "WAIT", raw_conf: 0 }), WINDOW);
+  assert.equal(leanAnnouncement(none), "no directional read. Feed down — no read this frame.");
+  assert.equal(leanValueText(bull), `DRIFT: ${leanAnnouncement(bull)}`);
+});
+
 test("7. SHADOW and BENCH reads are research only and never an authorized speaker", () => {
   const shadow = seatDirectionalLean(fact({ voice: "suppressed", suppression: "below-speak-bar", skill_status: "SHADOW", final_lean: "WAIT", final_conf_transformed: true }), WINDOW);
   assert.equal(shadow.status, "SHADOW");
@@ -208,7 +318,7 @@ test("8. a DOWN feed is NO READ; a STALE feed keeps its honest read and is flagg
   assert.equal(down.status, "DOWN");
   assert.equal(down.stale, false);
   // Even a lingering raw field cannot stand once the feed is DOWN: applyHealth silenced the seat first.
-  const downLinger = seatDirectionalLean(fact({ voice: "unhealthy", health: "DOWN", raw_lean: "UP", raw_conf: 60 }), WINDOW);
+  const downLinger = seatDirectionalLean(fact({ voice: "unhealthy", health: "DOWN", raw_lean: "UP", raw_conf: 60, raw_retained: true }), WINDOW);
   assert.equal(downLinger.score, null);
   assert.equal(downLinger.researchSide, null);
   const stale = seatDirectionalLean(fact({ health: "STALE", health_warning: true, raw_conf: 42, final_conf: 42 }), WINDOW);
