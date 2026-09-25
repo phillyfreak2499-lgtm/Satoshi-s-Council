@@ -3,7 +3,9 @@ import {
   DIRECTIONAL_LEAN_DISCLAIMER,
   DIRECTIONAL_LEAN_LABEL,
   DIRECTION_WORD,
+  LEAN_SUMMARY_LABEL,
   leanKey,
+  leanPlainLine,
   leanValueText,
   researchReadWord,
   type SeatLean,
@@ -70,7 +72,7 @@ export function SeatLeanMeter({
         {mode === "pro" ? <span>Research read: <span className="seat-lean__status">{side}</span></span> : null}
         {lean.stale ? <span className="seat-lean__stale">STALE</span> : null}
         <span>
-          Status: <span className="seat-lean__status" data-authorized={lean.isAuthorizedSpeaker}>{mode === "pro" ? lean.status : lean.statusPlain}</span>
+          Status: <span className="seat-lean__status" data-authorized={lean.isAuthorizedSpeaker}>{mode === "pro" ? lean.status : leanPlainLine(lean)}</span>
         </span>
         {mode === "pro" && lean.skillId ? <span>Card: {lean.skillId}</span> : null}
         {mode === "pro" && lean.sourceStrength != null ? <span>Strength: {lean.sourceStrength}</span> : null}
@@ -78,9 +80,7 @@ export function SeatLeanMeter({
           Updated: {utcStamp(lean.window.as_of)}
           {feedAgeS != null && Number.isFinite(feedAgeS) ? ` · feed ${feedAgeS.toFixed(1)}s` : ""}
         </span>
-        {mode === "pro" && !lean.isAuthorizedSpeaker && lean.score != null && lean.direction !== "NEUTRAL" ? (
-          <span className="seat-lean__reason">{lean.statusPlain}</span>
-        ) : null}
+        {mode === "pro" ? <span className="seat-lean__reason">{leanPlainLine(lean)}</span> : null}
         {lean.reason ? <span className="seat-lean__reason">{lean.reason}</span> : null}
       </div>
       <span id={`${id}-text`} className="sr-only">{text}</span>
@@ -116,5 +116,27 @@ export function SeatLeanMini({ lean, className, decorative = false }: { lean: Se
         {empty ? null : <span className="seat-lean__marker" />}
       </span>
     </span>
+  );
+}
+
+/**
+ * The one-line summary for the top of a seat page: the label, the number and
+ * the direction word, then the plain-language status. It links down to the
+ * full meter block (`#seat-lean-<seat>`) when the page renders one. Research
+ * only: not a probability, not a SATOSHI call, not a paper position.
+ */
+export function SeatLeanSummary({ lean, meterId, className }: { lean: SeatLean; meterId?: string; className?: string }) {
+  const empty = lean.score == null;
+  const key = leanKey(lean);
+  const word = empty ? DIRECTION_WORD.NO_READ : DIRECTION_WORD[lean.direction];
+  return (
+    <p key={key} className={cn("seat-lean seat-lean--summary", empty && "seat-lean--empty", className)} data-lean-key={key} data-seat={lean.seat}>
+      <span className="seat-lean__label">{LEAN_SUMMARY_LABEL}:</span>{" "}
+      <span className="seat-lean__value" data-direction={lean.direction}>{empty ? word : `${lean.score} · ${word}`}</span>
+      {lean.stale ? <> <span className="seat-lean__stale">STALE</span></> : null}
+      <span className="seat-lean__summary-line">{leanPlainLine(lean)}</span>
+      {meterId ? <a className="seat-lean__summary-link" href={`#${meterId}`}>Full meter ↓</a> : null}
+      <span className="sr-only">{" "}{DIRECTIONAL_LEAN_DISCLAIMER}</span>
+    </p>
   );
 }

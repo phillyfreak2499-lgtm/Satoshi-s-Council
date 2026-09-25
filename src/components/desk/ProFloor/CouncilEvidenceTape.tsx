@@ -19,7 +19,7 @@ import { SUPPRESSION_LABEL, VOICE_LABEL, type ProFloorFacts, type SeatFact } fro
 import type { SeatId } from "@/lib/desk/types";
 import { Panel } from "./panels";
 import { SeatLeanMini } from "../SeatLeanMeter";
-import { DIRECTIONAL_LEAN_DISCLAIMER, leanAnnouncement, leanKey, seatDirectionalLean, type LeanWindow } from "@/lib/desk/seat-lean";
+import { DIRECTIONAL_LEAN_DISCLAIMER, DIRECTIONAL_LEAN_LABEL, DIRECTION_WORD, leanAnnouncement, leanKey, seatDirectionalLean, type LeanWindow, type SeatLean } from "@/lib/desk/seat-lean";
 
 function voiceTone(s: SeatFact): string {
   switch (s.voice) {
@@ -57,6 +57,12 @@ function statusText(s: SeatFact): string {
   return VOICE_LABEL[s.voice];
 }
 
+/** The number lives in the mini form; the word beside it says what the number means. Never a probability. */
+function LeanWord({ lean }: { lean: SeatLean }) {
+  const word = lean.score == null ? "NO READ" : DIRECTION_WORD[lean.direction];
+  return <span className="seat-lean__value font-mono text-micro" data-direction={lean.direction} aria-hidden="true">{word}</span>;
+}
+
 function Cells({ s, lean }: { s: SeatFact; lean: ReactNode }) {
   return (
     <>
@@ -82,15 +88,15 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
     <Panel
       id="tape"
       title="Council evidence tape"
-      note={`Every seat, raw read beside final voice. RAW is what the specialist saw; FINAL VOICE is what the Chair heard. An asterisk marks a recorded confidence the pipeline rewrote on a forced sit. LEAN is the raw read on one 0–100 scale. ${DIRECTIONAL_LEAN_DISCLAIMER}`}
+      note={`Every seat, raw read beside final voice. RAW is what the specialist saw; FINAL VOICE is what the Chair heard. An asterisk marks a recorded confidence the pipeline rewrote on a forced sit. DIRECTIONAL LEAN is the raw read on one 0–100 scale: 0 strongly bearish, 50 neutral, 100 strongly bullish. ${DIRECTIONAL_LEAN_DISCLAIMER}`}
       right={<span className="font-mono text-micro text-subtle">{facts.seats.length} seats</span>}
     >
       {/* Desktop: a real table. */}
       <div className="mt-3 hidden sm:block">
-        <div className="grid grid-cols-[6rem_5.5rem_7rem_5.5rem_3.5rem_1fr] gap-2 border-b border-border px-1 pb-1 font-mono text-micro uppercase tracking-wider text-subtle">
+        <div className="grid grid-cols-[6rem_5.5rem_11rem_5.5rem_3.5rem_1fr] gap-2 border-b border-border px-1 pb-1 font-mono text-micro uppercase tracking-wider text-subtle">
           <span>seat</span>
           <span>raw read</span>
-          <span>lean</span>
+          <span>{DIRECTIONAL_LEAN_LABEL}</span>
           <span>final voice</span>
           <span>conf</span>
           <span>status / why</span>
@@ -103,13 +109,13 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
               <button
                 type="button"
                 onClick={() => onJump(s.seat)}
-                className="grid min-h-11 w-full grid-cols-[6rem_5.5rem_7rem_5.5rem_3.5rem_1fr] items-center gap-2 border-b border-border px-1 text-left hover:bg-surface-2/60"
+                className="grid min-h-11 w-full grid-cols-[6rem_5.5rem_11rem_5.5rem_3.5rem_1fr] items-center gap-2 border-b border-border px-1 text-left hover:bg-surface-2/60"
                 aria-label={`${s.seat}, raw ${rawText(s)}, ${leanAnnouncement(lean)} Final ${s.final_lean}, ${statusText(s)}. Open its desk.`}
               >
                 <span className="truncate font-mono text-micro text-fg">
                   {s.seat} <span className="text-subtle">{s.callsign}</span>
                 </span>
-                <Cells s={s} lean={<SeatLeanMini lean={lean} decorative />} />
+                <Cells s={s} lean={<span className="flex min-w-0 items-center gap-2"><SeatLeanMini lean={lean} decorative /><LeanWord lean={lean} /></span>} />
               </button>
             </li>
             );
@@ -143,9 +149,10 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
                 <span>raw {rawText(s)}</span>
                 <span className="truncate">{statusText(s)}</span>
               </div>
-              <div className="mt-0.5 flex items-center gap-2 font-mono text-micro text-subtle">
-                <span>lean</span>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 font-mono text-micro text-subtle">
+                <span className="uppercase tracking-wider">{DIRECTIONAL_LEAN_LABEL}</span>
                 <SeatLeanMini lean={lean} decorative />
+                <LeanWord lean={lean} />
               </div>
             </button>
           </li>

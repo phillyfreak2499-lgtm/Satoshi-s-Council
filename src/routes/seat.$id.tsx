@@ -3,6 +3,9 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Page } from "@/components/desk/Page";
 import { BotCard } from "@/components/desk/BotCard";
 import { LeanChip } from "@/components/desk/bits";
+import { SeatLeanSummary } from "@/components/desk/SeatLeanMeter";
+import { seatFactFor } from "@/lib/desk/pro-floor";
+import { leanKey, seatDirectionalLean } from "@/lib/desk/seat-lean";
 import { useDesk } from "@/lib/desk/store";
 import { SEAT_BY_ID, TAB_SEATS } from "@/lib/desk/seats";
 import { SEAT_IDS, type SeatId } from "@/lib/desk/types";
@@ -54,6 +57,10 @@ function SeatPage() {
   const skills = live
     ? Object.values(learner.skills).filter((skill) => skill.owner === id)
     : initial.skills;
+  // The same read model the seat card uses, computed once for the summary line. Presentation only.
+  const lean = snap && vote
+    ? seatDirectionalLean(seatFactFor(id, vote, frame.chair?.rows.find((r) => r.seat === id), learner.knobs, snap.as_of), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of })
+    : null;
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
@@ -77,7 +84,14 @@ function SeatPage() {
         </div>
       ) : null}
       {snap && vote ? (
-        <BotCard seat={id} snap={snap} vote={vote} />
+        <>
+          {/* Compact lean summary at the top: the seat's own research read, beside what SATOSHI decided. Presentation only. */}
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-md border border-border bg-surface px-3 py-2">
+            {lean ? <SeatLeanSummary key={leanKey(lean)} lean={lean} meterId={`seat-lean-${id}`} /> : null}
+            <span className="font-mono text-micro text-muted">SATOSHI heard: <LeanChip lean={vote.lean} /></span>
+          </div>
+          <BotCard seat={id} snap={snap} vote={vote} />
+        </>
       ) : (
         <div className="rounded-md border border-border bg-surface p-3 font-mono text-micro text-muted">waiting for the desk's next frame…</div>
       )}

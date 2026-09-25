@@ -42,3 +42,13 @@
 .seat-lean--mini .seat-lean__track { height: 6px; }
 .seat-lean--mini .seat-lean__marker { width: 8px; height: 8px; box-shadow: 0 0 0 1px var(--bg, #0f1213); }
 .seat-lean--mini .seat-lean__value { font-size: var(--text-micro); }
+/* One-line summary for the top of a seat page. Wraps on a phone; nothing overflows. */
+.seat-lean--summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; min-width: 0;
+  font-size: var(--text-ui, 0.875rem); line-height: 1.5;
+}
+.seat-lean--summary .seat-lean__label { letter-spacing: .06em; text-transform: none; font-size: inherit; }
+.seat-lean--summary .seat-lean__value { font-weight: 600; }
+.seat-lean__summary-line { flex-basis: 100%; color: var(--text-2, #a8afb2); font-size: var(--text-micro); line-height: var(--text-micro--line-height); }
+.seat-lean__summary-link { color: var(--text-3, #8a9195); font-size: var(--text-micro); text-decoration: underline; text-underline-offset: 4px; }
+@media (min-width: 640px) { .seat-lean__summary-line { flex-basis: auto; } }

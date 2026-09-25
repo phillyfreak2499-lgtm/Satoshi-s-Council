@@ -99,7 +99,7 @@ export function BotCard({
           </div>
         </div>
         <Eyes seat={seat} snap={snap} vote={vote} />
-        <div className="border-t border-border px-3 py-2">
+        <div id={`seat-lean-${seat}`} className="border-t border-border px-3 py-2">
           <SeatLeanMeter key={leanKey(lean)} lean={lean} mode="pro" feedAgeS={vote.feed_age_s} showDisclaimer />
         </div>
         {seat === "WICK" || seat === "TAPE" ? <a href={`/training/${seat.toLowerCase()}`} className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with {seat} ↗</a> : null}
