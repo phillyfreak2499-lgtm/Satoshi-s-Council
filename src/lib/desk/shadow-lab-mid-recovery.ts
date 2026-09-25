@@ -477,9 +477,12 @@ export type MidRecoverySummary = {
     null_needed_win_rate_pct: number | null;
   };
   breakdown: {
+    /** Candidate-level: the projection yields at most one candidate per seat, so a seat row is one candidate per window. */
     by_seat: Array<BreakdownRow & { seat: string }>;
+    /** Candidate-level: one row per card per window. */
     by_card: Array<BreakdownRow & { card_id: string; seat: string }>;
-    by_family: Array<BreakdownRow & { family: string }>;
+    /** Window-level: a family contributes at most once per ticker + close_time window, however many of its candidates were present. */
+    by_family: Array<FamilyBreakdownRow & { family: string }>;
   };
   promotion: { auto_promotion: false; note: string };
 };
@@ -492,6 +495,19 @@ export type BreakdownRow = {
   settled_fills: number;
   wins: number;
   net_cents: number | null;
+};
+
+/**
+ * A family's row answers "how many distinct windows involved this family, and
+ * what happened to those windows": every field is counted once per window.
+ * `candidate_rows` is the only candidate-occurrence count, kept separate so two
+ * same-family candidates (STREAK and STRIKE are both book reads under the E1
+ * override) can never double-count a window, a simulated fill, a settled
+ * result or its net.
+ */
+export type FamilyBreakdownRow = BreakdownRow & {
+  /** Candidate rows seen for this family across all windows (may exceed candidate_windows). */
+  candidate_rows: number;
 };
 
 const ARMS = MID_RECOVERY_EXPERIMENT.arms;
@@ -535,9 +551,10 @@ export function summarizeMidRecovery(rows: readonly MidRecoveryRow[]): MidRecove
   };
   const seat = new Map<string, BreakdownRow>();
   const card = new Map<string, BreakdownRow & { seat: string }>();
-  const family = new Map<string, BreakdownRow>();
+  const family = new Map<string, FamilyBreakdownRow>();
   const bump = <T extends BreakdownRow>(m: Map<string, T>, key: string, make: () => T, f: (row: T) => void) => { const cur = m.get(key) ?? make(); f(cur); m.set(key, cur); };
   const blank = (): BreakdownRow => ({ candidate_windows: 0, survived_fold: 0, counted_as_support: 0, in_simulated_fills: 0, settled_fills: 0, wins: 0, net_cents: null });
+  const blankFamily = (): FamilyBreakdownRow => ({ ...blank(), candidate_rows: 0 });
 
   for (const list of windows.values()) {
     const recovered = list.filter((r) => r.arm === ARMS.recovered);
@@ -561,21 +578,28 @@ export function summarizeMidRecovery(rows: readonly MidRecoveryRow[]): MidRecove
     if (baseSide && recSide) { if (baseSide === recSide) flow.recovered_agrees_with_baseline += 1; else flow.recovered_disagrees_with_baseline += 1; }
     const cands = Array.isArray(ev.candidates) ? ev.candidates : [];
     const settledFill = fill && fill.official_winner != null && fill.net_cents != null ? fill : null;
+    // One window outcome, attributed once per candidate (seat, card) and once per family.
+    const attribute = (row: BreakdownRow, survived: boolean, support: boolean) => {
+      row.candidate_windows += 1;
+      if (survived) row.survived_fold += 1;
+      if (support) row.counted_as_support += 1;
+      if (fill && support) row.in_simulated_fills += 1;
+      if (settledFill && support) {
+        row.settled_fills += 1;
+        if (settledFill.official_winner === settledFill.side) row.wins += 1;
+        row.net_cents = Math.round(((row.net_cents ?? 0) + settledFill.net_cents!) * 10) / 10;
+      }
+    };
+    const familiesInWindow = new Map<string, { survived: boolean; support: boolean; rows: number }>();
     for (const c of cands) {
-      const apply = (row: BreakdownRow) => {
-        row.candidate_windows += 1;
-        if (c.survived_fold) row.survived_fold += 1;
-        if (c.counted_as_support) row.counted_as_support += 1;
-        if (fill && c.counted_as_support) row.in_simulated_fills += 1;
-        if (settledFill && c.counted_as_support) {
-          row.settled_fills += 1;
-          if (settledFill.official_winner === settledFill.side) row.wins += 1;
-          row.net_cents = Math.round(((row.net_cents ?? 0) + settledFill.net_cents!) * 10) / 10;
-        }
-      };
-      bump(seat, c.seat, blank, apply);
-      bump(card, c.card_id, () => ({ ...blank(), seat: c.seat }), apply);
-      bump(family, c.family, blank, apply);
+      bump(seat, c.seat, blank, (row) => attribute(row, !!c.survived_fold, !!c.counted_as_support));
+      bump(card, c.card_id, () => ({ ...blank(), seat: c.seat }), (row) => attribute(row, !!c.survived_fold, !!c.counted_as_support));
+      const f = familiesInWindow.get(c.family) ?? { survived: false, support: false, rows: 0 };
+      familiesInWindow.set(c.family, { survived: f.survived || !!c.survived_fold, support: f.support || !!c.counted_as_support, rows: f.rows + 1 });
+    }
+    // Family attribution is de-duplicated within the window: STREAK and STRIKE are one book read here, not two windows.
+    for (const [name, f] of familiesInWindow) {
+      bump(family, name, blankFamily, (row) => { attribute(row, f.survived, f.support); row.candidate_rows += f.rows; });
     }
   }
   const funnel = MID_RECOVERY_STAGES.map((stage, i) => ({ stage, windows: reached[i]!, conversion_pct: i === 0 ? null : pct(reached[i]!, reached[i - 1]!) }));

@@ -84,7 +84,10 @@ from any public page).
   confidence is not a probability: no Brier is reported for it);
 - NULL_FAV_80 comparison: overlap, side agreement, incremental net on the
   settled overlap, recovered-only and null-only windows;
-- seat / card / family breakdown.
+- seat / card / family breakdown. Seat and card rows are candidate-level; a
+  family row is window-level (a family counts at most once per ticker +
+  close_time window, with `candidate_rows` as the only occurrence count), so
+  two book reads in one window are one window for `book`, not two.
 
 No auto-promotion. Measure first; nothing is tuned on the evaluation sample.
 

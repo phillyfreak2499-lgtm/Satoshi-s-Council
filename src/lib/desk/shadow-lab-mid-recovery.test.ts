@@ -431,3 +431,90 @@ test("an arm with no settled fill reports nulls, not zeros; a T-3 sit is a windo
   assert.equal(s.funnel[1]!.windows, 0);
   assert.equal(summarizeMidRecovery([]).windows, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Family attribution is de-duplicated within a window (Codex P2 on #333).
+// ---------------------------------------------------------------------------
+
+/** Two same-family candidates: STREAK and STRIKE are both book reads under the E1 override. */
+const twoBook = [cand("STREAK", "STREAK.continue_young", "book", true), cand("STRIKE", "STRIKE.itm_time", "book", true)];
+const familyRow = (s: ReturnType<typeof summarizeMidRecovery>, f: string) => s.breakdown.by_family.find((r) => r.family === f)!;
+const netOf = (side: "UP" | "DOWN", ask: number, winner: "UP" | "DOWN") => (winner === side ? 100 - ask - feeCents(ask) : -ask - feeCents(ask));
+
+test("two same-family candidates in one window count the window once for the family, while seat and card rows keep both candidates", () => {
+  const s = summarizeMidRecovery([row(ARMS.recovered, 1, "no_fill", { payload: stagePayload(4, null, "UP", twoBook) })]);
+  const book = familyRow(s, "book");
+  assert.equal(book.candidate_windows, 1);
+  assert.equal(book.candidate_rows, 2, "the occurrence count is the only field that sees both candidates");
+  assert.equal(book.survived_fold, 1);
+  assert.equal(book.counted_as_support, 1);
+  assert.deepEqual(s.breakdown.by_seat.map((r) => [r.seat, r.candidate_windows]), [["STREAK", 1], ["STRIKE", 1]]);
+  assert.deepEqual(s.breakdown.by_card.map((r) => [r.card_id, r.seat, r.candidate_windows]), [["STREAK.continue_young", "STREAK", 1], ["STRIKE.itm_time", "STRIKE", 1]]);
+});
+
+test("two same-family candidates in one simulated booked window count one simulated fill for the family", () => {
+  const s = summarizeMidRecovery([fill(ARMS.recovered, 1, "UP", 85, null, stagePayload(9, null, "UP", twoBook))]);
+  const book = familyRow(s, "book");
+  assert.equal(book.in_simulated_fills, 1);
+  assert.equal(book.settled_fills, 0, "unsettled: nothing is invented");
+  assert.equal(book.net_cents, null);
+  assert.deepEqual(s.breakdown.by_seat.map((r) => r.in_simulated_fills), [1, 1]);
+});
+
+test("two same-family candidates in one settled win count one settled fill, one win and the net once for the family", () => {
+  const won = summarizeMidRecovery([fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", twoBook))]);
+  const book = familyRow(won, "book");
+  assert.deepEqual({ windows: book.candidate_windows, sim: book.in_simulated_fills, settled: book.settled_fills, wins: book.wins, net: book.net_cents }, { windows: 1, sim: 1, settled: 1, wins: 1, net: netOf("UP", 85, "UP") });
+  assert.equal(book.net_cents, won.quality.recovered.net_cents, "the family net equals the arm net when the family was in the only fill");
+  const lost = familyRow(summarizeMidRecovery([fill(ARMS.recovered, 1, "DOWN", 82, "UP", stagePayload(9, null, "DOWN", twoBook))]), "book");
+  assert.deepEqual({ settled: lost.settled_fills, wins: lost.wins, net: lost.net_cents }, { settled: 1, wins: 0, net: netOf("DOWN", 82, "UP") });
+});
+
+test("the same family in two different windows counts twice; different families in one window count once each", () => {
+  const two = summarizeMidRecovery([
+    fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", twoBook)),
+    fill(ARMS.recovered, 2, "UP", 86, "DOWN", stagePayload(9, null, "UP", twoBook)),
+  ]);
+  const book = familyRow(two, "book");
+  assert.deepEqual({ windows: book.candidate_windows, rows: book.candidate_rows, sim: book.in_simulated_fills, settled: book.settled_fills, wins: book.wins, net: book.net_cents },
+    { windows: 2, rows: 4, sim: 2, settled: 2, wins: 1, net: Math.round((netOf("UP", 85, "UP") + netOf("UP", 86, "DOWN")) * 10) / 10 });
+  const mixed = summarizeMidRecovery([fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", [...twoBook, cand("CHAIN", "CHAIN.oi_with_price", "derivs", true)]))]);
+  assert.deepEqual(mixed.breakdown.by_family.map((r) => [r.family, r.candidate_windows, r.candidate_rows, r.settled_fills, r.wins, r.net_cents]),
+    [["book", 1, 2, 1, 1, netOf("UP", 85, "UP")], ["derivs", 1, 1, 1, 1, netOf("UP", 85, "UP")]]);
+  assert.equal(mixed.breakdown.by_seat.length, 3);
+  assert.equal(mixed.breakdown.by_card.length, 3);
+});
+
+test("family flags are the window's: one supporting member is enough, and a family with no supporting member takes no fill credit", () => {
+  const halves = [cand("STREAK", "STREAK.continue_young", "book", true), { ...cand("STRIKE", "STRIKE.itm_time", "book", false), survived_fold: false }];
+  const book = familyRow(summarizeMidRecovery([fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", halves))]), "book");
+  assert.deepEqual({ survived: book.survived_fold, support: book.counted_as_support, sim: book.in_simulated_fills, settled: book.settled_fills }, { survived: 1, support: 1, sim: 1, settled: 1 });
+  const none = [{ ...cand("STREAK", "STREAK.continue_young", "book", false), survived_fold: false }, { ...cand("STRIKE", "STRIKE.itm_time", "book", false), survived_fold: true }];
+  const idle = familyRow(summarizeMidRecovery([fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", none))]), "book");
+  assert.deepEqual({ windows: idle.candidate_windows, survived: idle.survived_fold, support: idle.counted_as_support, sim: idle.in_simulated_fills, settled: idle.settled_fills, net: idle.net_cents }, { windows: 1, survived: 1, support: 0, sim: 0, settled: 0, net: null });
+});
+
+test("family de-duplication is reporting only: the evaluation, the arm results and the persisted receipts are unchanged by it", () => {
+  // The decision path still sees both same-family candidates and blocks on the E1 family rule exactly as before.
+  const rows = [seatRow("STREAK", "UP"), seatRow("STRIKE", "UP"), seatRow("DRIFT", "WAIT")];
+  const cands = [twoCandidates[0]!, { seat: "STRIKE" as SeatId, card_id: "STRIKE.itm_time", vote: vote("STRIKE", "STRIKE.itm_time", "UP") }];
+  const ev = run(snap(), depsFor(cands, rows));
+  assert.deepEqual(ev.candidates.map((c) => [c.seat, c.family]), [["STREAK", "book"], ["STRIKE", "book"]]);
+  assert.equal(ev.recovered.families_ok, false);
+  assert.equal(ev.recovered.eligible, false);
+  assert.equal(ev.simulated.booked, false);
+  // Arm results (BASELINE, RECOVERED_MID, NULL_FAV_80) and the funnel do not depend on how families are attributed.
+  const receipts: MidRecoveryRow[] = [
+    fill(ARMS.recovered, 1, "UP", 85, "UP", stagePayload(9, null, "UP", twoBook)), fill(ARMS.null_fav, 1, "UP", 85, "UP"), fill(ARMS.baseline, 1, "UP", 84, "UP"),
+    row(ARMS.recovered, 2, "no_fill", { payload: stagePayload(3, "DOWN", "UP", twoBook) }),
+  ];
+  const before = JSON.stringify(receipts);
+  const dup = summarizeMidRecovery(receipts);
+  const single = summarizeMidRecovery(receipts.map((r) => r.payload && Array.isArray((r.payload as { candidates?: unknown[] }).candidates)
+    ? { ...r, payload: { ...r.payload, candidates: [twoBook[0]] } } : r));
+  assert.equal(JSON.stringify(receipts), before, "receipts are read, never mutated");
+  for (const k of ["quality", "null_comparison", "funnel", "window_flow", "observed_windows", "windows"] as const) {
+    assert.deepEqual(dup[k], single[k], `${k} is independent of family attribution`);
+  }
+  assert.deepEqual(familyRow(dup, "book"), { ...familyRow(single, "book"), candidate_rows: 4 }, "only the occurrence count differs between one and two same-family candidates");
+});
