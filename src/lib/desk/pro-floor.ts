@@ -560,6 +560,14 @@ export type SeatFact = {
    */
   raw_lean: Lean | null;
   raw_conf: number | null;
+  /**
+   * True only when the vote itself carried BOTH raw fields: a `raw_lean` that is
+   * a Lean and a finite `raw_conf`. `raw_lean`/`raw_conf` above may be filled
+   * from the final vote for an ordinary speaker (the tape's convention); this
+   * flag says whether the frame genuinely retained the seat's own read, so a
+   * surface that must never reconstruct one can refuse to.
+   */
+  raw_retained: boolean;
   /** The vote the Chair actually heard. */
   final_lean: Lean;
   /**
@@ -630,6 +638,10 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
    */
   const rawLean = vote?.raw_lean ?? (forced ? null : finalLean);
   const rawConf = num(vote?.raw_conf) ?? (forced ? null : finalConf);
+  const rawRetained =
+    vote != null &&
+    (vote.raw_lean === "UP" || vote.raw_lean === "DOWN" || vote.raw_lean === "WAIT") &&
+    num(vote.raw_conf) != null;
   const health: FeedHealth = vote?.health ?? row?.health ?? "DOWN";
   const status = row?.status ?? null;
   const rawDirectional = rawLean === "UP" || rawLean === "DOWN";
@@ -683,6 +695,7 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     eyes: meta.eyes,
     raw_lean: rawLean,
     raw_conf: rawConf,
+    raw_retained: rawRetained,
     final_lean: finalLean,
     final_conf: finalConf,
     final_conf_transformed: forced,
@@ -699,6 +712,16 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     skill_used: vote?.skill_used ?? row?.skill_used ?? "",
     skill_status: String(vote?.skill_status ?? ""),
   };
+}
+
+/**
+ * One seat's facts from whatever the caller holds: the vote alone (a seat page
+ * before the Chair frame arrives), or the vote beside its Chair row. The same
+ * precedence as `seatFacts`, exposed so a per-seat surface never builds a
+ * second read model of its own.
+ */
+export function seatFactFor(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined, knobs: Record<string, SeatKnobs> | undefined, asOf: number): SeatFact {
+  return seatFact(seat, vote, row, knobs, asOf);
 }
 
 /** Every seat on the Council, in the repo's own family order. All 21. */

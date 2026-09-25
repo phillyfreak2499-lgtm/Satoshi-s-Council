@@ -1,5 +1,8 @@
-import { useState } from "react";
-import type { ChairResult, CallLogRow, Snapshot } from "@/lib/desk/types";
+import { useMemo, useState } from "react";
+import type { ChairResult, CallLogRow, SeatKnobs, Snapshot, Vote } from "@/lib/desk/types";
+import { seatFacts } from "@/lib/desk/pro-floor";
+import { DIRECTIONAL_LEAN_DISCLAIMER, leanKey, seatDirectionalLeans, type SeatLean } from "@/lib/desk/seat-lean";
+import { SeatLeanMeter } from "./SeatLeanMeter";
 import type { BooksWindow } from "@/lib/desk/books";
 import { bookState } from "@/lib/desk/book-floor";
 import { plainLine } from "@/lib/desk/chair-words";
@@ -98,6 +101,59 @@ function WhatHappened({ last }: { last: BooksWindow | null | undefined }) {
   );
 }
 
+/** Speakers first, then the strongest research reads, then the quiet seats. Order only; no second opinion. */
+function leanOrder(a: SeatLean, b: SeatLean): number {
+  const rank = (l: SeatLean) => (l.isAuthorizedSpeaker ? 0 : l.score != null && l.direction !== "NEUTRAL" ? 1 : l.score != null ? 2 : 3);
+  const d = rank(a) - rank(b);
+  if (d) return d;
+  return Math.abs((b.score ?? 50) - 50) - Math.abs((a.score ?? 50) - 50);
+}
+
+function SpecialistLeans({ leans }: { leans: SeatLean[] }) {
+  const sorted = [...leans].sort(leanOrder);
+  const directional = sorted.filter((l) => l.score != null && l.direction !== "NEUTRAL");
+  const quiet = sorted.filter((l) => !(l.score != null && l.direction !== "NEUTRAL"));
+  return (
+    <section aria-labelledby="guided-leans" className="rounded-md border border-border bg-surface p-5 sm:p-6">
+      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Follow a specialist</p>
+      <h2 id="guided-leans" className="mt-2 font-sans text-title font-medium text-fg">What each specialist sees</h2>
+      <p className="mt-2 max-w-[68ch] font-sans text-body leading-relaxed text-muted">
+        Every seat reads the window on its own. A seat can lean while the Council waits: its read is research, not a call, and it is not a paper position.
+      </p>
+      <p className="mt-2 max-w-[68ch] font-mono text-micro leading-relaxed text-subtle">{DIRECTIONAL_LEAN_DISCLAIMER}</p>
+      {directional.length ? (
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          {directional.map((l) => (
+            <li key={leanKey(l)} className="rounded-sm border border-border bg-surface-2 p-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <a href={`/seat/${l.seat}`} className="font-mono text-ui text-fg underline-offset-4 hover:underline">
+                  {l.seat} <span className="text-subtle">{l.callsign}</span>
+                </a>
+              </div>
+              <SeatLeanMeter lean={l} mode="guided" className="mt-2" />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 font-sans text-ui text-muted">No specialist has a directional read this frame. That is a real answer, not a gap.</p>
+      )}
+      {quiet.length ? (
+        <details className="mt-4 font-mono text-micro text-subtle">
+          <summary className="min-h-11 cursor-pointer py-2">{quiet.length} {quiet.length === 1 ? "seat is" : "seats are"} neutral or without a read</summary>
+          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+            {quiet.map((l) => (
+              <li key={leanKey(l)} className="rounded-sm border border-border bg-surface-2 p-3">
+                <a href={`/seat/${l.seat}`} className="font-mono text-ui text-fg underline-offset-4 hover:underline">{l.seat} <span className="text-subtle">{l.callsign}</span></a>
+                <SeatLeanMeter lean={l} mode="guided" className="mt-2" />
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 function Portrait({ name, src, className = "" }: { name: string; src: string; className?: string }) {
   return (
     <img src={src} alt={`${name}, a Council guide`} width={512} height={512} loading="lazy" decoding="async" className={cn("h-full w-full object-contain", className)} />
@@ -105,11 +161,19 @@ function Portrait({ name, src, className = "" }: { name: string; src: string; cl
 }
 
 export function GuidedFloor({
-  snap, chair, callLog, demo, onPro, last,
+  snap, chair, callLog, demo, onPro, last, votes = [], knobs,
 }: {
   snap: Snapshot; chair: ChairResult; callLog: CallLogRow[]; demo: boolean; onPro: () => void; last?: BooksWindow | null;
+  /** The raw seat reads, for the per-seat Directional Lean. Presentation only. */
+  votes?: Vote[];
+  knobs?: Record<string, SeatKnobs>;
 }) {
   const [step, setStep] = useState(0);
+  // The same read model the Pro Floor uses, filtered to the seats the Chair aggregates.
+  const leans = useMemo(
+    () => seatDirectionalLeans(seatFacts(chair, votes, knobs, snap.as_of).filter((f) => f.aggregated), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of }),
+    [chair, votes, knobs, snap.as_of, snap.ticker, snap.close_time],
+  );
   const read = guidedRead(chair, snap, callLog);
   const countdown = useCountdownText(snap.close_time, "mins");
   const priceFresh = snap.health.spot === "LIVE" && Number.isFinite(snap.spot);
@@ -175,6 +239,7 @@ export function GuidedFloor({
         </section>
       </div>
       <LastCallPanel last={last} />
+      <SpecialistLeans leans={leans} />
       <WhatWouldChange chair={chair} snap={snap} callLog={callLog} />
       <WhatHappened last={last} />
       <section aria-labelledby="guided-lesson" className="rounded-md border border-border bg-surface p-5 sm:p-6">

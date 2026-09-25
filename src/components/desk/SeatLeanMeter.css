@@ -1,0 +1,44 @@
+/* Directional Lean — a restrained horizontal scale. Nothing moves on its own;
+   the marker transitions only when the frame changes its value. */
+.seat-lean { min-width: 0; font-family: var(--font-mono); }
+.seat-lean__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .5rem;
+  font-size: var(--text-micro); line-height: var(--text-micro--line-height);
+}
+.seat-lean__label { letter-spacing: .12em; text-transform: uppercase; color: var(--text-3, #8a9195); }
+.seat-lean__value { font-variant-numeric: tabular-nums; color: var(--text, #e6e4de); }
+.seat-lean__value[data-direction="BULLISH"] { color: var(--up); }
+.seat-lean__value[data-direction="BEARISH"] { color: var(--down); }
+.seat-lean__value[data-direction="NEUTRAL"] { color: var(--wait); }
+.seat-lean__value[data-direction="NO_READ"] { color: var(--text-3, #8a9195); }
+.seat-lean__axis { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .5rem; margin-top: .375rem; }
+.seat-lean__end { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3, #8a9195); }
+.seat-lean__track {
+  position: relative; height: 10px; border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--down) 45%, transparent) 0%, color-mix(in srgb, var(--wait) 35%, transparent) 50%, color-mix(in srgb, var(--up) 45%, transparent) 100%);
+  border: 1px solid var(--hairline-strong, #ffffff22);
+}
+.seat-lean__center { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--text, #e6e4de); opacity: .55; transform: translateX(-.5px); }
+.seat-lean__marker {
+  position: absolute; top: 50%; left: var(--lean-position, 50%);
+  width: 12px; height: 12px; border-radius: 999px;
+  background: var(--text, #e6e4de); box-shadow: 0 0 0 2px var(--bg, #0f1213);
+  transform: translate(-50%, -50%);
+  transition: left 420ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .seat-lean__marker { transition: none; } }
+.seat-lean--empty .seat-lean__track { background: repeating-linear-gradient(90deg, transparent 0 6px, #ffffff14 6px 8px); }
+.seat-lean__meta {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin-top: .375rem;
+  font-size: var(--text-micro); line-height: var(--text-micro--line-height); color: var(--text-2, #a8afb2);
+}
+.seat-lean__status { color: var(--text, #e6e4de); }
+.seat-lean__status[data-authorized="true"] { color: var(--up); }
+.seat-lean__stale { color: var(--wait); font-weight: 600; }
+.seat-lean__reason { flex-basis: 100%; color: var(--text-2, #a8afb2); }
+.seat-lean__note { margin-top: .375rem; font-size: var(--text-micro); line-height: var(--text-micro--line-height); color: var(--text-3, #8a9195); }
+/* Compact form for a table cell or a folded row. */
+.seat-lean--mini { display: inline-grid; grid-template-columns: 2.25rem 4rem; align-items: center; gap: .375rem; vertical-align: middle; }
+.seat-lean--mini .seat-lean__track { height: 6px; }
+.seat-lean--mini .seat-lean__marker { width: 8px; height: 8px; box-shadow: 0 0 0 1px var(--bg, #0f1213); }
+.seat-lean--mini .seat-lean__value { font-size: var(--text-micro); }

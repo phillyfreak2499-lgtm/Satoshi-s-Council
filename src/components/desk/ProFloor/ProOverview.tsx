@@ -69,7 +69,7 @@ export function ProOverview({
       <ProScoreBar facts={facts} />
       <MarketModelCard facts={facts} full={full} />
       <EvidenceFamilies facts={facts} onJump={onJump} />
-      {full ? <CouncilEvidenceTape facts={facts} onJump={onJump} /> : null}
+      {full ? <CouncilEvidenceTape facts={facts} onJump={onJump} window={{ ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of }} /> : null}
       <div className="grid gap-3 lg:grid-cols-2">
         <DecisionGates facts={facts} onExpand={onGatesExpand} />
         <DataHealthCard facts={facts} />
