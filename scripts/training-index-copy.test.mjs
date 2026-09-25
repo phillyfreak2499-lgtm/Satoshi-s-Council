@@ -45,7 +45,11 @@ test("screen numbers are two digits from one formatter", () => {
 
 test("every enter link is one text node with a proper apostrophe", () => {
   const links = [...html.matchAll(/<a [^>]*href="\/training\/([a-z]+)"[^>]*>(.*?)<\/a>/g)];
-  assert.deepEqual(links.map((m) => m[1]), ["wick", "tape", "drift"], "only open stations are enterable");
+  // The open list is the data's, not a hard-coded one: WICK leads, then every other available coach in roster order.
+  const open = training.TRAINING_COACHES.filter((c) => c.available).map((c) => c.id);
+  assert.deepEqual(links.map((m) => m[1]), ["wick", ...open.filter((id) => id !== "wick")], "exactly the open stations are enterable, WICK first");
+  for (const closed of training.TRAINING_COACHES.filter((c) => !c.available)) assert.ok(!links.some((m) => m[1] === closed.id), `${closed.id} is not enterable`);
+  assert.ok(open.length >= 2, "more than WICK is open");
   for (const [, id, label] of links) {
     assert.equal(label, `Enter ${id.toUpperCase()}’s station ↗`);
     assert.doesNotMatch(label, /<!--/, "no comment separator inside the label");
@@ -67,5 +71,7 @@ test("stations for open coaches still resolve", () => {
   assert.equal(training.availableCoach("wick")?.name, "WICK");
   assert.equal(training.availableCoach("tape")?.name, "TAPE");
   assert.equal(training.availableCoach("drift")?.name, "DRIFT");
+  assert.equal(training.availableCoach("streak")?.name, "STREAK");
   assert.equal(training.availableCoach("odds"), undefined);
+  assert.equal(training.availableCoach("wire"), undefined);
 });
