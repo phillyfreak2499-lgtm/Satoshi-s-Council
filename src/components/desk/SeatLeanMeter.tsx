@@ -57,7 +57,7 @@ export function SeatLeanMeter({
         aria-valuemin={empty ? undefined : 0}
         aria-valuemax={empty ? undefined : 100}
         aria-valuenow={empty ? undefined : lean.score ?? undefined}
-        aria-valuetext={text}
+        aria-valuetext={empty ? undefined : text}
       >
         <span className="seat-lean__end" aria-hidden="true">Bearish</span>
         <div className="seat-lean__track" aria-hidden="true">

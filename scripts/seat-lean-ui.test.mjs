@@ -109,6 +109,8 @@ test("NO READ renders as an image with text and no marker; STALE is printed besi
   const down = seatDirectionalLean(fact({ voice: "unhealthy", suppression: "feed", health: "DOWN", raw_lean: "WAIT", raw_conf: 0 }), WINDOW);
   const html = renderToString(React.createElement(SeatLeanMeter, { lean: down, mode: "pro" }));
   assert.match(html, /role="img"/);
+  assert.doesNotMatch(html, /aria-value(now|min|max|text)=/, "an image carries no range attributes");
+  assert.match(html, /aria-labelledby="[^"]+" aria-describedby="[^"]+"/, "the image is named by the label and described by the sentence");
   assert.doesNotMatch(html, /seat-lean__marker/);
   assert.match(text(html), /NO READ/);
   assert.match(text(html), /Status: DOWN/);
