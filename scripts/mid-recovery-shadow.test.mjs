@@ -182,6 +182,32 @@ test("the actual Chair still folds a same-family pair to one eligible representa
   assert.equal(ev.recovered.eligible, false);
 });
 
+test("recovery score tape persists the Chair math and raw E1 observations without changing the decision", async (t) => {
+  const m = await modules(t);
+  const snap = snapshot();
+  const learner = shadowDrift(m);
+  const chair = m.runChair(m.runBots(snap, learner), snap, learner, m.DEFAULT_SETTINGS, "WAIT", []);
+  const input = inputFor(m, snap, learner, chair);
+  const before = JSON.stringify(input);
+  const ev = m.evaluateMidRecovery(input, realDeps(m));
+  const trace = ev.recovered.chair_trace;
+
+  assert.equal(trace.score, Number(trace.score));
+  assert.equal(trace.bar, Number(trace.bar));
+  assert.equal(trace.vs_bar, Math.abs(trace.score) * trace.aggressiveness);
+  assert.equal(trace.bar_breakdown.final, trace.bar);
+  assert.ok(Array.isArray(trace.gates) && trace.gates.some((g) => g.id === "bar"));
+  assert.ok(Array.isArray(trace.rows));
+  assert.equal(ev.recovered.lean, ev.recovered.state === "DIRECTIONAL" ? ev.recovered.side : "WAIT");
+
+  const drift = ev.recovery.evaluated_roster.find((r) => r.card_id === "DRIFT.aligned_3h");
+  assert.ok(drift, "the frozen E1 roster is fully represented");
+  assert.equal(drift.seat, "DRIFT");
+  assert.ok(drift.evaluated_lean === null || ["UP", "DOWN", "WAIT"].includes(drift.evaluated_lean));
+  assert.ok(ev.recovery.evaluated_roster.length >= 6);
+  assert.equal(JSON.stringify(input), before, "score-tape collection is read-only");
+});
+
 // ---------------------------------------------------------------------------
 // Part 2: the recorder.
 // ---------------------------------------------------------------------------
