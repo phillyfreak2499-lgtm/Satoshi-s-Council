@@ -40,7 +40,7 @@ import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import { armCalls, exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
 import { MID_RECOVERY_ENV_FLAG, MID_RECOVERY_EXPERIMENT, evaluateMidRecovery, summarizeMidRecovery, type MidRecoveryDeps, type MidRecoveryEvaluation, type MidRecoveryRow, type MidRecoverySummary } from "./shadow-lab-mid-recovery.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
-import type { Snapshot } from "./types";
+import type { Lean, Snapshot } from "./types";
 
 export const MID_RECOVERY_POLL_MS = 2_000;
 export const MID_RECOVERY_SETTLE_EVERY_MS = 60_000;
@@ -59,6 +59,8 @@ type Observer = {
   busy: boolean;
   /** The recovered arm's own confirmation latch. */
   watch: EntryWatch | null;
+  /** Shadow-only prior recovered Chair lean, scoped to one window. */
+  lastLean: { key: string; lean: Lean } | null;
   decided: Set<string>;
   /** Deepest funnel stage seen per window this session, for the T-3 sit record. */
   stages: Map<string, { stage: number; label: string; asOf: number }>;
@@ -75,7 +77,7 @@ type Observer = {
 };
 const globalRef = globalThis as typeof globalThis & { __midRecovery__?: Observer };
 const state = (): Observer => globalRef.__midRecovery__ ??= {
-  timer: null, busy: false, watch: null, decided: new Set(), stages: new Map(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null, lastRecord: null,
+  timer: null, busy: false, watch: null, lastLean: null, decided: new Set(), stages: new Map(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null, lastRecord: null,
 };
 
 const receipt = (arm: string, snap: Snapshot, kind: ShadowReceipt["kind"], side: "UP" | "DOWN" | null, ask: number | null, size: number | null, spread: number | null, feedsOk: boolean | null, note: string | null, decidedMs = snap.as_of): ShadowReceipt => ({
@@ -129,6 +131,7 @@ export async function midRecoveryTick(now?: number): Promise<void> {
     if (st.sessionStartedAt > 0 && windowOpen < st.sessionStartedAt) return;
     const windowKey = `${snap.ticker}|${snap.close_time}`;
     if (st.watch && st.watch.key !== windowKey) st.watch = null; // no latch leaks across windows
+    if (st.lastLean && st.lastLean.key !== windowKey) st.lastLean = null; // no Chair-state leaks across windows
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
     const decidedKinds = (arm: string) => (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
@@ -183,8 +186,13 @@ export async function midRecoveryTick(now?: number): Promise<void> {
     // The recovered arm's own risk history comes from its own simulated fills, never the production book.
     const recoveredCalls = await armCalls(sql, EXPERIMENT, ARMS.recovered, snap.as_of);
     if (!entryOpen()) { await Promise.all(writes); return; }
-    const ev = evaluateMidRecovery({ snap, chair, learner, settings, call_log, audit, ready: true, start, recovered_calls: recoveredCalls, watch: st.watch }, MID_RECOVERY_DEPS);
+    const ev = evaluateMidRecovery({
+      snap, chair, learner, settings, call_log, audit, ready: true, start,
+      recovered_calls: recoveredCalls, watch: st.watch,
+      last_recovered_lean: st.lastLean?.key === windowKey ? st.lastLean.lean : "WAIT",
+    }, MID_RECOVERY_DEPS);
     st.watch = ev.confirmation.watch;
+    st.lastLean = { key: windowKey, lean: ev.recovered.lean };
     const prev = st.stages.get(windowKey);
     if (!prev || ev.flags.funnel_stage_index > prev.stage) st.stages.set(windowKey, { stage: ev.flags.funnel_stage_index, label: ev.flags.funnel_stage, asOf: snap.as_of });
     if (st.stages.size > 200) st.stages = new Map([...st.stages.entries()].slice(-100));
