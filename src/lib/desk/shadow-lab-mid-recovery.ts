@@ -158,6 +158,20 @@ export type MidRecoveryEvaluation = {
     held_seats: SeatId[];
     /** Evaluated roster cards that were directional but lost the one-per-seat rule (correlated cards). */
     correlated_cards_dropped: string[];
+    /** MEASUREMENT ONLY: every frozen E1 card's pre-projection read plus the seat vote the producer actually selected. */
+    evaluated_roster: Array<{
+      card_id: string;
+      seat: SeatId;
+      evaluated_lean: Lean | null;
+      evaluated_conf: number | null;
+      evaluated_health: Vote["health"] | null;
+      selected_skill_used: string | null;
+      selected_lean: Lean | null;
+      selected_conf: number | null;
+      selected_forced_sit: boolean;
+      selected_raw_lean: Lean | null;
+      selected_raw_conf: number | null;
+    }>;
   };
   recovered: {
     lean: Lean;
@@ -176,6 +190,33 @@ export type MidRecoveryEvaluation = {
     blocker: string | null;
     checks: Array<{ id: string; pass: boolean | null }>;
     failed: string[];
+    /** MEASUREMENT ONLY: the exact numeric Chair tape already computed by runChair; never feeds a decision. */
+    chair_trace: {
+      score: number;
+      bar: number;
+      vs_bar: number;
+      dir_mass: number;
+      sit_total_mass: number;
+      aggressiveness: number;
+      time_factor: number;
+      diversity: number;
+      sit_mass: number;
+      conflict_frac: number;
+      hard_fail: boolean;
+      bar_breakdown: ChairResult["bar_breakdown"];
+      gates: Array<{ id: string; pass: boolean; hard: boolean; value: string }>;
+      rows: Array<{
+        seat: SeatId;
+        lean: Lean;
+        forced_sit: boolean;
+        status: string;
+        folded: boolean;
+        conf: number;
+        weight: number;
+        listen: number;
+        contribution: number;
+      }>;
+    };
   };
   confirmation: {
     frames: number;
@@ -313,6 +354,25 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
   const correlatedDropped = uniq(frame.evaluated
     .filter((v) => rosterRank.has(v.skill_used) && dir(v.lean) != null && !held.has(v.seat) && !chosen.has(v.skill_used))
     .map((v) => v.skill_used));
+  const evaluatedRoster: MidRecoveryEvaluation["recovery"]["evaluated_roster"] = E1_ROSTER_CARDS.map((cardId) => {
+    const card = input.learner.skills[cardId];
+    const evaluated = frame.evaluated.find((v) => v.skill_used === cardId) ?? null;
+    const seat = (card?.owner ?? evaluated?.seat) as SeatId;
+    const selected = frame.votes.find((v) => v.seat === seat) ?? null;
+    return {
+      card_id: cardId,
+      seat,
+      evaluated_lean: evaluated?.lean ?? null,
+      evaluated_conf: evaluated?.confidence ?? null,
+      evaluated_health: evaluated?.health ?? null,
+      selected_skill_used: selected?.skill_used ?? null,
+      selected_lean: selected?.lean ?? null,
+      selected_conf: selected?.confidence ?? null,
+      selected_forced_sit: selected?.forced_sit === true,
+      selected_raw_lean: selected?.raw_lean ?? null,
+      selected_raw_conf: selected?.raw_conf ?? null,
+    };
+  });
   const candidates: MidRecoveryCandidate[] = projection.candidates.map((c) => {
     const row = simulated.rows.find((r) => r.seat === c.seat) ?? null;
     return {
@@ -381,12 +441,31 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
     version: MID_RECOVERY_EXPERIMENT.id, recovery_version: MID_RECOVERY_EXPERIMENT.recovery_version,
     ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of, secs_left: secs, in_band: inBand,
     baseline, candidates,
-    recovery: { released: [...projection.simulated.released], missing: [...projection.simulated.missing], held_seats: heldSeats, correlated_cards_dropped: correlatedDropped },
+    recovery: { released: [...projection.simulated.released], missing: [...projection.simulated.missing], held_seats: heldSeats, correlated_cards_dropped: correlatedDropped, evaluated_roster: evaluatedRoster },
     recovered: {
       lean: simulated.lean, confidence: simulated.confidence, state: side ? "DIRECTIONAL" : "WAIT", side,
       quorum: { up: simulated.quorum.up, down: simulated.quorum.down, wait: simulated.quorum.wait },
       supporters, families, families_ok: familiesOk, opposition, mode: vector.mode, eligible, blocker,
       checks: vector.checks.map((k) => ({ id: k.id, pass: k.pass })), failed: [...vector.failed],
+      chair_trace: {
+        score: simulated.score,
+        bar: simulated.bar,
+        vs_bar: simulated.vs_bar,
+        dir_mass: simulated.dir_mass,
+        sit_total_mass: simulated.sit_total_mass,
+        aggressiveness: simulated.aggressiveness,
+        time_factor: simulated.time_factor,
+        diversity: simulated.diversity,
+        sit_mass: simulated.sit_mass,
+        conflict_frac: simulated.conflict_frac,
+        hard_fail: simulated.hard_fail,
+        bar_breakdown: { ...simulated.bar_breakdown },
+        gates: simulated.gates.map((g) => ({ id: g.id, pass: g.pass, hard: g.hard, value: g.value })),
+        rows: simulated.rows.map((r) => ({
+          seat: r.seat, lean: r.lean, forced_sit: r.forced_sit === true, status: r.status, folded: r.folded,
+          conf: r.conf, weight: r.weight, listen: r.listen, contribution: r.contribution,
+        })),
+      },
     },
     confirmation: { frames, seconds, need_frames: needFrames, need_seconds: needSecs, confirmed, watch },
     economics,
