@@ -63,7 +63,7 @@ const twoCandidates = [
   { seat: "CHAIN" as SeatId, card_id: "CHAIN.oi_with_price", vote: vote("CHAIN", "CHAIN.oi_with_price", "UP") },
 ];
 const input = (s: Snapshot, extra: Partial<MidRecoveryInput> = {}): MidRecoveryInput => ({
-  snap: s, chair: waitChair(), learner, settings: { mutes: [], bar_override: null, adaptive_bar: true, beast: false }, call_log: [], audit: null, ready: true, start: now - 86_400_000, recovered_calls: [], watch: null, ...extra,
+  snap: s, chair: waitChair(), learner, settings: { mutes: [], bar_override: null, adaptive_bar: true, beast: false }, call_log: [], audit: null, ready: true, start: now - 86_400_000, recovered_calls: [], watch: null, last_recovered_lean: "WAIT", ...extra,
 });
 const run = (s: Snapshot, deps = depsFor(twoCandidates, twoFamilies), extra: Partial<MidRecoveryInput> = {}) => evaluateMidRecovery(input(s, extra), deps);
 const check = (ev: MidRecoveryEvaluation, id: string) => ev.recovered.checks.find((k) => k.id === id)?.pass;
