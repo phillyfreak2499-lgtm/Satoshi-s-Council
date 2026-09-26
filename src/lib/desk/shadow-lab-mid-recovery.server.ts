@@ -62,6 +62,8 @@ type Observer = {
   decided: Set<string>;
   /** Deepest funnel stage seen per window this session, for the T-3 sit record. */
   stages: Map<string, { stage: number; label: string; asOf: number }>;
+  /** The tick where the simulated Chair sat closest to (or above) its bar, per window: the direction stage's best case. */
+  bestDirection: Map<string, { direction: MidRecoveryEvaluation["direction"]; secs_left: number; asOf: number }>;
   lastSettle: number;
   lastCapture: number | null;
   written: number;
@@ -75,7 +77,7 @@ type Observer = {
 };
 const globalRef = globalThis as typeof globalThis & { __midRecovery__?: Observer };
 const state = (): Observer => globalRef.__midRecovery__ ??= {
-  timer: null, busy: false, watch: null, decided: new Set(), stages: new Map(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null, lastRecord: null,
+  timer: null, busy: false, watch: null, decided: new Set(), stages: new Map(), bestDirection: new Map(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null, lastRecord: null,
 };
 
 const receipt = (arm: string, snap: Snapshot, kind: ShadowReceipt["kind"], side: "UP" | "DOWN" | null, ask: number | null, size: number | null, spread: number | null, feedsOk: boolean | null, note: string | null, decidedMs = snap.as_of): ShadowReceipt => ({
@@ -188,6 +190,10 @@ export async function midRecoveryTick(now?: number): Promise<void> {
     const prev = st.stages.get(windowKey);
     if (!prev || ev.flags.funnel_stage_index > prev.stage) st.stages.set(windowKey, { stage: ev.flags.funnel_stage_index, label: ev.flags.funnel_stage, asOf: snap.as_of });
     if (st.stages.size > 200) st.stages = new Map([...st.stages.entries()].slice(-100));
+    const prevBest = st.bestDirection.get(windowKey);
+    const better = !prevBest || (ev.direction.reason === "DIRECTIONAL" && prevBest.direction.reason !== "DIRECTIONAL") || (ev.direction.margin > prevBest.direction.margin && prevBest.direction.reason !== "DIRECTIONAL");
+    if (better) st.bestDirection.set(windowKey, { direction: ev.direction, secs_left: secs, asOf: snap.as_of });
+    if (st.bestDirection.size > 200) st.bestDirection = new Map([...st.bestDirection.entries()].slice(-100));
 
     // NULL_FAV_80 at its frozen checkpoints: the same benchmark rule and identity as the shadow lab.
     const cp = scheduledCheckpoint(secs);
@@ -206,7 +212,11 @@ export async function midRecoveryTick(now?: number): Promise<void> {
     // RECOVERED_MID: intention at the first eligible tick, a SIMULATED fill once confirmed and bookable, a T-3 sit otherwise.
     const side = ev.recovered.side;
     const q = side ? exactSideQuote(snap, side) : null;
-    const payload = record(ev, { hittability: "UNKNOWN at 2s poll", price_lane: "exact_measurement", qualification_ask_cents: q?.decisionAsk ?? null, exact_ask_cents: q?.exactAsk ?? null });
+    const best = st.bestDirection.get(windowKey);
+    const payload = record(ev, {
+      hittability: "UNKNOWN at 2s poll", price_lane: "exact_measurement", qualification_ask_cents: q?.decisionAsk ?? null, exact_ask_cents: q?.exactAsk ?? null,
+      direction_best: best ? best.direction : null, direction_best_secs_left: best ? best.secs_left : null, direction_best_as_of: best ? best.asOf : null,
+    });
     st.lastRecord = { key: windowKey, record: payload };
     if (ev.recovered.eligible && side && q) once(receipt(ARMS.recovered, snap, "intention", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "first eligible tick"), payload);
     if (ev.simulated.booked && side && q) {
