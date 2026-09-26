@@ -50,7 +50,7 @@ async function modules(t) {
   return Object.assign({}, ...loaded);
 }
 const realDeps = (m) => ({ runBotsWithEvaluatedCandidates: m.runBotsWithEvaluatedCandidates, projectInactiveE1Recovery: m.projectInactiveE1Recovery, runChair: m.runChair });
-const inputFor = (m, snap, learner, chair, extra = {}) => ({ snap, chair, learner, settings: m.DEFAULT_SETTINGS, call_log: [], audit: null, ready: true, start: now - 3_600_000, recovered_calls: [], watch: null, ...extra });
+const inputFor = (m, snap, learner, chair, extra = {}) => ({ snap, chair, learner, settings: m.DEFAULT_SETTINGS, call_log: [], audit: null, ready: true, start: now - 3_600_000, recovered_calls: [], watch: null, last_recovered_lean: "WAIT", ...extra });
 const shadowDrift = (m) => { const learner = m.freshLearner(); learner.skills["DRIFT.aligned_3h"].status = "SHADOW"; return learner; };
 const vote = (seat, skill, lean, status = "SHADOW", extra = {}) => ({
   seat, lean, raw_lean: lean, confidence: 70, raw_conf: 70, features: { source: skill }, reasoning: skill,
@@ -180,6 +180,22 @@ test("the actual Chair still folds a same-family pair to one eligible representa
   assert.ok(ev.candidates.some((c) => !c.survived_fold), "the correlated member is folded out");
   assert.ok(ev.recovered.supporters.length <= 1, "a folded pair cannot count as two supporters");
   assert.equal(ev.recovered.eligible, false);
+});
+
+test("recovered Chair persistence is shadow-only, stateful within a window, and isolated across windows", async (t) => {
+  const m = await modules(t);
+  const learner = shadowDrift(m);
+  const snap = snapshot();
+  const chair = m.runChair(m.runBots(snap, learner), snap, learner, m.DEFAULT_SETTINGS, "WAIT", []);
+  const base = inputFor(m, snap, learner, chair);
+
+  const cold = m.evaluateMidRecovery(base, realDeps(m));
+  const warm = m.evaluateMidRecovery({ ...base, last_recovered_lean: cold.recovered.lean }, realDeps(m));
+
+  assert.equal(cold.baseline.lean, chair.lean, "production baseline is unchanged");
+  assert.equal(JSON.stringify(m.runChair(m.runBots(snap, learner), snap, learner, m.DEFAULT_SETTINGS, "WAIT", [])), JSON.stringify(chair), "production Chair is unchanged");
+  assert.ok(["UP", "DOWN", "WAIT"].includes(warm.recovered.lean));
+  assert.equal(base.last_recovered_lean, "WAIT", "input state is not mutated");
 });
 
 test("recovery score tape persists the Chair math and raw E1 observations without changing the decision", async (t) => {
