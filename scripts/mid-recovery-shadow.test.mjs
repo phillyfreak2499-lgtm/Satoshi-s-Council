@@ -85,6 +85,11 @@ test("baseline unchanged: production runBots, learner and Chair are byte-identic
   assert.equal(ev.recovered.eligible, false, "the actual Chair and the deployed gates still block: one uncalibrated supporter under the floor");
   assert.equal(ev.economics.floor_ok, false);
   assert.equal(ev.flags.funnel_stage, "directional");
+  assert.equal(ev.direction.reason, "DIRECTIONAL", "the diagnosis reads the actual Chair result");
+  assert.equal(ev.direction.lean, "UP");
+  assert.equal(ev.direction.bar_gate_value, ev.recovered.checks.length ? ev.direction.bar_gate_value : "", "carried verbatim from the Chair's bar gate");
+  assert.match(ev.direction.bar_gate_value, /^\|[\d.]+\| × [\d.]+ = [\d.]+ vs bar [\d.]+ \(sit [\d.]+\)$/);
+  assert.equal(Math.round(ev.direction.vs_bar * 1000), Math.round(Math.abs(ev.direction.score) * ev.direction.aggressiveness * 1000));
   assert.equal(learner.skills["DRIFT.aligned_3h"].status, "SHADOW", "no promotion, no status change");
   assert.equal(Object.keys(learner.skills).some((id) => id.startsWith("E1_UNMUTE::")), false, "the twin lives only in the projection's clone");
 });
@@ -325,6 +330,10 @@ test("in band, the recorder writes only desk_shadow_receipts under its own exper
   assert.equal(rec.payload.simulated.booked, false);
   assert.equal(rec.payload.simulated.settlement, null);
   assert.equal("watch" in rec.payload.confirmation, false, "the in-memory latch is not persisted");
+  assert.equal(typeof rec.payload.direction.reason, "string", "the terminal direction diagnosis is persisted");
+  assert.ok(rec.payload.direction_best && typeof rec.payload.direction_best.reason === "string", "the best in-band tick's diagnosis rides the T-3 sit");
+  assert.ok(Number.isFinite(rec.payload.direction_best_secs_left));
+  assert.ok(rec.payload.direction_best.margin >= rec.payload.direction.margin || rec.payload.direction_best.reason === "DIRECTIONAL", "the best tick is never worse than the terminal tick");
   assert.ok(Object.keys(rec.payload).length >= 12);
   const base = rows.find((r) => r.arm === "BASELINE");
   assert.equal(base.payload.checkpoint, 180);

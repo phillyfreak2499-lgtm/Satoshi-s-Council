@@ -48,7 +48,7 @@ import { maxDrawdown, mean } from "./promotion-gates.ts";
 import type { EvidenceFamily } from "./seats.ts";
 import { hasPaperPosition, type EntryWatch, type SelectiveContext } from "./selective-entry.ts";
 import { E1_FAMILY_OVERRIDE, E1_ROSTER_CARDS, e1FamilyOf, nullFavIntention } from "./shadow-arms.ts";
-import type { CallLogRow, ChairResult, Learner, Lean, LedgerCite, SeatId, Settings, Snapshot, Vote } from "./types";
+import type { BarBreakdown, CallLogRow, ChairResult, Learner, Lean, LedgerCite, SeatId, Settings, Snapshot, Vote } from "./types";
 
 // ---------------------------------------------------------------------------
 // The frozen experiment.
@@ -128,6 +128,43 @@ export type MidRecoveryCandidate = {
   counted_as_support: boolean;
 };
 
+/** Machine-readable reasons the simulated Chair did not print UP or DOWN, in the order the Chair applies them. */
+export type DirectionReason =
+  | "NO_CANDIDATE"
+  | "HARD_GATE"
+  | "CONFLICT_TOP3"
+  | "BELOW_BAR"
+  | "KNN_ABSTAIN"
+  | "EDGE_GATE"
+  | "DIRECTIONAL";
+
+export type DirectionDiagnosis = {
+  lean: Lean;
+  /** The one reason that decided the stage; `tags` name every contributing component. */
+  reason: DirectionReason;
+  /** BAR_SIT_MASS, BAR_QUIET, BAR_WEEKEND, BAR_PHASE, BAR_LAW, BAR_CALIB_TAX, BAR_KNN, TIME_DAMPED, LOW_DIR_MASS, HARD:<gate id>. */
+  tags: string[];
+  score: number;
+  bar: number;
+  vs_bar: number;
+  /** vs_bar − bar: negative is how far below the bar the read sat. */
+  margin: number;
+  aggressiveness: number;
+  time_factor: number;
+  sit_mass: number;
+  dir_mass: number;
+  conflict_frac: number;
+  diversity: number;
+  bar_breakdown: BarBreakdown;
+  hard_fail: boolean;
+  failed_hard_gates: string[];
+  top3_conflict: boolean;
+  edge_gate_pass: boolean | null;
+  bar_gate_value: string;
+  /** Analytical: would |score| × aggressiveness have cleared the bar with one component removed? Diagnosis only, never a decision. */
+  would_pass_without: { sit_mass: boolean; quiet: boolean; time_damping: boolean };
+};
+
 export type MidRecoveryEvaluation = {
   version: typeof MID_RECOVERY_EXPERIMENT.id;
   recovery_version: typeof MID_RECOVERY_EXPERIMENT.recovery_version;
@@ -177,6 +214,8 @@ export type MidRecoveryEvaluation = {
     checks: Array<{ id: string; pass: boolean | null }>;
     failed: string[];
   };
+  /** Why the simulated Chair stopped short of a direction, from the Chair's own measurement fields. */
+  direction: DirectionDiagnosis;
   confirmation: {
     frames: number;
     seconds: number;
@@ -251,6 +290,63 @@ export function evaluationFields(e: MidRecoveryEvaluation): string[] {
   };
   walk(e, "");
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// The direction stage, explained from the Chair's own numbers.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the simulated Chair's measurement fields (score, bar and its breakdown,
+ * aggressiveness, time factor, masses, gates) and name the one reason it did
+ * not print a direction, plus every component that contributed. Pure: it
+ * reads a ChairResult and decides nothing. The "would pass without" flags are
+ * arithmetic on the recorded values — a diagnosis of where the read sat
+ * against the bar, never a proposal that a component be removed.
+ */
+export function directionDiagnosis(chair: ChairResult, candidatesN: number): DirectionDiagnosis {
+  const gates = Array.isArray(chair.gates) ? chair.gates : [];
+  const gate = (id: string) => gates.find((g) => g.id === id);
+  const failedHard = gates.filter((g) => g.hard && !g.pass && g.id !== "bar" && g.id !== "top3" && g.id !== "edge").map((g) => g.id);
+  const top3 = gate("top3");
+  const edge = gate("edge");
+  const bb = chair.bar_breakdown ?? { base: 0, quiet: 0, weekend: 0, phase: 0, law_miss1: 0, calib_tax: 0, sit_mass: 0, knn: 0, pre_clamp: 0, final: chair.bar };
+  const vs = Number.isFinite(chair.vs_bar) ? chair.vs_bar : Math.abs(chair.score) * chair.aggressiveness;
+  const margin = vs - chair.bar;
+  const side = chair.lean === "UP" || chair.lean === "DOWN";
+  const knnAbstain = typeof chair.knn_note === "string" && /abstain/.test(chair.knn_note);
+  let reason: DirectionReason;
+  if (side) reason = "DIRECTIONAL";
+  else if (candidatesN === 0 && chair.dir_mass === 0) reason = "NO_CANDIDATE";
+  else if (failedHard.length) reason = "HARD_GATE";
+  else if (top3 && top3.pass === false) reason = "CONFLICT_TOP3";
+  else if (vs < chair.bar) reason = "BELOW_BAR";
+  else if (knnAbstain) reason = "KNN_ABSTAIN";
+  else if (edge && edge.pass === false) reason = "EDGE_GATE";
+  else reason = "BELOW_BAR";
+  const tags: string[] = [];
+  for (const id of failedHard) tags.push(`HARD:${id}`);
+  if (bb.sit_mass >= 0.1) tags.push("BAR_SIT_MASS");
+  if (bb.quiet > 0) tags.push("BAR_QUIET");
+  if (bb.weekend > 0) tags.push("BAR_WEEKEND");
+  if (bb.phase > 0) tags.push("BAR_PHASE");
+  if (bb.law_miss1 > 0) tags.push("BAR_LAW");
+  if (bb.calib_tax > 0) tags.push("BAR_CALIB_TAX");
+  if (bb.knn > 0) tags.push("BAR_KNN");
+  if (chair.time_factor < 1) tags.push("TIME_DAMPED");
+  if (chair.dir_mass > 0 && chair.dir_mass < 0.05) tags.push("LOW_DIR_MASS");
+  const undamped = chair.time_factor > 0 ? (chair.aggressiveness / chair.time_factor) * 1.15 : chair.aggressiveness;
+  return {
+    lean: chair.lean, reason, tags, score: chair.score, bar: chair.bar, vs_bar: vs, margin, aggressiveness: chair.aggressiveness, time_factor: chair.time_factor,
+    sit_mass: chair.sit_mass, dir_mass: chair.dir_mass, conflict_frac: chair.conflict_frac, diversity: chair.diversity, bar_breakdown: { ...bb },
+    hard_fail: chair.hard_fail, failed_hard_gates: failedHard, top3_conflict: top3 ? top3.pass === false : false, edge_gate_pass: edge ? edge.pass : null,
+    bar_gate_value: gate("bar")?.value ?? "",
+    would_pass_without: {
+      sit_mass: vs >= chair.bar - bb.sit_mass,
+      quiet: vs >= chair.bar - bb.quiet,
+      time_damping: Math.abs(chair.score) * undamped >= chair.bar,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +484,7 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
       supporters, families, families_ok: familiesOk, opposition, mode: vector.mode, eligible, blocker,
       checks: vector.checks.map((k) => ({ id: k.id, pass: k.pass })), failed: [...vector.failed],
     },
+    direction: directionDiagnosis(simulated, candidates.length),
     confirmation: { frames, seconds, need_frames: needFrames, need_seconds: needSecs, confirmed, watch },
     economics,
     simulated: { qualified, booked, side: booked ? side : null, price_cents: booked ? ask : null, fee_cents: booked ? feeCents(ask) : null, settlement: null, win: null, net_cents: null, authority: MID_RECOVERY_EXPERIMENT.authority },
@@ -484,6 +581,14 @@ export type MidRecoverySummary = {
     /** Window-level: a family contributes at most once per ticker + close_time window, however many of its candidates were present. */
     by_family: Array<FamilyBreakdownRow & { family: string }>;
   };
+  /** Why the simulated Chair stopped short, counted per window: at the recorded terminal tick and at the best tick the recorder saw. */
+  direction_taxonomy: {
+    terminal: Array<{ reason: string; windows: number; pct: number | null }>;
+    best_tick: Array<{ reason: string; windows: number; pct: number | null }>;
+    tags_terminal: Array<{ tag: string; windows: number; pct: number | null }>;
+    /** Over windows with candidates that were not conflicted: how far the best tick sat from the bar. */
+    best_margin: { n: number; min: number | null; median: number | null; max: number | null };
+  };
   promotion: { auto_promotion: false; note: string };
 };
 
@@ -515,6 +620,7 @@ const windowKeyOf = (r: Pick<MidRecoveryRow, "ticker" | "close_ms">) => `${r.tic
 const pct = (num: number, den: number): number | null => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 const sum = (xs: readonly number[]): number | null => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) * 10) / 10 : null);
 const round1 = (x: number | null): number | null => (x == null ? null : Math.round(x * 10) / 10);
+const round3 = (x: number): number => Math.round(x * 1000) / 1000;
 
 export function armQuality(arm: string, rows: readonly MidRecoveryRow[]): ArmQuality {
   const fills = rows.filter((r) => r.arm === arm && r.kind === "fill" && r.side != null && r.ask_cents != null).sort((a, b) => a.close_ms - b.close_ms);
@@ -604,6 +710,31 @@ export function summarizeMidRecovery(rows: readonly MidRecoveryRow[]): MidRecove
   }
   const funnel = MID_RECOVERY_STAGES.map((stage, i) => ({ stage, windows: reached[i]!, conversion_pct: i === 0 ? null : pct(reached[i]!, reached[i - 1]!) }));
 
+  // Direction taxonomy from the recorded diagnoses (terminal record and best tick).
+  const terminalReasons = new Map<string, number>(), bestReasons = new Map<string, number>(), terminalTags = new Map<string, number>();
+  const margins: number[] = [];
+  let diagnosed = 0;
+  for (const list of windows.values()) {
+    const recovered = list.filter((r) => r.arm === ARMS.recovered);
+    if (!recovered.length) continue;
+    const last = [...recovered].sort((a, b) => b.decided_ms - a.decided_ms)[0]!;
+    const ev = (last.payload ?? {}) as Partial<MidRecoveryEvaluation> & { direction_best?: Partial<DirectionDiagnosis> | null };
+    const term = ev.direction;
+    if (!term || typeof term.reason !== "string") continue;
+    diagnosed += 1;
+    terminalReasons.set(term.reason, (terminalReasons.get(term.reason) ?? 0) + 1);
+    for (const t of Array.isArray(term.tags) ? term.tags : []) terminalTags.set(t, (terminalTags.get(t) ?? 0) + 1);
+    const best = ev.direction_best && typeof ev.direction_best.reason === "string" ? ev.direction_best : term;
+    bestReasons.set(best.reason!, (bestReasons.get(best.reason!) ?? 0) + 1);
+    if (best.reason !== "NO_CANDIDATE" && best.reason !== "CONFLICT_TOP3" && typeof best.margin === "number" && Number.isFinite(best.margin)) margins.push(best.margin);
+  }
+  const rank = (m: Map<string, number>, key: "reason" | "tag") => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ [key]: k, windows: n, pct: pct(n, diagnosed) })) as Array<{ reason: string; windows: number; pct: number | null }> & Array<{ tag: string; windows: number; pct: number | null }>;
+  const sortedMargins = [...margins].sort((a, b) => a - b);
+  const directionTaxonomy: MidRecoverySummary["direction_taxonomy"] = {
+    terminal: rank(terminalReasons, "reason"), best_tick: rank(bestReasons, "reason"), tags_terminal: rank(terminalTags, "tag"),
+    best_margin: { n: margins.length, min: sortedMargins.length ? round3(sortedMargins[0]!) : null, median: sortedMargins.length ? round3(sortedMargins[Math.floor(sortedMargins.length / 2)]!) : null, max: sortedMargins.length ? round3(sortedMargins[sortedMargins.length - 1]!) : null },
+  };
+
   // NULL comparison on the same identity.
   let overlap = 0, agree = 0, settledOverlap = 0, recoveredOnly = 0, nullOnly = 0;
   const recOverlapNets: number[] = [], nullOverlapNets: number[] = [], recOnlyNets: number[] = [];
@@ -635,6 +766,7 @@ export function summarizeMidRecovery(rows: readonly MidRecoveryRow[]): MidRecove
       by_card: [...card.entries()].map(([id, row]) => ({ card_id: id, ...row })).sort((a, b) => a.card_id.localeCompare(b.card_id)),
       by_family: [...family.entries()].map(([f, row]) => ({ family: f, ...row })).sort((a, b) => a.family.localeCompare(b.family)),
     },
+    direction_taxonomy: directionTaxonomy,
     promotion: { auto_promotion: false, note: "Measurement only. Nothing here promotes, books, or changes a threshold; the owner reads the counts." },
   };
 }

@@ -518,3 +518,73 @@ test("family de-duplication is reporting only: the evaluation, the arm results a
   }
   assert.deepEqual(familyRow(dup, "book"), { ...familyRow(single, "book"), candidate_rows: 4 }, "only the occurrence count differs between one and two same-family candidates");
 });
+
+// ---------------------------------------------------------------------------
+// Direction-stage diagnosis: why the simulated Chair stopped short of UP/DOWN.
+// ---------------------------------------------------------------------------
+
+import { directionDiagnosis } from "./shadow-lab-mid-recovery.ts";
+
+const chairMeasured = (over: Partial<ChairResult> = {}): ChairResult => ({
+  lean: "WAIT", confidence: 76, score: 0.535, bar: 0.66, vs_bar: 0.615, dir_mass: 0.008, sit_total_mass: 1, aggressiveness: 1.15, time_factor: 1.15, diversity: 1, sit_mass: 0.99, conflict_frac: 0,
+  bar_breakdown: { base: 0.3, quiet: 0.08, weekend: 0.04, phase: 0.04, law_miss1: 0, calib_tax: 0, sit_mass: 0.198, knn: 0, pre_clamp: 0.658, final: 0.66 },
+  hard_fail: false, knn_note: "", quorum: { up: 1, down: 0, wait: 14 }, rows: [], calc: "",
+  gates: [
+    { id: "warden", label: "", pass: true, hard: true, value: "" }, { id: "top3", label: "", pass: true, hard: true, value: "" },
+    { id: "bar", label: "", pass: false, hard: true, value: "|0.535| × 1.15 = 0.615 vs bar 0.66 (sit 0.99)" }, { id: "edge", label: "", pass: true, hard: true, value: "" },
+  ],
+  ...over,
+} as unknown as ChairResult);
+
+test("the direction diagnosis names the one deciding reason in the Chair's order and tags every contributing bar component", () => {
+  const below = directionDiagnosis(chairMeasured(), 1);
+  assert.equal(below.reason, "BELOW_BAR");
+  assert.deepEqual(below.tags, ["BAR_SIT_MASS", "BAR_QUIET", "BAR_WEEKEND", "BAR_PHASE", "LOW_DIR_MASS"]);
+  assert.equal(Math.round(below.margin * 1000), -45);
+  assert.deepEqual(below.would_pass_without, { sit_mass: true, quiet: true, time_damping: false });
+  assert.equal(below.bar_gate_value, "|0.535| × 1.15 = 0.615 vs bar 0.66 (sit 0.99)");
+  const damped = directionDiagnosis(chairMeasured({ aggressiveness: 0.72, time_factor: 0.72, vs_bar: 0.385 }), 1);
+  assert.ok(damped.tags.includes("TIME_DAMPED"));
+  assert.equal(damped.would_pass_without.time_damping, false, "0.535 × 1.15 is still under 0.66");
+  assert.equal(directionDiagnosis(chairMeasured({ aggressiveness: 0.72, time_factor: 0.72, vs_bar: 0.385, bar: 0.6, bar_breakdown: { ...chairMeasured().bar_breakdown, weekend: 0, final: 0.6 } }), 1).would_pass_without.time_damping, true);
+  assert.equal(directionDiagnosis(chairMeasured({ dir_mass: 0, score: 0, vs_bar: 0 }), 0).reason, "NO_CANDIDATE");
+  assert.equal(directionDiagnosis(chairMeasured({ dir_mass: 0.3, score: 0, vs_bar: 0 }), 0).reason, "BELOW_BAR", "a production seat can carry mass without a recovered candidate");
+  const hard = directionDiagnosis(chairMeasured({ hard_fail: true, gates: [{ id: "chalk", label: "", pass: false, hard: true, value: "" }, { id: "top3", label: "", pass: true, hard: true, value: "" }, { id: "bar", label: "", pass: false, hard: true, value: "" }] }), 1);
+  assert.equal(hard.reason, "HARD_GATE");
+  assert.deepEqual(hard.failed_hard_gates, ["chalk"]);
+  assert.ok(hard.tags.includes("HARD:chalk"));
+  const conflict = directionDiagnosis(chairMeasured({ gates: [{ id: "top3", label: "", pass: false, hard: true, value: "" }, { id: "bar", label: "", pass: false, hard: true, value: "" }] }), 2);
+  assert.equal(conflict.reason, "CONFLICT_TOP3");
+  assert.equal(conflict.top3_conflict, true);
+  const edge = directionDiagnosis(chairMeasured({ vs_bar: 0.7, gates: [{ id: "top3", label: "", pass: true, hard: true, value: "" }, { id: "bar", label: "", pass: true, hard: true, value: "" }, { id: "edge", label: "", pass: false, hard: true, value: "" }] }), 1);
+  assert.equal(edge.reason, "EDGE_GATE");
+  assert.equal(edge.edge_gate_pass, false);
+  assert.equal(directionDiagnosis(chairMeasured({ vs_bar: 0.7, knn_note: "cousins · abstain (cousins 70% against)" }), 1).reason, "KNN_ABSTAIN");
+  const up = directionDiagnosis(chairMeasured({ lean: "UP", vs_bar: 0.7 }), 1);
+  assert.equal(up.reason, "DIRECTIONAL");
+  assert.equal(up.lean, "UP");
+  const input = chairMeasured();
+  const before = JSON.stringify(input);
+  directionDiagnosis(input, 1);
+  assert.equal(JSON.stringify(input), before, "reads the Chair, never writes it");
+});
+
+test("the evaluation carries the diagnosis and the summary tallies terminal and best-tick reasons with margins", () => {
+  const ev = run(snap(), depsFor(twoCandidates, twoFamilies, { bar_breakdown: chairMeasured().bar_breakdown, vs_bar: 0.9, aggressiveness: 1.15, time_factor: 1.15, dir_mass: 0.2, sit_mass: 0.8, conflict_frac: 0, diversity: 1.06, knn_note: "" }));
+  assert.equal(ev.direction.reason, "DIRECTIONAL");
+  assert.ok(evaluationFields(ev).includes("direction.reason"));
+  const dx = (reason: string, margin: number, tags: string[] = []) => ({ reason, margin, tags });
+  const rows: MidRecoveryRow[] = [
+    row(ARMS.recovered, 1, "no_fill", { payload: { ...stagePayload(1, null, null, twoBook), direction: dx("BELOW_BAR", -0.05, ["BAR_SIT_MASS", "BAR_QUIET"]), direction_best: dx("BELOW_BAR", -0.006, ["BAR_SIT_MASS"]) } }),
+    row(ARMS.recovered, 2, "no_fill", { payload: { ...stagePayload(0, null, null), direction: dx("NO_CANDIDATE", 0), direction_best: null } }),
+    row(ARMS.recovered, 3, "no_fill", { payload: { ...stagePayload(3, null, "UP", twoBook), direction: dx("BELOW_BAR", -0.2, ["BAR_SIT_MASS", "TIME_DAMPED"]), direction_best: dx("DIRECTIONAL", 0.02, ["BAR_SIT_MASS"]) } }),
+    row(ARMS.recovered, 4, "no_fill", { payload: { ...stagePayload(1, null, null, twoBook), direction: dx("CONFLICT_TOP3", -0.3, ["BAR_SIT_MASS"]) } }),
+    row(ARMS.recovered, 5, "no_fill", { payload: stagePayload(1, null, null, twoBook) }),
+  ];
+  const s = summarizeMidRecovery(rows);
+  assert.deepEqual(s.direction_taxonomy.terminal, [{ reason: "BELOW_BAR", windows: 2, pct: 50 }, { reason: "NO_CANDIDATE", windows: 1, pct: 25 }, { reason: "CONFLICT_TOP3", windows: 1, pct: 25 }]);
+  assert.deepEqual(s.direction_taxonomy.best_tick, [{ reason: "BELOW_BAR", windows: 1, pct: 25 }, { reason: "NO_CANDIDATE", windows: 1, pct: 25 }, { reason: "DIRECTIONAL", windows: 1, pct: 25 }, { reason: "CONFLICT_TOP3", windows: 1, pct: 25 }]);
+  assert.deepEqual(s.direction_taxonomy.tags_terminal[0], { tag: "BAR_SIT_MASS", windows: 3, pct: 75 });
+  assert.deepEqual(s.direction_taxonomy.best_margin, { n: 2, min: -0.006, median: 0.02, max: 0.02 }, "no-candidate and conflicted windows carry no margin; a window without a diagnosis is not counted");
+  assert.equal(summarizeMidRecovery([]).direction_taxonomy.best_margin.n, 0);
+});
