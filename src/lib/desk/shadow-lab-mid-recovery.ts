@@ -105,6 +105,8 @@ export type MidRecoveryInput = {
   recovered_calls: readonly CallLogRow[];
   /** The recovered arm's own confirmation latch from the previous tick. */
   watch: EntryWatch | null;
+  /** Shadow-only prior Chair lean for this same recovered arm/window. */
+  last_recovered_lean: Lean;
 };
 
 export type MidRecoveryCandidate = {
@@ -330,7 +332,7 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
     ...input.settings, poll_ms: 2_000, source: "live", show_faded: false, show_shadow: false, tz: "America/Chicago",
     mutes: input.settings.mutes ?? [], bar_override: input.settings.bar_override ?? null, adaptive_bar: input.settings.adaptive_bar ?? true, beast: input.settings.beast ?? false,
   } as Settings;
-  const simulated = deps.runChair(projection.simulated.votes, snap, projection.simulated.learner, fullSettings, "WAIT", []);
+  const simulated = deps.runChair(projection.simulated.votes, snap, projection.simulated.learner, fullSettings, input.last_recovered_lean, []);
   const side = dir(simulated.lean);
   const ctx: SelectiveContext = { calls: [...input.recovered_calls], ready: input.ready, start: input.start, watch: input.watch };
   const vector: GateVector = gateVector(snap, simulated, ctx, DEPLOYED_POLICY);
