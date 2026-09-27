@@ -13,6 +13,7 @@ import { HomeStill } from "./HomeStill";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { CanonicalRecord } from "./CanonicalRecord";
 import { AlertsPanel } from "./AlertsPanel";
+import { WaitResearchNote } from "./WaitResearchNote";
 import { applyDisplayPrefs } from "./prefs";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import type { Books, BooksWindow } from "@/lib/desk/books";
@@ -69,6 +70,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
             <p className="company-muted">Waiting for the next window. The feed reconnects on its own.</p>
           )}
         </section>
+        {!demo && chair?.lean === "WAIT" ? <div className="mt-4"><WaitResearchNote /></div> : null}
         <section id="call-alerts" className="mt-4 scroll-mt-24" aria-label="Paper call notifications">
           <p className="mb-2 font-sans text-ui text-muted">You can leave the Floor. Turn on a browser alert for SATOSHI’s next booked UP or DOWN paper call; quiet WAIT windows send nothing.</p>
           <AlertsPanel />
