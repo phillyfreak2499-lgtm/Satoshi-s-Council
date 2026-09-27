@@ -301,10 +301,14 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
   throw new Error("Lab registry snapshot is warming");
 }
 
-/** Refresh the two recovery counts from their receipts independently of the
- * expensive whole-Lab scan. This is a read-only query on the Lab request path;
- * the other cached rows keep their original scan timestamp. */
-export async function recoveryRegistrySnapshot(snapshot: PublicLabRegistrySnapshot): Promise<PublicLabRegistrySnapshot> {
+export type RecoveryCounts = {
+  at: string;
+  locks: { windows: number; last_at: string | null };
+  original: { windows: number; last_at: string | null };
+};
+
+/** Small independent read: it succeeds even while the whole-Lab cache warms. */
+export async function recoveryRegistryCounts(): Promise<RecoveryCounts> {
   const db = await getSql();
   const stats = await db<StatRow>`
     select case experiment
@@ -316,12 +320,21 @@ export async function recoveryRegistrySnapshot(snapshot: PublicLabRegistrySnapsh
     where experiment in ('MID_RECOVERY_LOCKS_V1_INACTIVE', 'MID_RECOVERY_V1_INACTIVE')
     group by experiment`;
   const byId = new Map(stats.map((row) => [row.id, row]));
+  const value = (id: string) => ({ windows: Math.max(0, Number(byId.get(id)?.n ?? 0) || 0), last_at: msExpr(byId.get(id)?.last_ms) });
+  return { at: new Date().toISOString(), locks: value("recovery-locks"), original: value("mid-recovery-v1") };
+}
+
+/** Overlay the independent recovery receipts when the broad cache is ready. */
+export function recoveryRegistrySnapshot(snapshot: PublicLabRegistrySnapshot, counts: RecoveryCounts): PublicLabRegistrySnapshot {
+  const byId = new Map([
+    ["recovery-locks", counts.locks], ["mid-recovery-v1", counts.original],
+  ]);
   const now = Date.now();
   const rows = snapshot.rows.map((row) => {
     if (row.id !== "recovery-locks" && row.id !== "mid-recovery-v1") return row;
     const stat = byId.get(row.id);
-    const sampleN = Math.max(0, Number(stat?.n ?? 0) || 0);
-    const lastEvidenceAt = msExpr(stat?.last_ms);
+    const sampleN = stat?.windows ?? 0;
+    const lastEvidenceAt = stat?.last_at ?? null;
     return { ...row, sample_n: sampleN, last_evidence_at: lastEvidenceAt, health: labStudyHealth(row, sampleN, lastEvidenceAt, now) };
   });
   const tally = { ...snapshot.tally };

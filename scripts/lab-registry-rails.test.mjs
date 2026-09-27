@@ -90,10 +90,13 @@ test("registry server is aggregate read-only and has no actuator path", () => {
 test("public Lab exposes the registry but production decision modules never import it", () => {
   const pub = read("src/lib/desk/lab-public.ts");
   const room = read("src/components/desk/LabRoom.tsx");
-  assert.match(pub, /labRegistrySnapshot\(\)\.then\(recoveryRegistrySnapshot\)\.catch\(\(\) => null\)/);
+  assert.match(pub, /recoveryRegistryCounts\(\)\.catch\(\(\) => null\)/);
+  assert.match(pub, /labRegistrySnapshot\(\)\.then\(\(base\) => recovery \? recoveryRegistrySnapshot\(base, recovery\) : base\)\.catch\(\(\) => null\)/);
   const server = read("src/lib/desk/lab-registry.server.ts");
-  assert.match(server, /export async function recoveryRegistrySnapshot/);
+  assert.match(server, /export async function recoveryRegistryCounts/);
+  assert.match(server, /export function recoveryRegistrySnapshot/);
   assert.match(server, /where experiment in \('MID_RECOVERY_LOCKS_V1_INACTIVE', 'MID_RECOVERY_V1_INACTIVE'\)/);
+  assert.match(room, /data\.recovery \?/);
   assert.match(pub, /registry: PublicLabRegistrySnapshot \| null/);
   assert.match(room, /Retired studies/);
   assert.match(room, /Active research/);
