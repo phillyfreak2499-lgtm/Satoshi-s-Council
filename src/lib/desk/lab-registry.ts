@@ -5,14 +5,19 @@
  * tune anything. The matching server module supplies aggregate counts/freshness.
  */
 export type LabStudyType = "decider" | "measurement" | "manual" | "separate";
-export type LabStudyHealth = "collecting" | "stale" | "manual" | "event-driven" | "no-sample";
+export type LabStudyLifecycle = "active" | "infrastructure" | "retired";
+export type LabStudyHealth = "collecting" | "stale" | "manual" | "event-driven" | "no-sample" | "retired";
 
 export type LabStudySpec = {
   id: string;
   label: string;
   type: LabStudyType;
   authority: "none";
+  lifecycle: LabStudyLifecycle;
   purpose: string;
+  /** Short durable conclusion for completed/retired questions. */
+  finding?: string;
+  retired_on?: string;
   cadence: string;
   cadence_kind: "window" | "minute" | "event" | "manual" | "hourly";
   stale_after_ms: number | null;
@@ -24,10 +29,37 @@ const MINUTE = 60_000;
 
 export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
   {
+    id: "recovery-locks",
+    label: "MID recovery locks V1",
+    type: "decider",
+    authority: "none",
+    lifecycle: "active",
+    purpose: "Paired shadow test of Chair bar pressure, recovered-E1 support eligibility, and their diagnostic combination.",
+    cadence: "every eligible 15m window while the env-gated experiment is active",
+    cadence_kind: "window",
+    stale_after_ms: 35 * MINUTE,
+    missing_is_error: true,
+    visible_at: "research checkpoint report",
+  },
+  {
+    id: "disagreement-edge",
+    label: "DISAGREEMENT_EDGE_V1",
+    type: "measurement",
+    authority: "none",
+    lifecycle: "active",
+    purpose: "Ask whether a specialist adds information specifically when its fixed-horizon read disagrees with the same-time Kalshi favorite.",
+    cadence: "recomputed from retained graded replays",
+    cadence_kind: "manual",
+    stale_after_ms: null,
+    missing_is_error: false,
+    visible_at: "Lab",
+  },
+  {
     id: "chair-v2",
     label: "Chair v2",
     type: "decider",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Same-time shadow probability sample and shared research spine.",
     cadence: "once per 15m window",
     cadence_kind: "window",
@@ -40,6 +72,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Chair v3 prospective",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "No demonstrated probability advantage over the same-time market at the current prospective sample.",
     purpose: "Market-prior calibration with a bounded Council correction.",
     cadence: "once per 15m window",
     cadence_kind: "window",
@@ -52,6 +87,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "TAKER v1",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "The taker-flow thesis failed as an incremental signal: the eligible graded sample was materially below profitable accuracy and negative on average EV.",
     purpose: "Frozen test of whether taker flow adds information beyond Council and market.",
     cadence: "once per 15m window",
     cadence_kind: "window",
@@ -64,6 +102,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Forced direction V4",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "Useful as a null benchmark, but not a production candidate; its probability performance remained market-level.",
     purpose: "Exactly one UP or DOWN at T−7:30, with WAIT and entry gates forbidden.",
     cadence: "once per 15m window",
     cadence_kind: "window",
@@ -76,6 +117,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "OpenAI shadow analyst V1",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "The market-aware AI forecast did not beat the same-time market on Brier score at the larger sample; per-window API spend is no longer justified.",
     purpose: "Prospective market-aware AI probability forecast at T−7:30, scored only in paper research.",
     cadence: "once per 15m window when API is configured",
     cadence_kind: "window",
@@ -88,6 +132,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "OpenAI blind analyst V1",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "The market-blind AI forecast was materially worse than the market benchmark.",
     purpose: "Market-blind Terra forecast at T−7:30 to test signal independent of Kalshi, Council and Chair.",
     cadence: "once per 15m window when API is configured",
     cadence_kind: "window",
@@ -100,6 +147,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "OpenAI Luna benchmark V1",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "The bounded model-tier benchmark completed without demonstrating an advantage over Terra or the market.",
     purpose: "Low-cost market-aware benchmark using the same frozen packet as Terra.",
     cadence: "once per 15m window when API is configured",
     cadence_kind: "window",
@@ -112,6 +162,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Astra research director",
     type: "measurement",
     authority: "none",
+    lifecycle: "active",
     purpose: "Deep periodic audit of Floor and Lab evidence with report-only promotion/demotion nominations.",
     cadence: "every 384 research-valid graded windows",
     cadence_kind: "event",
@@ -124,6 +175,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Policy Lab / exit arena",
     type: "decider",
     authority: "none",
+    lifecycle: "active",
     purpose: "Compare frozen exit rules on the same paper fills.",
     cadence: "paper-fill driven",
     cadence_kind: "event",
@@ -136,6 +188,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Seat timing calibration",
     type: "manual",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Compare raw versus Chair-heard seat accuracy at fixed replay horizons.",
     cadence: "recomputed from retained replays",
     cadence_kind: "manual",
@@ -148,6 +201,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Call-quality checkpoints",
     type: "measurement",
     authority: "none",
+    lifecycle: "active",
     purpose: "Measure decision quality at frozen 450s, 300s and 180s checkpoints.",
     cadence: "3 checkpoints per 15m window",
     cadence_kind: "window",
@@ -160,6 +214,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Chair ablation V1",
     type: "decider",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "Large prospective samples did not identify a single historical ablation that restored useful decisions; the question is superseded by the focused recovery-lock experiment.",
     purpose: "Prospectively separate seat influence, September 15 authority filtering, and upstream raw-signal silence.",
     cadence: "3 checkpoints per 15m window",
     cadence_kind: "window",
@@ -172,6 +229,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "TAPE 2.0",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Record microprice, OFI, cancellations and trade-flow shadow traces.",
     cadence: "persisted with each graded replay",
     cadence_kind: "window",
@@ -184,6 +242,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "VEL 2.0",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Measure spot-versus-market residual and lead/lag.",
     cadence: "persisted with each graded replay",
     cadence_kind: "window",
@@ -196,6 +255,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "STRIKE 2.0",
     type: "manual",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Walk-forward strike-state calibration without lookahead.",
     cadence: "recomputed from samples and replays",
     cadence_kind: "manual",
@@ -208,6 +268,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "WHALE 2.0",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Describe large-print response and absorption without giving it a vote.",
     cadence: "trade-event driven",
     cadence_kind: "event",
@@ -220,6 +281,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Absorption study",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Test whether aggressive flow that fails to move price contains information.",
     cadence: "trade-event driven",
     cadence_kind: "event",
@@ -232,6 +294,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Path parity",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Compare timestamp-correct path horizons with the legacy offset path.",
     cadence: "roughly once per minute while a window is live",
     cadence_kind: "minute",
@@ -244,6 +307,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Decision snapshots",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Freeze opening and first-directional Chair state prospectively.",
     cadence: "1–2 records per 15m window",
     cadence_kind: "window",
@@ -256,6 +320,9 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "4h / 24h context",
     type: "measurement",
     authority: "none",
+    lifecycle: "retired",
+    retired_on: "2026-09-27",
+    finding: "Standalone 4h/24h trend and range-extreme rules were approximately coin-flip on more than one thousand opening snapshots.",
     purpose: "Freeze higher-timeframe context beside decision snapshots before proposing a rule.",
     cadence: "with decision snapshots",
     cadence_kind: "window",
@@ -268,6 +335,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "NULL_HORIZON_V1",
     type: "manual",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Falsify horizon-weighted Council behavior against a driftless null.",
     cadence: "manual on-demand analysis",
     cadence_kind: "manual",
@@ -280,6 +348,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Settlement-fair / INDEX",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Preserve settlement-rule fair value as shadow evidence with no Chair authority.",
     cadence: "persisted with each graded replay",
     cadence_kind: "window",
@@ -292,6 +361,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Lag-event study",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Measure fair-value shock survival, markout and realized paper outcome.",
     cadence: "fair-value-shock driven",
     cadence_kind: "event",
@@ -304,6 +374,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Basis minutes",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Measure spot/index basis and settlement-feed health.",
     cadence: "roughly once per minute",
     cadence_kind: "minute",
@@ -316,6 +387,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Higher-ask swaps",
     type: "measurement",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Count how often the higher Kalshi ask changes sides and when on the clock it happens.",
     cadence: "sampled through each 15m window",
     cadence_kind: "window",
@@ -328,6 +400,7 @@ export const LAB_RESEARCH_REGISTRY: readonly LabStudySpec[] = Object.freeze([
     label: "Hourly book",
     type: "separate",
     authority: "none",
+    lifecycle: "infrastructure",
     purpose: "Keep KXBTCD hourly ladder research separate from the 15-minute Council.",
     cadence: "hourly",
     cadence_kind: "hourly",
@@ -343,6 +416,7 @@ export function labStudyHealth(
   lastEvidenceAt: string | null,
   nowMs: number,
 ): LabStudyHealth {
+  if (spec.lifecycle === "retired") return "retired";
   if (spec.cadence_kind === "manual") return "manual";
   if (spec.cadence_kind === "event") return sampleN > 0 ? "event-driven" : "no-sample";
   if (!(sampleN > 0) || !lastEvidenceAt) return "no-sample";
