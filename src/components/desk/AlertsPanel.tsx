@@ -88,7 +88,11 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
         <Tip k="settings.alerts">Alerts</Tip>
       </h3>
       {!supported ? (
-        <div className="font-mono text-micro text-subtle">This browser cannot receive push alerts.</div>
+        <div className="font-mono text-micro text-subtle">
+          {needsHomeScreen()
+            ? "On iPhone and iPad, add this site to your Home Screen (Share → Add to Home Screen), open it there, then turn on alerts."
+            : "This browser cannot receive push alerts."}
+        </div>
       ) : (
         <>
           <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
