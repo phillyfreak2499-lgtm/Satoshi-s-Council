@@ -49,6 +49,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
   const retired = data.rows.filter((row) => row.lifecycle === "retired");
   const visible = tab === "active" ? active : tab === "infrastructure" ? infrastructure : retired;
   const stale = [...active, ...infrastructure].filter((row) => row.health === "stale");
+  const baseScanOld = data.base_scan_at && Date.parse(data.at) - Date.parse(data.base_scan_at) > 10 * 60_000;
 
   const tabButton = (id: "active" | "infrastructure" | "retired", label: string, n: number) => (
     <button
@@ -91,6 +92,11 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
         <div role="status" className="mt-4 rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-wait">
           Needs attention: {stale.map((row) => row.label).join(" · ")}
         </div>
+      ) : null}
+      {baseScanOld ? (
+        <p role="status" className="mt-3 font-mono text-micro leading-relaxed text-wait">
+          The full research index last scanned {ageLabel(data.base_scan_at!, data.at)}. Recovery counts are refreshed separately; other study counts may be behind.
+        </p>
       ) : null}
 
       <div role="tabpanel" className="mt-4 grid gap-2">
