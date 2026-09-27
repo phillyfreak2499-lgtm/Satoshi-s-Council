@@ -37,6 +37,8 @@ import {
 import { tickerAgrees } from "./window-identity";
 
 export const OPENAI_SHADOW_PROSPECTIVE_SINCE = Date.parse("2026-09-19T11:00:00.000Z");
+/** Retired 2026-09-27. Historical rows remain readable; explicit opt-in is required to resume API spend. */
+export const OPENAI_SHADOW_ENV_FLAG = "OPENAI_SHADOW_ENABLED";
 const OBSERVER_MS = 2_000;
 const RECOVERY_SCAN_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -438,6 +440,7 @@ async function captureOnce(): Promise<void> {
 }
 
 export function ensureOpenAIShadowObserver(): void {
+  if (process.env[OPENAI_SHADOW_ENV_FLAG] !== "true") return;
   const st = observer();
   if (st.timer) return;
   st.timer = setInterval(() => void captureOnce(), OBSERVER_MS);
@@ -448,6 +451,7 @@ export function openAIShadowHealth() {
   const st = observer();
   return {
     started: Boolean(st.timer),
+    enabled: process.env[OPENAI_SHADOW_ENV_FLAG] === "true",
     configured: Boolean(process.env.OPENAI_API_KEY?.trim()),
     model: process.env.OPENAI_SHADOW_MODEL?.trim() || OPENAI_SHADOW_DEFAULT_MODEL,
     last_captured_at: st.lastCapturedAt ? new Date(st.lastCapturedAt).toISOString() : null,

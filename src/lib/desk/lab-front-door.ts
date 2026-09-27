@@ -21,7 +21,7 @@
  *
  * Nothing here writes, promotes, grades or decides anything.
  */
-import type { LabStudyHealth, LabStudySpec, LabStudyType } from "./lab-registry.ts";
+import type { LabStudyHealth, LabStudyLifecycle, LabStudySpec, LabStudyType } from "./lab-registry.ts";
 
 /** The shape the Lab registry server publishes. Structural, so this stays pure. */
 export type FrontDoorRow = {
@@ -29,6 +29,7 @@ export type FrontDoorRow = {
   label: string;
   type: LabStudyType;
   authority: "none";
+  lifecycle: LabStudyLifecycle;
   purpose: string;
   cadence: string;
   health: LabStudyHealth;
@@ -70,6 +71,8 @@ export function statusLabel(row: Pick<FrontDoorRow, "health">): string {
       return "no sample yet";
     case "manual":
       return "run by hand";
+    case "retired":
+      return "retired";
     default:
       return "unknown";
   }
@@ -157,7 +160,7 @@ export const PENDING_STATUS = "evidence count not available this request";
  * mapper over rows it is handed and never reaches for the register itself.
  */
 export function declaredBench(specs: readonly LabStudySpec[] | null | undefined): FrontDoorCard[] {
-  const all = Array.isArray(specs) ? specs : [];
+  const all = Array.isArray(specs) ? specs.filter((spec) => spec.lifecycle === "active") : [];
   return all.map((spec) => ({
     id: spec.id,
     label: spec.label,
@@ -180,7 +183,7 @@ const ACTIVE: readonly LabStudyHealth[] = Object.freeze(["collecting", "event-dr
  * about evidence EXISTING, never about what any of it shows.
  */
 export function labFrontDoor(rows: readonly FrontDoorRow[] | null | undefined): LabFrontDoor {
-  const all = Array.isArray(rows) ? rows : [];
+  const all = Array.isArray(rows) ? rows.filter((r) => r.lifecycle === "active") : [];
   const running = all.filter((r) => ACTIVE.includes(r.health));
   const notReady = all.filter((r) => !ACTIVE.includes(r.health));
   const withEvidence = all.filter((r) => Number.isFinite(r.sample_n) && r.sample_n > 0);

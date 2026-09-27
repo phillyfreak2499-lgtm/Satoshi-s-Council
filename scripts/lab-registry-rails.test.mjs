@@ -23,10 +23,10 @@ test("whole-Lab registry has one unique lifecycle row for every audited research
   const v = loadPure();
   const rows = Array.from(v.LAB_RESEARCH_REGISTRY);
   const ids = rows.map((row) => row.id);
-  assert.equal(ids.length, 26);
+  assert.equal(ids.length, 28);
   assert.equal(ids.length, new Set(ids).size, "registry ids must be unique");
   for (const id of [
-    "chair-v2", "chair-v3", "taker-v1", "forced-v4", "openai-shadow-v1", "openai-blind-v1", "openai-luna-v1", "astra-director", "policy-exit",
+    "recovery-locks", "disagreement-edge", "chair-v2", "chair-v3", "taker-v1", "forced-v4", "openai-shadow-v1", "openai-blind-v1", "openai-luna-v1", "astra-director", "policy-exit",
     "seat-timing", "call-quality", "chair-ablation", "tape2", "vel2", "strike2", "whale2",
     "absorption", "path-parity", "decision-snapshots", "higher-context",
     "null-horizon", "index-settlement-fair", "lag-events", "basis-minutes",
@@ -35,13 +35,16 @@ test("whole-Lab registry has one unique lifecycle row for every audited research
     assert.ok(ids.includes(id), `missing lifecycle row: ${id}`);
   }
   assert.ok(rows.every((row) => row.authority === "none"), "every registry row is authority-none");
+  assert.ok(rows.every((row) => ["active", "infrastructure", "retired"].includes(row.lifecycle)), "every row has a lifecycle");
+  assert.equal(rows.find((row) => row.id === "taker-v1")?.lifecycle, "retired");
+  assert.equal(rows.find((row) => row.id === "recovery-locks")?.lifecycle, "active");
 });
 
 test("freshness semantics do not mislabel manual or event-driven research as stale", () => {
   const v = loadPure();
   const now = Date.parse("2026-09-18T21:00:00Z");
   const base = {
-    id: "x", label: "x", type: "measurement", authority: "none",
+    id: "x", label: "x", type: "measurement", authority: "none", lifecycle: "active",
     purpose: "x", cadence: "x", visible_at: "x",
   };
 
@@ -51,6 +54,9 @@ test("freshness semantics do not mislabel manual or event-driven research as sta
   const event = { ...base, cadence_kind: "event", stale_after_ms: null, missing_is_error: false };
   assert.equal(v.labStudyHealth(event, 0, null, now), "no-sample");
   assert.equal(v.labStudyHealth(event, 3, "2026-09-17T00:00:00Z", now), "event-driven");
+
+  const retired = { ...base, lifecycle: "retired", cadence_kind: "window", stale_after_ms: 35 * 60_000, missing_is_error: true };
+  assert.equal(v.labStudyHealth(retired, 500, "2026-09-18T20:45:00Z", now), "retired");
 
   const fixed = { ...base, cadence_kind: "window", stale_after_ms: 35 * 60_000, missing_is_error: true };
   assert.equal(v.labStudyHealth(fixed, 5, "2026-09-18T20:45:00Z", now), "collecting");
@@ -65,7 +71,7 @@ test("registry server is aggregate read-only and has no actuator path", () => {
     "desk_samples", "desk_v3_samples", "desk_taker", "desk_v4_forced",
     "desk_openai_shadow", "desk_openai_blind", "desk_openai_luna", "desk_astra_director", "desk_policy_fills", "desk_replay", "desk_call_quality", "desk_chair_ablation", "desk_absorption",
     "desk_path_parity", "desk_decision_snapshots", "desk_lag_events",
-    "desk_basis_minutes", "desk_hour_ledger", "desk_ask_lead_windows",
+    "desk_basis_minutes", "desk_hour_ledger", "desk_ask_lead_windows", "desk_shadow_receipts",
   ]) {
     assert.ok(src.includes(table), `missing source table ${table}`);
   }
@@ -86,9 +92,10 @@ test("public Lab exposes the registry but production decision modules never impo
   const room = read("src/components/desk/LabRoom.tsx");
   assert.match(pub, /labRegistrySnapshot\(\)\.catch\(\(\) => null\)/);
   assert.match(pub, /registry: PublicLabRegistrySnapshot \| null/);
-  assert.match(room, /Research systems health/);
-  assert.match(room, /Full inventory/);
-  assert.match(room, /awaiting first sample/);
+  assert.match(room, /Retired studies/);
+  assert.match(room, /Active research/);
+  assert.match(room, /Infrastructure/);
+  assert.match(room, /DISAGREEMENT_EDGE_V1/);
   assert.doesNotMatch(room, /fixed cadences healthy/);
 
   for (const path of [

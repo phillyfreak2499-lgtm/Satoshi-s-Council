@@ -66,6 +66,11 @@ test("observer writes only its isolated OpenAI ledger", () => {
   }
 });
 
+test("retired OpenAI shadow requires explicit opt-in before starting API spend", () => {
+  assert.match(observer, /OPENAI_SHADOW_ENV_FLAG\s*=\s*"OPENAI_SHADOW_ENABLED"/);
+  assert.match(observer, /process\.env\[OPENAI_SHADOW_ENV_FLAG\]\s*!==\s*"true"/);
+});
+
 test("OpenAI shadow boots beside the brain and brain does not import it", () => {
   assert.match(health, /openai-shadow\.server/);
   assert.match(health, /ensureOpenAIShadowObserver/);

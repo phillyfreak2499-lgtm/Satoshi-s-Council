@@ -21,6 +21,7 @@ import { openAILunaSnapshot, type OpenAILunaSnapshot } from "./openai-luna.serve
 import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
 import { askLeadSnapshot, type AskLeadSnapshot } from "./ask-lead.server";
+import { disagreementEdgeSnapshot, type PublicDisagreementEdgeSnapshot } from "./disagreement-edge.server";
 
 export type PublicLabSpecimen = {
   id: string;
@@ -53,6 +54,7 @@ export type PublicLabSnapshot = {
   openai_luna: OpenAILunaSnapshot | null;
   astra_director: AstraDirectorSnapshot | null;
   ask_lead: AskLeadSnapshot | null;
+  disagreement_edge: PublicDisagreementEdgeSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
   governance: {
     paper_only: true;
@@ -65,7 +67,7 @@ export type PublicLabSnapshot = {
 
 export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicLabSnapshot> => {
-    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, openAILuna, astraDirector, askLead] = await Promise.all([
+    const [standing, seatTiming, callQuality, forcedV4, openAIShadow, openAIBlind, openAILuna, astraDirector, askLead, disagreementEdge] = await Promise.all([
       labStanding(),
       seatHorizonSnapshot().catch(() => null),
       callQualitySnapshot().catch(() => null),
@@ -75,6 +77,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       openAILunaSnapshot().catch(() => null),
       astraDirectorSnapshot().catch(() => null),
       askLeadSnapshot().catch(() => null),
+      disagreementEdgeSnapshot().catch(() => null),
     ]);
     // The lifecycle registry scans several large research tables. Run it after
     // the other Lab snapshots so it does not compete for connections on the
@@ -118,6 +121,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       openai_luna: openAILuna,
       astra_director: astraDirector,
       ask_lead: askLead,
+      disagreement_edge: disagreementEdge,
       registry,
       governance: {
         paper_only: true,
