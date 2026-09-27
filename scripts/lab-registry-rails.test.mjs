@@ -75,9 +75,10 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   ]) {
     assert.ok(src.includes(table), `missing source table ${table}`);
   }
-  assert.match(src, /jsonb_array_elements\(cols -> 'imb'\)/);
-  assert.match(src, /jsonb_array_elements\(cols -> 'resid'\)/);
-  assert.match(src, /jsonb_array_elements\(cols -> 'fair'\)/);
+  assert.match(src, /jsonb_path_exists\(cols, '\$\.imb\[\*\] \? \(@ != null\)'\)/);
+  assert.match(src, /jsonb_path_exists\(cols, '\$\.resid\[\*\] \? \(@ != null\)'\)/);
+  assert.match(src, /jsonb_path_exists\(cols, '\$\.fair\[\*\] \? \(@ != null\)'\)/);
+  assert.doesNotMatch(src, /jsonb_array_elements\(cols -> '(?:imb|resid|fair)'\)/, "registry must not explode full replay arrays");
   assert.doesNotMatch(src, /insert\s+into|update\s+desk_|delete\s+from/i);
   for (const forbidden of [
     "noteCall(", "applyDeskOp", "decideChair(", "runChair(", "selectiveBlock",
