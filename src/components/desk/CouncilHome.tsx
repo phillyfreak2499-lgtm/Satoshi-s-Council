@@ -12,6 +12,8 @@ import { LiveConnectionNotice } from "./LiveConnectionNotice";
 import { HomeStill } from "./HomeStill";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { CanonicalRecord } from "./CanonicalRecord";
+import { AlertsPanel } from "./AlertsPanel";
+import { WaitResearchNote } from "./WaitResearchNote";
 import { applyDisplayPrefs } from "./prefs";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import type { Books, BooksWindow } from "@/lib/desk/books";
@@ -45,6 +47,8 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
           </div>
           <p className="company-hero-note">
             <a href="/training/wick" className="company-text-link">Start with WICK <span aria-hidden="true">→</span></a>
+            <span aria-hidden="true"> · </span>
+            <a href="#call-alerts" className="company-text-link">Get a paper call alert <span aria-hidden="true">→</span></a>
           </p>
           <p className="company-hero-doors">
             <span><strong>Guided Floor</strong> — New here? See the Council’s live decision in plain English.</span>
@@ -67,6 +71,11 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
           ) : (
             <p className="company-muted">Waiting for the next window. The feed reconnects on its own.</p>
           )}
+        </section>
+        {!demo && chair?.lean === "WAIT" ? <div className="mt-4"><WaitResearchNote /></div> : null}
+        <section id="call-alerts" className="mt-4 scroll-mt-24" aria-label="Paper call notifications">
+          <p className="mb-2 font-sans text-ui text-muted">You can leave the Floor. Turn on a browser alert for SATOSHI’s next booked UP or DOWN paper call; quiet WAIT windows send nothing.</p>
+          <AlertsPanel />
         </section>
         <div className="mt-4"><CanonicalRecord books={books} compact /></div>
         <p className="company-snapshot">
