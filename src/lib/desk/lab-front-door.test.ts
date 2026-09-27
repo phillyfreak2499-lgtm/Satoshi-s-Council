@@ -65,12 +65,12 @@ test("the learning sentences count the register and never report a finding", () 
   assert.match(text, /authority: none/);
 });
 
-test("ASK_LEAD appears in the running summary once it is collecting", () => {
-  const spec = LAB_RESEARCH_REGISTRY.find((s) => s.id === "ask-lead-swap");
-  assert.ok(spec, "the ASK_LEAD study is still on the register");
+test("an active recovery study appears in the running summary once it is collecting", () => {
+  const spec = LAB_RESEARCH_REGISTRY.find((s) => s.id === "recovery-locks");
+  assert.ok(spec, "the recovery-locks study is on the register");
   const door = labFrontDoor([{ ...spec, health: "collecting", sample_n: 12, last_evidence_at: new Date().toISOString() }]);
-  assert.deepEqual(door.running.map((c) => c.id), ["ask-lead-swap"]);
-  assert.equal(door.running[0].authority, "MEASUREMENT ONLY");
+  assert.deepEqual(door.running.map((c) => c.id), ["recovery-locks"]);
+  assert.equal(door.running[0].authority, "SHADOW ONLY");
   assert.equal(door.running[0].sample, 12);
 });
 
@@ -82,18 +82,17 @@ test("a zero sample prints no number at all rather than a zero", () => {
 
 test("the declared front door lists active and infrastructure studies, not retired history", () => {
   const cards = declaredBench(LAB_RESEARCH_REGISTRY);
-  const current = LAB_RESEARCH_REGISTRY.filter((s) => s.lifecycle !== "retired");
+  const current = LAB_RESEARCH_REGISTRY.filter((s) => s.lifecycle === "active");
   assert.equal(cards.length, current.length);
   assert.deepEqual(cards.map((c) => c.id), current.map((s) => s.id));
   assert.equal(cards.some((c) => c.id === "openai-blind-v1"), false);
 });
 
-test("ASK_LEAD is still named when the register is warming", () => {
+test("the warming front door lists active research but not infrastructure", () => {
   const cards = declaredBench(LAB_RESEARCH_REGISTRY);
-  const ask = cards.find((c) => c.id === "ask-lead-swap");
-  assert.ok(ask, "ASK_LEAD must not vanish from the summary just because counts are late");
-  assert.equal(ask.label, "Higher-ask swaps");
-  assert.equal(ask.authority, "MEASUREMENT ONLY");
+  const recovery = cards.find((c) => c.id === "recovery-locks");
+  assert.ok(recovery, "active recovery research remains visible while counts warm");
+  assert.equal(cards.some((c) => c.id === "ask-lead-swap"), false, "infrastructure belongs in its own tab");
 });
 
 test("no sample count is invented while the register is warming", () => {
@@ -145,7 +144,7 @@ test("status wording comes only from the recorded health", () => {
 });
 
 test("the same purpose wording is produced from a live row and from a frozen spec", () => {
-  const spec = LAB_RESEARCH_REGISTRY.find((s) => s.id === "ask-lead-swap");
+  const spec = LAB_RESEARCH_REGISTRY.find((s) => s.id === "recovery-locks");
   assert.ok(spec);
   const live = labFrontDoor([{ ...spec, health: "collecting", sample_n: 3, last_evidence_at: null }]).running[0];
   const declared = declaredBench([spec])[0];
