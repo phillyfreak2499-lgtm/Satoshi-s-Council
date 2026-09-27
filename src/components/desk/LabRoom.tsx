@@ -151,11 +151,7 @@ function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
   const coverage = data.coverage.expected_since_first > 0
     ? `${data.coverage.captured_since_first} / ${data.coverage.expected_since_first}`
     : `${data.captured}`;
-  const observer = data.health.last_error
-    ? "observer error"
-    : data.health.started
-      ? "collecting"
-      : "not started";
+  const observer = "retired";
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="forced-v4-title">
@@ -350,13 +346,7 @@ function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] })
     );
   }
 
-  const observer = !data.health.configured
-    ? "needs API key"
-    : data.health.last_error
-      ? "observer error"
-      : data.health.started
-        ? "collecting"
-        : "not started";
+  const observer = "retired";
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="openai-blind-title">
@@ -448,15 +438,7 @@ function OpenAILunaStudy({ data }: { data: PublicLabSnapshot["openai_luna"] }) {
     );
   }
 
-  const observer = !data.health.configured
-    ? "needs API key"
-    : data.health.complete
-      ? "study complete"
-      : data.health.last_error
-        ? "observer error"
-        : data.health.started
-          ? "collecting"
-          : "not started";
+  const observer = "retired";
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="openai-luna-title">
