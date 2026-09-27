@@ -70,46 +70,22 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
         count(*)::int as n,
         max(extract(epoch from created_at) * 1000)::bigint as last_ms,
         count(*) filter (
-          where jsonb_typeof(cols -> 'imb') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'imb') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.imb[*] ? (@ != null)')
         )::int as tape_n,
         max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_typeof(cols -> 'imb') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'imb') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.imb[*] ? (@ != null)')
         )::bigint as tape_last_ms,
         count(*) filter (
-          where jsonb_typeof(cols -> 'resid') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'resid') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.resid[*] ? (@ != null)')
         )::int as vel_n,
         max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_typeof(cols -> 'resid') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'resid') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.resid[*] ? (@ != null)')
         )::bigint as vel_last_ms,
         count(*) filter (
-          where jsonb_typeof(cols -> 'fair') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'fair') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.fair[*] ? (@ != null)')
         )::int as fair_n,
         max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_typeof(cols -> 'fair') = 'array'
-            and exists (
-              select 1 from jsonb_array_elements(cols -> 'fair') as value
-              where value <> 'null'::jsonb
-            )
+          where jsonb_path_exists(cols, '$.fair[*] ? (@ != null)')
         )::bigint as fair_last_ms
       from desk_replay
     ),
