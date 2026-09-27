@@ -124,6 +124,11 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       from desk_shadow_receipts
       where experiment = 'MID_RECOVERY_LOCKS_V1_INACTIVE'
     union all
+    select 'mid-recovery-v1' as id, count(distinct (ticker, close_time))::int as n,
+      max(extract(epoch from recorded_at) * 1000)::bigint as last_ms
+      from desk_shadow_receipts
+      where experiment = 'MID_RECOVERY_V1_INACTIVE'
+    union all
     select 'chair-v2' as id, count(*)::int as n,
       max(extract(epoch from taken_at) * 1000)::bigint as last_ms
       from desk_samples
