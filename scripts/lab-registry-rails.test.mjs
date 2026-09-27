@@ -23,10 +23,10 @@ test("whole-Lab registry has one unique lifecycle row for every audited research
   const v = loadPure();
   const rows = Array.from(v.LAB_RESEARCH_REGISTRY);
   const ids = rows.map((row) => row.id);
-  assert.equal(ids.length, 28);
+  assert.equal(ids.length, 29);
   assert.equal(ids.length, new Set(ids).size, "registry ids must be unique");
   for (const id of [
-    "recovery-locks", "disagreement-edge", "chair-v2", "chair-v3", "taker-v1", "forced-v4", "openai-shadow-v1", "openai-blind-v1", "openai-luna-v1", "astra-director", "policy-exit",
+    "recovery-locks", "mid-recovery-v1", "disagreement-edge", "chair-v2", "chair-v3", "taker-v1", "forced-v4", "openai-shadow-v1", "openai-blind-v1", "openai-luna-v1", "astra-director", "policy-exit",
     "seat-timing", "call-quality", "chair-ablation", "tape2", "vel2", "strike2", "whale2",
     "absorption", "path-parity", "decision-snapshots", "higher-context",
     "null-horizon", "index-settlement-fair", "lag-events", "basis-minutes",
