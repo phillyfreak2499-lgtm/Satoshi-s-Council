@@ -15,6 +15,7 @@ import { ALCHEMIST_ROLE_LINE, WICK_ROLE_LINE } from "@/lib/desk/training";
 import { Tip } from "./Tip";
 import { LastCallPanel } from "./LastCallPanel";
 import { AlertsPanel } from "./AlertsPanel";
+import { WaitResearchNote } from "./WaitResearchNote";
 
 const portraits = {
   satoshi: "/floor/guides/satoshi.png",
@@ -188,6 +189,7 @@ export function GuidedFloor({
       </div>
       {/* Directly under the SATOSHI verdict, never above it: during a WAIT stretch the specialist reads are the next thing to see. */}
       <SpecialistLeans leans={leans} waiting={read.label === "WAIT"} />
+      {!demo && read.label === "WAIT" ? <WaitResearchNote /> : null}
       <section aria-label="Paper call notifications">
         <p className="mb-2 font-sans text-ui text-muted">No need to watch every WAIT. Get a browser alert if SATOSHI books an UP or DOWN paper call.</p>
         <AlertsPanel />
