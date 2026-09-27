@@ -1026,6 +1026,15 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             {/* The front door and lifecycle index keep active questions separate
                 from infrastructure and retired research history. */}
             <LabFrontDoor registry={data.registry} />
+            {data.recovery ? (
+              <section className="mt-5 rounded-md border border-border bg-surface p-4" aria-label="Recovery study receipt counts">
+                <h2 className="font-sans text-title font-medium text-fg">Recovery studies · receipt check</h2>
+                <p className="mt-2 font-mono text-ui text-muted">
+                  MID recovery locks V1: {data.recovery.locks.windows} windows · original MID_RECOVERY_V1_INACTIVE: {data.recovery.original.windows} windows
+                </p>
+                <p className="mt-1 font-mono text-micro text-subtle">Separate prospective cohorts · counts from stored receipts as of {utcClock(data.recovery.at)} · research only</p>
+              </section>
+            ) : null}
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <DisagreementEdgeStudy data={data.disagreement_edge} />
