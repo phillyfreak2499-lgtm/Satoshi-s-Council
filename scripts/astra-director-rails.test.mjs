@@ -105,7 +105,7 @@ test("Lab registry lifecycle scan is warmed off the request path", () => {
   const registry = read("src/lib/desk/lab-registry.server.ts");
   assert.match(registry, /ensureLabRegistryObserver/);
   assert.match(registry, /setInterval\(\(\) => void refreshLabRegistrySnapshot\(\), REFRESH_MS\)/);
-  const requestReader = registry.slice(registry.indexOf("export async function labRegistrySnapshot"));
+  const requestReader = registry.slice(registry.indexOf("export async function labRegistrySnapshot"), registry.indexOf("export async function recoveryRegistrySnapshot"));
   assert.doesNotMatch(requestReader, /getSql\(/);
   assert.match(requestReader, /Lab registry snapshot is warming/);
   const registryPos = health.indexOf("ensureLabRegistryObserver");
