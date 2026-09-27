@@ -248,13 +248,15 @@ function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] 
   const coverage = data.coverage.expected_since_first > 0
     ? `${data.coverage.captured_since_first} / ${data.coverage.expected_since_first}`
     : `${data.captured}`;
-  const observer = !data.health.configured
-    ? "needs API key"
-    : data.health.last_error
-      ? "observer error"
-      : data.health.started
-        ? "collecting"
-        : "not started";
+  const observer = !data.health.enabled
+    ? "retired"
+    : !data.health.configured
+      ? "needs API key"
+      : data.health.last_error
+        ? "observer error"
+        : data.health.started
+          ? "collecting"
+          : "not started";
 
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="openai-shadow-title">
