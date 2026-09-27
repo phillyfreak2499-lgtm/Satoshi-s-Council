@@ -1015,8 +1015,8 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
               </div>
             </section>
 
-            {/* A front door above the bench, not a replacement for it: every
-                study below is unchanged and still carries its own evidence. */}
+            {/* The front door and lifecycle index keep active questions separate
+                from infrastructure and retired research history. */}
             <LabFrontDoor registry={data.registry} />
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
@@ -1054,6 +1054,21 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
                     </p>
                   </section>
                 )}
+              </div>
+            </details>
+
+            <details className="mt-6 rounded-md border border-border bg-canvas">
+              <summary className="cursor-pointer px-4 py-4 font-mono text-micro uppercase tracking-widest text-muted">
+                Retired detailed scorecards · historical evidence
+              </summary>
+              <div className="border-t border-border px-4 pb-4">
+                <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+                  These scorecards are kept for research archaeology. Their questions are closed and they have no path into the live Floor.
+                </p>
+                <ForcedV4Study data={data.forced_v4} />
+                <OpenAIShadowStudy data={data.openai_shadow} />
+                <OpenAIBlindStudy data={data.openai_blind} />
+                <OpenAILunaStudy data={data.openai_luna} />
               </div>
             </details>
 
