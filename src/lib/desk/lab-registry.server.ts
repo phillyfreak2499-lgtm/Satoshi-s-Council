@@ -119,6 +119,11 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
         max(extract(epoch from receipt_at) * 1000) filter (where higher_context is not null)::bigint as higher_last_ms
       from desk_decision_snapshots
     )
+    select 'recovery-locks' as id, count(distinct (ticker, close_time))::int as n,
+      max(extract(epoch from recorded_at) * 1000)::bigint as last_ms
+      from desk_shadow_receipts
+      where experiment = 'MID_RECOVERY_LOCKS_V1_INACTIVE'
+    union all
     select 'chair-v2' as id, count(*)::int as n,
       max(extract(epoch from taken_at) * 1000)::bigint as last_ms
       from desk_samples
@@ -156,6 +161,8 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       from desk_policy_fills
     union all
     select 'seat-timing', n, last_ms from replay_stats
+    union all
+    select 'disagreement-edge', n, last_ms from replay_stats
     union all
     select 'call-quality', count(*)::int,
       max(extract(epoch from recorded_at) * 1000)::bigint
@@ -238,6 +245,7 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     manual: 0,
     "event-driven": 0,
     "no-sample": 0,
+    retired: 0,
   };
   for (const row of rows) tally[row.health] += 1;
 
