@@ -24,8 +24,9 @@ import {
   applyDisplayPrefs,
   markWelcomeSeen,
   readFloorDensity,
-  readFloorMode,
+  FIRST_VISIT_FLOOR_MODE,
   readSeatView,
+  readStoredFloorMode,
   setFloorDensity as saveFloorDensity,
   setFloorMode as saveFloorMode,
   setSeatView as saveSeatView,
@@ -35,6 +36,7 @@ import {
   type SeatView,
 } from "./prefs";
 import { beacon } from "@/lib/desk/beacon";
+import { floorViewParam, initialFloorMode, mountedFloorMode } from "@/lib/desk/floor-view-url";
 import { Palette } from "./Palette";
 import { FloorSkeleton } from "./Skeleton";
 import { BoardTab } from "./Feedback";
@@ -106,23 +108,6 @@ function FloorModeSwitch({ mode, onMode }: { mode: FloorMode; onMode: (m: FloorM
       </span>
     </nav>
   );
-}
-
-/**
- * Does this address name a floor view of its own?
- *
- * `?view=guided` asks for Guided outright; a `?tab=` or `?seat=` deep link is a
- * Pro section and therefore asks for Pro. Either way the saved preference must
- * stand aside, or a shared link would open the wrong view for half the people
- * who follow it.
- */
-function urlPinsFloorMode(): boolean {
-  try {
-    const sp = new URLSearchParams(window.location.search);
-    return sp.get("view") === "guided" || sp.has("tab") || sp.has("seat");
-  } catch {
-    return false;
-  }
 }
 
 const NAV_TAB =
@@ -253,7 +238,7 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
   // would otherwise differ between the server and the first client paint.
   const [seatView, setSeatViewState] = useState<SeatView>("auto");
   const [floorDensity, setFloorDensityState] = useState<FloorDensity>("quiet");
-  const [floorMode, setFloorModeState] = useState<FloorMode>(() => new URLSearchParams(initialSearch).get("view") === "guided" ? "guided" : "pro");
+  const [floorMode, setFloorModeState] = useState<FloorMode>(() => initialFloorMode(initialSearch));
   const setFloorMode = (mode: FloorMode) => {
     setFloorModeState(mode);
     saveFloorMode(mode);
@@ -279,13 +264,16 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
     applyDisplayPrefs();
     setSeatViewState(readSeatView());
     setFloorDensityState(readFloorDensity());
-    // THE URL OUTRANKS THE SAVED PREFERENCE, so a link that pins a view is not
-    // quietly overruled by what this browser happened to choose last time.
-    // Everything else falls back to the stored choice, and a browser that has
-    // never chosen opens Guided. The read happens here rather than in the
-    // initial state because it touches localStorage: doing it during render
-    // would make the server and the first client paint disagree.
-    if (!urlPinsFloorMode()) setFloorModeState(readFloorMode());
+    // THE URL OUTRANKS THE SAVED PREFERENCE, so a link that pins a view
+    // (?view=pro, ?view=guided, or a Pro ?tab=/?seat= deep link) is not quietly
+    // overruled by what this browser happened to choose last time. Only a bare
+    // address falls back to the stored choice, and a browser that has never
+    // chosen opens Guided. The read happens here rather than in the initial
+    // state because it touches localStorage: doing it during render would make
+    // the server and the first client paint disagree. One predicate decides
+    // "does the URL pin a view" (floor-view-url.ts): a hand-rolled copy here once
+    // forgot ?view=pro and sent a fresh browser on /desk?view=pro to Guided.
+    setFloorModeState(mountedFloorMode(window.location.search, readStoredFloorMode(), FIRST_VISIT_FLOOR_MODE));
     setNudge(!tourSeen() && welcomeSeen() && !nudgeOff());
     beacon("desk_view", true);
   }, []);
@@ -343,9 +331,10 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
       if (t && t !== "arena" && LINKABLE_TABS.has(t as TabId)) {
         setTab(t as TabId);
         setFloorModeState("pro");
-      } else if (!s && sp.get("view") === "guided") {
-        setFloorModeState("guided");
-        saveFloorMode("guided");
+      } else if (!s && (sp.get("view") === "guided" || sp.get("view") === "pro")) {
+        const view = sp.get("view") === "guided" ? "guided" : "pro";
+        setFloorModeState(view);
+        saveFloorMode(view);
       }
       if (s && (SEAT_IDS as readonly string[]).includes(s)) jump(s as SeatId);
       // /floor and other old links open the floor with the tour running.
@@ -373,7 +362,8 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
         else u.searchParams.delete("tab");
       }
       else u.searchParams.set("tab", tab);
-      if (floorMode === "guided" && tab === "satoshi") u.searchParams.set("view", "guided");
+      const view = floorViewParam(u.searchParams.get("view"), floorMode, tab === "satoshi");
+      if (view) u.searchParams.set("view", view);
       else u.searchParams.delete("view");
       u.searchParams.delete("seat");
       u.searchParams.delete("tour");

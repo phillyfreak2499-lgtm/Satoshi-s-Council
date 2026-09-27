@@ -24,7 +24,7 @@ test("?view=pro pins Pro and the homepage Pro door names that URL", () => {
   assert.match(home, /href="\/desk\?view=pro"/);
   assert.match(home, /href="\/desk\?view=guided"/);
   const app = read(APP);
-  assert.match(app, /function urlPinsFloorMode/);
+  assert.match(app, /mountedFloorMode\(window\.location\.search, readStoredFloorMode\(\), FIRST_VISIT_FLOOR_MODE\)/);
 });
 
 test("the paper-only line is a chip under the H1, above the CTAs, at body contrast", () => {

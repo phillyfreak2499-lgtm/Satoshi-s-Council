@@ -116,14 +116,15 @@ test("?view=guided selects Guided, Pro clears it, and ?guided=true is not canoni
   const app = codeOf(APP);
   // Requirement 7.
   assert.match(app, /sp\.get\("view"\) === "guided"/, "the address selects Guided");
-  assert.match(app, /get\("view"\) === "guided" \? "guided" : "pro"/, "including on the very first render");
-  // Requirement 8: leaving Guided removes the parameter rather than negating it.
+  assert.match(app, /useState<FloorMode>\(\(\) => initialFloorMode\(initialSearch\)\)/, "including on the very first render");
+  // Requirement 8: leaving Guided removes the parameter rather than negating it
+  // (floorViewParam; its cases are pinned in floor-deeplink.test.mjs).
   assert.match(
     app,
-    /if \(floorMode === "guided" && tab === "satoshi"\) u\.searchParams\.set\("view", "guided"\);\s*\n\s*else u\.searchParams\.delete\("view"\);/,
+    /const view = floorViewParam\(u\.searchParams\.get\("view"\), floorMode, tab === "satoshi"\);\s*\n\s*if \(view\) u\.searchParams\.set\("view", view\);\s*\n\s*else u\.searchParams\.delete\("view"\);/,
     "Pro drops view=guided from the address",
   );
-  assert.doesNotMatch(app, /set\("view",\s*"pro"\)/, "Pro is the bare URL, not a second parameter value");
+  assert.doesNotMatch(app, /set\("view",\s*"pro"\)/, "Pro never adds a parameter; it only keeps an explicit ?view=pro it arrived with");
   // Requirement 9: no alternate spelling anywhere in the app or the home page.
   for (const rel of [APP, HOME, PREFS]) {
     assert.doesNotMatch(read(rel), /guided=true|guided=1|\?guided\b/, `${rel} must not use ?guided=`);
@@ -177,12 +178,14 @@ test("a first visit opens Guided, and a browser that chose Pro keeps getting Pro
 
 test("an explicit link outranks the saved preference, so shared URLs open what they name", () => {
   const app = codeOf(APP);
-  assert.match(app, /function urlPinsFloorMode\(\)/);
-  assert.match(app, /if \(!urlPinsFloorMode\(\)\) setFloorModeState\(readFloorMode\(\)\);/);
-  const body = app.slice(app.indexOf("function urlPinsFloorMode"), app.indexOf("const NAV_TAB ="));
-  assert.ok(body.length > 100 && body.length < 600, "the slice really is just that function");
-  assert.match(body, /sp\.get\("view"\) === "guided"/, "?view=guided pins Guided");
-  assert.match(body, /sp\.has\("tab"\) \|\| sp\.has\("seat"\)/, "a Pro deep link pins Pro");
+  // One predicate (floor-view-url.ts) decides whether the URL pins a view; the
+  // hand-rolled copy that forgot ?view=pro is gone. Behaviour: floor-deeplink.test.mjs.
+  assert.match(app, /setFloorModeState\(mountedFloorMode\(window\.location\.search, readStoredFloorMode\(\), FIRST_VISIT_FLOOR_MODE\)\);/);
+  assert.doesNotMatch(app, /function urlPinsFloorMode/);
+  const url = read("src/lib/desk/floor-view-url.ts");
+  assert.match(url, /if \(view === "guided" \|\| view === "pro"\) return view;/, "?view=guided and ?view=pro both pin");
+  assert.match(url, /if \(sp\.has\("tab"\) \|\| sp\.has\("seat"\)\) return "pro";/, "a Pro deep link pins Pro");
+  assert.match(url, /return floorModeFromSearch\(search\) \?\? stored \?\? firstVisit;/, "URL, then stored, then default");
   // The preference is browser-only: no server, no frame, no desk state.
   assert.doesNotMatch(read(PREFS), /fetch\(|createServerFn|getSql|process\.env/, "preferences never leave the browser");
 });
