@@ -46,7 +46,9 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
             <a href="/desk?view=pro" onClick={() => beacon("home_pro_click")} className="company-button company-button-outline">Open Pro Floor <span aria-hidden="true">↗</span></a>
           </div>
           <p className="company-hero-note">
-            <a href="#call-alerts" className="company-text-link">Get an alert when SATOSHI books a paper call <span aria-hidden="true">→</span></a>
+            <a href="/training/wick" className="company-text-link">Start with WICK <span aria-hidden="true">→</span></a>
+            <span aria-hidden="true"> · </span>
+            <a href="#call-alerts" className="company-text-link">Get a paper call alert <span aria-hidden="true">→</span></a>
           </p>
           <p className="company-hero-doors">
             <span><strong>Guided Floor</strong> — New here? See the Council’s live decision in plain English.</span>
