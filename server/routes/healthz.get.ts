@@ -60,6 +60,13 @@ export default function healthz() {
   void import("../../src/lib/desk/shadow-lab-mid-recovery.server")
     .then((m) => m.ensureMidRecoveryObserver())
     .catch(() => {});
+  // MID_RECOVERY_LOCKS_V1_INACTIVE recorder: env-gated, default OFF
+  // (MID_RECOVERY_LOCKS_SHADOW_ENABLED=true), independent of the V1 flag.
+  // Same isolation: a cloned frame, desk_shadow_receipts under its own
+  // experiment id only, simulated fills, production authority NONE.
+  void import("../../src/lib/desk/shadow-lab-mid-recovery-locks.server")
+    .then((m) => m.ensureMidRecoveryLocksObserver())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.
