@@ -730,7 +730,7 @@ function driftBot(ctx: BotCtx): Vote {
     "spot",
     emptyVote("DRIFT", ctx.snap, {
       eyes: "ret5 / ret15 / ret30",
-      hypothesis: `${d.trend} · aligned ${d.aligned} · ${d.accel ? "ACCEL" : d.decay ? "DECAY" : d.pullback ? "PULLBACK" : d.chop ? "CHOP" : "WATCH"}`,
+      hypothesis: `returns ${d.lean} · aligned ${d.aligned} · ${d.accel ? "ACCEL" : d.decay ? "DECAY" : d.pullback ? "PULLBACK" : d.chop ? "CHOP" : "WATCH"} · 1m structure ${d.trend}`,
       evidence: [
         `5m ${round(ctx.snap.ret5 * 100, 2)}% · 15m ${round(ctx.snap.ret15 * 100, 2)}% · 30m ${round(ctx.snap.ret30 * 100, 2)}%`,
         `stack ${d.stack} · RSI ${Math.round(d.rsi)}`,
