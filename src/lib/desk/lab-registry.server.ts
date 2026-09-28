@@ -24,6 +24,7 @@ type StatRow = {
 
 export type PublicLabRegistryRow = LabStudySpec & {
   sample_n: number;
+  sample_approximate: boolean;
   last_evidence_at: string | null;
   health: LabStudyHealth;
 };
@@ -179,13 +180,15 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
   `;
 
   // Keep the largest ledgers in separate statements. Production enforces a
-  // 15-second statement timeout; each query below is comfortably below it,
-  // while one giant UNION of every exact count can cross the limit.
+  // 15-second statement timeout. The absorption ledger exceeds that budget
+  // for an exact count, so its inventory uses Postgres' row estimate; the
+  // latest evidence timestamp remains exact through the close_time index.
   const absorption = await db<StatRow>`
     with a as (
-      select count(*)::int as n,
-             max(extract(epoch from close_time) * 1000)::bigint as last_ms
-        from desk_absorption
+      select greatest(c.reltuples, 0)::bigint as n,
+             (select (extract(epoch from max(close_time)) * 1000)::bigint from desk_absorption) as last_ms
+        from pg_class c
+       where c.oid = 'desk_absorption'::regclass
     )
     select 'whale2' as id, n, last_ms from a
     union all
@@ -217,6 +220,7 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     return {
       ...spec,
       sample_n: sampleN,
+      sample_approximate: spec.id === "whale2" || spec.id === "absorption",
       last_evidence_at: lastEvidenceAt,
       health: labStudyHealth(spec, sampleN, lastEvidenceAt, now),
     };
