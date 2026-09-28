@@ -143,13 +143,13 @@ export async function enqueue(sql: Sql, kind: JobKind, key: string, params: Reco
   return rows.length > 0;
 }
 
-/** Enqueue every settled window with research receipts, plus this hour's rollup and yesterday's digest. Idempotent. */
+/** Enqueue every settled window with research receipts, plus this hour's rollup and yesterday's digest, all due from `nowMs`. Idempotent. */
 export async function enqueueDue(sql: Sql, nowMs: number): Promise<number> {
   const rows = await sql<{ n: number }>`
     with due as (
-      insert into desk_research_jobs (job_kind, job_key, priority, params)
+      insert into desk_research_jobs (job_kind, job_key, priority, params, not_before)
       select 'window', l.ticker || '|' || ((extract(epoch from l.close_time) * 1000)::bigint)::text, ${PRIORITY.window},
-        jsonb_build_object('ticker', l.ticker, 'close_ms', (extract(epoch from l.close_time) * 1000)::bigint)
+        jsonb_build_object('ticker', l.ticker, 'close_ms', (extract(epoch from l.close_time) * 1000)::bigint), ${new Date(nowMs).toISOString()}::timestamptz
       from desk_ledger_research l
       where l.close_time > ${new Date(nowMs - LOOKBACK_DAYS * 86_400_000).toISOString()}::timestamptz
         and l.close_time < ${new Date(nowMs - 120_000).toISOString()}::timestamptz
@@ -159,8 +159,8 @@ export async function enqueueDue(sql: Sql, nowMs: number): Promise<number> {
       returning 1)
     select count(*)::int as n from due`;
   let n = Number(rows[0]?.n ?? 0);
-  if (await enqueue(sql, "rollup", new Date(nowMs).toISOString().slice(0, 13))) n += 1;
-  if (await enqueue(sql, "digest", chicagoDay(nowMs - 86_400_000))) n += 1;
+  if (await enqueue(sql, "rollup", new Date(nowMs).toISOString().slice(0, 13), {}, nowMs)) n += 1;
+  if (await enqueue(sql, "digest", chicagoDay(nowMs - 86_400_000), {}, nowMs)) n += 1;
   return n;
 }
 
