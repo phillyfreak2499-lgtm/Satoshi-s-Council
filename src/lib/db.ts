@@ -48,7 +48,19 @@ const globalRef = globalThis as typeof globalThis & {
   __pgSqlPromise__?: Promise<Sql>;
   __pgliteInstance__?: Promise<import("@electric-sql/pglite").PGlite>;
   __pgliteMigrateChain__?: Promise<void>;
+  /** The pooled client, kept only so pool pressure can be READ (research governor). */
+  __pgPool__?: { totalCount: number; idleCount: number; waitingCount: number };
 };
+
+/**
+ * Read-only pool pressure for background work that must yield to production
+ * traffic. Null on the embedded PGLite fallback (it has no pool) or before the
+ * pool exists. Never opens, closes or resizes anything.
+ */
+export function dbPoolStats(): { total: number; idle: number; waiting: number } | null {
+  const pool = globalRef.__pgPool__;
+  return pool ? { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount } : null;
+}
 
 /**
  * Result-type parity: Postgres sends every value as text plus a type OID — the
@@ -103,6 +115,7 @@ function createNeonSql(): Promise<Sql> {
       query_timeout: 15_000,
       idle_in_transaction_session_timeout: 15_000,
     });
+    globalRef.__pgPool__ = pool;
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];

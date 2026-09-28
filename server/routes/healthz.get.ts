@@ -67,6 +67,14 @@ export default function healthz() {
   void import("../../src/lib/desk/shadow-lab-mid-recovery-locks.server")
     .then((m) => m.ensureMidRecoveryLocksObserver())
     .catch(() => {});
+  // Research factory: env-gated, default OFF (RESEARCH_FACTORY_ENABLED=true).
+  // A resource-governed background queue that re-grades settled windows and
+  // audits research integrity. Writes only its own desk_research_* tables;
+  // production authority NONE; pauses whenever production traffic needs the
+  // CPU, memory, event loop or DB pool.
+  void import("../../src/lib/desk/research-factory.server")
+    .then((m) => m.ensureResearchFactory())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.
