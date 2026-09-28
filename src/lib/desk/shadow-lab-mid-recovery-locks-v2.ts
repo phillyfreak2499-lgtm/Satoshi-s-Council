@@ -1,11 +1,11 @@
 /**
- * MID_RECOVERY_LOCKS_V2_INACTIVE — LOCKS V1 with both evidence-integrity
- * defects corrected from day one (pure).
+ * MID_RECOVERY_LOCKS_V2_INACTIVE — LOCKS V1 with evidence-integrity
+ * corrections isolated to the V2 research path (pure).
  *
  * WHY A NEW VERSION. LOCKS V1 keeps running unchanged; its receipts stay
  * exactly as recorded and are annotated by the research auditor. V2 asks the
- * same question with the same five arms, but on a path where neither known
- * defect can produce a result, so its receipts can be clean evidence:
+ * same question with the same five arms, but on a path where the known
+ * integrity defects are corrected, so version-2 receipts can be clean evidence:
  *
  *   P1  The Chair's supporter count is per seat. Under E1, STREAK
  *       (continue_young reads the YES book) is a book read, so STREAK beside
@@ -21,6 +21,10 @@
  *   P2  The producer's captured frame must carry capture_policy
  *       P2_EXPLOIT_GUARD_V1 (bots.ts): an exploit-rejected card never reaches
  *       recovery. A frame without it is not evaluated.
+ *   P3  Only directional cards present in candidates[] may be released by the
+ *       E1 shadow unmute. A production selected vote that was forced to SIT
+ *       stays SIT instead of being revived merely because its raw_lean was
+ *       directional. V1 remains frozen and unchanged.
  *
  * ARMS, INTERVENTIONS, FLOOR, GATES, CONFIRMATION, FEES: exactly LOCKS V1's.
  * CONTROL is V1's CONTROL plus the P1 correction; the single-lock arms and
@@ -31,7 +35,7 @@
  */
 import type { EvaluatedCandidateFrame } from "./bots";
 import type { RecoveryProjection } from "./call-recovery-candidate";
-import { e1FamilyOf } from "./shadow-arms.ts";
+import { e1FamilyOf, unmuteRoster } from "./shadow-arms.ts";
 import { evaluateMidRecovery, type MidRecoveryDeps, type MidRecoveryInput, type MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
 import {
   LOCKS_ARMS, LOCKS_INTERVENTIONS, LOCKS_PROMOTION_ELIGIBLE, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_EXPERIMENT, chairWithoutSitMass, summarizeLocks,
@@ -49,11 +53,12 @@ export const E1_BOOK_DUPLICATE = "E1_BOOK_DUPLICATE";
 export const MID_RECOVERY_LOCKS_V2_EXPERIMENT = Object.freeze({
   ...MID_RECOVERY_LOCKS_EXPERIMENT,
   id: "MID_RECOVERY_LOCKS_V2_INACTIVE",
-  version: 1,
+  version: 2,
   supersedes: MID_RECOVERY_LOCKS_EXPERIMENT.id,
   corrections: Object.freeze({
     p1_e1_book_supporter_dedupe: "STREAK beside another E1 book-family supporter of the same side counts once",
     p2_capture_policy_required: REQUIRED_CAPTURE_POLICY,
+    p3_candidate_only_unmute: "only captured directional candidates may be released; selected SIT votes remain SIT",
   }),
 } as const);
 
@@ -101,7 +106,21 @@ const blankTrace = (arm: LocksRecoveredArm): LocksV2Intervention => ({
   e1_book_dedupe: { streak_side: null, book_supporters: [], applied: false },
 });
 
-/** V1's arm path, with the P1 correction applied last to every recovered arm's Chair. */
+/**
+ * V2-only P3 correction. The shared V1 projection un-mutes every selected
+ * roster vote with a directional raw_lean, which can revive a vote production
+ * forced to SIT even though it never entered candidates[]. Rebuild the
+ * simulated vote set from the original producer votes and release only the
+ * candidate card ids. The shared V1 path is deliberately left untouched.
+ */
+function candidateOnlyProjection(frame: EvaluatedCandidateFrame, learner: Parameters<MidRecoveryDeps["projectInactiveE1Recovery"]>[1], projection: RecoveryProjection): RecoveryProjection {
+  const bySeat = new Map(projection.candidates.map((candidate) => [candidate.seat, candidate.vote] as const));
+  const projectedVotes = frame.votes.map((vote) => bySeat.get(vote.seat) ?? vote);
+  const cards = projection.candidates.map((candidate) => candidate.card_id);
+  return { ...projection, simulated: unmuteRoster(projectedVotes, learner, cards) };
+}
+
+/** V1's arm path, with the P3 projection guard and P1 correction applied only inside V2. */
 export function locksV2ArmDeps(base: MidRecoveryDeps, arm: LocksRecoveredArm, frame: EvaluatedCandidateFrame, trace: LocksV2Intervention): MidRecoveryDeps {
   const iv = LOCKS_INTERVENTIONS[arm];
   let candidateSeats: SeatId[] = [];
@@ -110,7 +129,7 @@ export function locksV2ArmDeps(base: MidRecoveryDeps, arm: LocksRecoveredArm, fr
     projectInactiveE1Recovery: (f, learner) => {
       const projection: RecoveryProjection = base.projectInactiveE1Recovery(f, learner);
       candidateSeats = projection.candidates.map((c) => c.seat);
-      return projection;
+      return candidateOnlyProjection(f, learner, projection);
     },
     runChair: (...args) => {
       let chair = iv.bar_no_sitmass ? chairWithoutSitMass(base.runChair, args, trace.bar_no_sitmass) : base.runChair(...args);
