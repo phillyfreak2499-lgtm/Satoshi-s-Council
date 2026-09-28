@@ -88,15 +88,27 @@ Every receipt gets `integrity_status` (CLEAN, SUSPECT, INVALID or
 UNVERIFIABLE) plus machine-readable `reason_codes`. The receipts themselves
 are never updated or deleted.
 
-- **P2 (PR #330, unresolved, still present on main):**
-  - What happens: in `EXPLOIT`, `pickLiveAndPaper` skips a LIVE card with
-    `n ≥ 16`, `wilson < 0.42`, but the paper loop still captures it, so
-    recovery can hear a card the producer rejected. Cards excluded by
-    `CLOSED_DIRECTIONAL_CARDS` or by `voteEligible` reach the paper loop
-    the same way.
-  - What the auditor can see: the stored records do not carry the learner
-    phase or the card's counters. So a recovered LIVE card that the producer
-    did not select is `SUSPECT (P2_LIVE_CARD_NOT_SELECTED)`.
+- **P2 (found in PR #330; fixed by `CAPTURE_POLICY` `P2_EXPLOIT_GUARD_V1`):**
+  - What happened: in `EXPLOIT`, `pickLiveAndPaper` skips a LIVE card with
+    `n ≥ 16`, `wilson < 0.42`, but the paper loop still handed it to research
+    capture, so recovery could hear a card the producer rejected for its record.
+  - The fix (`bots.ts`): an exploit-rejected card is still evaluated and graded
+    on the paper list exactly as before, so the default `runBots` output and the
+    learner are unchanged. It is never passed to the capture hook. Every captured
+    frame carries `capture_policy: "P2_EXPLOIT_GUARD_V1"`.
+  - Out of scope, by design: cards on a research or sample hold (`voteEligible`)
+    still ride the paper list into capture; recovering those is what the
+    experiments measure. None of the `CLOSED_DIRECTIONAL_CARDS` is in the E1
+    roster.
+  - The evidence boundary:
+    - LOCKS receipts copy the stamp into their payload. A stamped receipt is
+      not a P2 suspect.
+    - The frozen `MID_RECOVERY_V1_INACTIVE` recorder is hash-pinned and not
+      changed, so its receipts carry no stamp and stay P2 suspects.
+    - Nothing historical is rewritten.
+  - What the auditor sees on unstamped receipts: the stored records do not
+    carry the learner phase or the card's counters. So a recovered LIVE card
+    that the producer did not select is `SUSPECT (P2_LIVE_CARD_NOT_SELECTED)`.
   - Partial verification: where `skill_score_audit` stores counters (only
     `DRIFT.pullback_in_trend` among the E1 roster), the auditor either
     confirms `P2_EXPLOIT_REJECT_LIKELY` or clears the card.
@@ -526,7 +538,7 @@ and the engine's quote as the price control.
 
 Prerequisites that are not met yet:
 
-1. P2 resolved or bounded.
+1. P2 resolved or bounded (fixed for LOCKS receipts stamped `P2_EXPLOIT_GUARD_V1`; earlier and V1 receipts stay bounded as SUSPECT).
 2. The EXACT replay path validated.
 3. A train / validation / untouched-holdout workflow.
 4. Multiple-comparison protection beyond per-report BH.

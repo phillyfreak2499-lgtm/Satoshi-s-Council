@@ -8,7 +8,7 @@ import {
   type ResourceSample,
 } from "./research-factory.ts";
 import {
-  REASONS, auditWindow, evidenceEligible, stageOfRecord, windowFacts,
+  P2_FIXED_POLICY, REASONS, auditWindow, evidenceEligible, stageOfRecord, windowFacts,
   type ReceiptRow, type WindowInput,
 } from "./research-factory-analysis.ts";
 import {
@@ -231,6 +231,15 @@ test("P2 (exploit-rejected card recovery): a LIVE card the producer did not sele
   assert.ok(cleared.details["p2_cleared_DRIFT.pullback_in_trend"]);
   const shadow = statusOf(auditWindow(windowOf([cleanFill()])), "BAR_NO_SITMASS");
   assert.equal(shadow.integrity_status, "CLEAN", "a SHADOW card is not on the P2 path");
+  // After the fix: the producer never captures an exploit-rejected card, and the receipt says so.
+  const fixedRec = record({ arm: "A", cands: live, roster: roster.map((r) => ({ ...r, selected_forced_sit: false })), confirmed: true });
+  (fixedRec as Record<string, unknown>).capture_policy = P2_FIXED_POLICY;
+  const fixed = statusOf(auditWindow(windowOf([fillReceipt("A", fixedRec)])), "A");
+  assert.equal(fixed.integrity_status, "CLEAN", "a receipt captured under P2_EXPLOIT_GUARD_V1 is not a P2 suspect");
+  assert.equal(fixed.details.capture_policy, P2_FIXED_POLICY);
+  const unstamped = record({ arm: "A", cands: live, roster: roster.map((r) => ({ ...r, selected_forced_sit: false })), confirmed: true });
+  (unstamped as Record<string, unknown>).capture_policy = "SOMETHING_ELSE";
+  assert.ok(statusOf(auditWindow(windowOf([fillReceipt("A", unstamped)])), "A").reason_codes.includes("P2_LIVE_CARD_NOT_SELECTED"), "only the exact policy clears it; older receipts stay suspect");
 });
 
 test("P2-suspect and invalid results never count as clean promotion evidence", () => {

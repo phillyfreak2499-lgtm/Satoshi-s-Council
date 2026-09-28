@@ -94,7 +94,7 @@ function record(a: LocksArmEvaluation, extra: Record<string, unknown> = {}): Rec
   void watch;
   return {
     ...rest, version: EXPERIMENT, experiment: EXPERIMENT, experiment_version: a.experiment_version, evaluator: MID_RECOVERY_LOCKS_EXPERIMENT.evaluator,
-    arm: a.arm, promotion_eligible: a.promotion_eligible, production_authority: MID_RECOVERY_LOCKS_EXPERIMENT.production_authority, intervention: a.intervention,
+    arm: a.arm, promotion_eligible: a.promotion_eligible, production_authority: MID_RECOVERY_LOCKS_EXPERIMENT.production_authority, intervention: a.intervention, capture_policy: a.capture_policy,
     confirmation: confirmationRest, funnel_stage: a.evaluation.flags.funnel_stage, funnel_stage_index: a.evaluation.flags.funnel_stage_index, ...extra,
   };
 }

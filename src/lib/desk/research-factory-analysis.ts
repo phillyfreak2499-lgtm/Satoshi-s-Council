@@ -21,12 +21,14 @@
  *
  * Phase 3, INTEGRITY. Every receipt gets integrity_status CLEAN / SUSPECT /
  * INVALID / UNVERIFIABLE with machine-readable reason codes. Suspect history is
- * annotated, never deleted or rewritten. The P2 finding (PR #330, unresolved):
- * a LIVE E1 card that the producer's EXPLOIT quality guard skipped is still
- * captured on the paper path, so recovery can hear a card the producer
+ * annotated, never deleted or rewritten. The P2 finding (from PR #330): a
+ * LIVE E1 card that the producer's EXPLOIT quality guard skipped was still
+ * captured on the paper path, so recovery could hear a card the producer
  * rejected. The stored records do not carry the learner phase or the card's
- * n/wilson, so a recovered LIVE card that the producer did not select is
- * SUSPECT (P2_LIVE_CARD_NOT_SELECTED) unless stored counters clear it.
+ * n/wilson, so on a receipt captured before the fix a recovered LIVE card that
+ * the producer did not select is SUSPECT (P2_LIVE_CARD_NOT_SELECTED) unless
+ * stored counters clear it. The fix stamps capture_policy P2_EXPLOIT_GUARD_V1
+ * on every captured frame; receipts carrying it are not P2 suspects.
  */
 import { bookable } from "./book-floor.ts";
 import { wilsonLower } from "./math.ts";
@@ -456,6 +458,8 @@ const LATE_WRITE_MS = 30_000;
 const FUTURE_TOLERANCE_MS = 5_000;
 /** The producer's EXPLOIT quality guard (bots.ts pickLiveAndPaper): LIVE, n >= 16, wilson < 0.42. */
 const EXPLOIT_GUARD = Object.freeze({ min_n: 16, max_wilson: 0.42 });
+/** bots.ts CAPTURE_POLICY, held as data so the auditor never imports the producer (a rail test pins the two equal). */
+export const P2_FIXED_POLICY = "P2_EXPLOIT_GUARD_V1";
 
 export function auditWindow(input: WindowInput): Annotation[] {
   const out: Annotation[] = [];
@@ -513,6 +517,10 @@ export function auditWindow(input: WindowInput): Annotation[] {
         const roster = arr(recovery?.evaluated_roster)?.map((x) => obj(x) ?? {}) ?? null;
         const held = new Set((arr(recovery?.held_seats) ?? []).map(String));
         const released = arr(recovery?.released)?.map(String) ?? null;
+        // LOCKS receipts captured under the P2 fix carry the policy stamp: the producer never hands an exploit-rejected card to capture.
+        // (The frozen V1 recorder is not changed, so its receipts carry no stamp and stay P2 suspects.)
+        const p2Guarded = p.capture_policy === P2_FIXED_POLICY;
+        if (p2Guarded) details.capture_policy = P2_FIXED_POLICY;
         if (!roster || !released) codes.push("MISSING_PROVENANCE");
         const seats = new Set<string>(), cards = new Set<string>();
         const invalidCards: string[] = [];
@@ -535,7 +543,7 @@ export function auditWindow(input: WindowInput): Annotation[] {
                 || (str(src.evaluated_health) != null && c.health != null && src.evaluated_health !== c.health)) mine.push("CANDIDATE_DIFFERS_FROM_SOURCE");
               if (src.selected_skill_used === c.card_id && src.selected_forced_sit === true) mine.push("SELECTED_SIT_REUSED");
               // P2: the producer had this card LIVE and did not select it — exploit-rejection or pool exclusion is possible.
-              if (c.original_status === "LIVE" && src.selected_skill_used !== c.card_id) {
+              if (c.original_status === "LIVE" && src.selected_skill_used !== c.card_id && !p2Guarded) {
                 const k = counters.get(c.card_id);
                 const n = k?.n ?? null, hits = k?.hits ?? null;
                 if (k && k.status_at_input === "LIVE" && n != null && hits != null) {

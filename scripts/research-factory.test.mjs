@@ -337,6 +337,12 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
     assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow|wick-effort/, `${prod} is untouched by the factory and the collectors`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+  // The auditor's P2 boundary is the producer's capture policy, held as data: the two literals must stay equal.
+  const policy = /export const CAPTURE_POLICY = "([A-Z0-9_]+)" as const;/.exec(read("src/lib/desk/bots.ts"))?.[1];
+  assert.ok(policy, "bots.ts exports CAPTURE_POLICY");
+  assert.match(read("src/lib/desk/research-factory-analysis.ts"), new RegExp(`export const P2_FIXED_POLICY = "${policy}";`));
+  assert.match(read("src/lib/desk/shadow-lab-mid-recovery-locks.ts"), /capture_policy: frame\.capture_policy \?\? null/, "the LOCKS arm carries the producer's stamp");
+  assert.match(read("src/lib/desk/shadow-lab-mid-recovery-locks.server.ts"), /capture_policy: a\.capture_policy,/, "and writes it into every receipt");
 });
 
 // ---------------------------------------------------------------------------

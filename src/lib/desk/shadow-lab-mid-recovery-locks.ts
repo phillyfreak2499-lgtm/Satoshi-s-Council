@@ -259,6 +259,8 @@ export type LocksArmEvaluation = {
   arm: LocksRecoveredArm;
   promotion_eligible: boolean;
   intervention: LocksIntervention;
+  /** The producer's research-capture policy for this tick's frame (bots.ts CAPTURE_POLICY); null on frames captured before the P2 fix. */
+  capture_policy: string | null;
   evaluation: MidRecoveryEvaluation;
 };
 
@@ -281,7 +283,7 @@ export function evaluateLocksArm(arm: LocksRecoveredArm, input: LocksInput, fram
   const evaluation = evaluateMidRecovery(armInput, locksArmDeps(deps, arm, frame, trace));
   return {
     experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, experiment_version: MID_RECOVERY_LOCKS_EXPERIMENT.version, arm,
-    promotion_eligible: LOCKS_PROMOTION_ELIGIBLE[arm], intervention: trace, evaluation,
+    promotion_eligible: LOCKS_PROMOTION_ELIGIBLE[arm], intervention: trace, capture_policy: frame.capture_policy ?? null, evaluation,
   };
 }
 
