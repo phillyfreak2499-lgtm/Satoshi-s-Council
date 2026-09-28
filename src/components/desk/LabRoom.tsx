@@ -127,7 +127,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
                 </p>
               ) : null}
               <div className="mt-2 font-mono text-micro leading-relaxed text-subtle">
-                n={row.sample_n} · evidence {last} · {row.cadence}
+                n{row.sample_approximate ? "≈" : "="}{row.sample_n} {row.sample_approximate ? "(estimated count) · " : "· "}evidence {last} · {row.cadence}
                 {row.retired_on ? ` · retired ${row.retired_on}` : ""}
               </div>
             </article>
