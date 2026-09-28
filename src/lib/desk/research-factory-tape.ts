@@ -352,6 +352,8 @@ export type BriefGrade = {
   became_directional: boolean;
   qualified: boolean;
   booked: boolean;
+  /** The official settlement of the window, so every graded brief stands on its own. */
+  official_winner: "UP" | "DOWN" | null;
 };
 
 export type WindowTimeline = {
@@ -417,6 +419,7 @@ export function gradeWindow(events: readonly TapeEvent[], winner: "UP" | "DOWN" 
       became_directional: later.some((l) => l.evidence.side != null),
       qualified: later.some((l) => l.state === "QUALIFIED" || l.state === "BOOKED"),
       booked: later.some((l) => l.state === "BOOKED"),
+      official_winner: winner,
     });
   }
   const deepest = ev.reduce<TapeEvent | null>((m, e) => (!m || e.stage_index > m.stage_index ? e : m), null);

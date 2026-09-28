@@ -161,6 +161,7 @@ test("grading a window: the timeline, stage-by-stage transitions, regressions, d
   assert.equal(b600.blocker_cleared, true);
   assert.equal(b600.next_blocker, "FAMILY_DIVERSITY_FAIL", "the bar unlocked a stage; the next bottleneck was family independence");
   assert.equal(b600.correct_transition, true);
+  assert.equal(b600.official_winner, "UP", "each graded brief carries the official settlement");
   assert.equal(b600.false_hope, false);
   const b300 = t.briefs.find((b) => b.checkpoint === 300)!;
   assert.equal(b300.primary_blocker, "FAMILY_DIVERSITY_FAIL");
