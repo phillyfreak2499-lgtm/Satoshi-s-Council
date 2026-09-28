@@ -311,20 +311,27 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
-    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts"];
+    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts", "src/lib/desk/trade-flow.ts", "src/lib/desk/trade-flow.server.ts"];
   for (const f of files) {
     const src = codeOf(f);
     const writes = [...src.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:\w+\s+)?set|delete from\s+(\w+)/gi)].map((x) => x[1] || x[2] || x[3]);
-    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth)$/, `${f} writes ${w}`);
-    assert.doesNotMatch(src, /openai|anthropic|fetch\(|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
+    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth|flow_minutes|flow_marks)$/, `${f} writes ${w}`);
+    assert.doesNotMatch(src, /openai|anthropic|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
+    if (f !== "src/lib/desk/trade-flow.server.ts") assert.doesNotMatch(src, /fetch\(/, `${f} fetches`);
   }
+  // The flow collector's only network reads: public market-data hosts, each checked against the allowlist before any fetch.
+  const flowSrc = codeOf("src/lib/desk/trade-flow.server.ts");
+  const hosts = [...new Set([...flowSrc.matchAll(/https?:\/\/([^/"'`\s]+)/g)].map((x) => x[1]))].sort();
+  assert.deepEqual(hosts, ["api.exchange.coinbase.com", "www.okx.com"]);
+  assert.match(flowSrc, /if \(!FLOW_HOSTS\.includes\(new URL\(url\)\.host\)\) throw/);
+  assert.doesNotMatch(flowSrc, /authorization|api[-_]?key|secret|method:\s*"(POST|PUT|DELETE)"/i, "unauthenticated GETs only");
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow")) continue;
     assert.ok(!read(f).includes("research-factory"), `${f} imports the research factory`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "floor-policy.ts", "call-recovery-candidate.ts"]) {
-    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth/, `${prod} is untouched by the factory and the depth collector`);
+    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow/, `${prod} is untouched by the factory and the collectors`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
 });
@@ -507,5 +514,105 @@ test("book_depth report: the rollup reports collection quality and holds the H0 
   assert.equal(c180.clean, 2, "window 2 had no book");
   assert.deepEqual(c180.flags, [{ flag: "BOOK_MISSING", n: 1 }]);
   assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.decision_use, "NONE");
+});
+
+// ---------------------------------------------------------------------------
+// Spot/perp signed trade-flow collector.
+// ---------------------------------------------------------------------------
+
+const FLOW = "src/lib/desk/trade-flow.server.ts";
+
+function flowFixture(ctVal = "0.01") {
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  const at = (hms) => Date.parse(`2026-09-28T15:${hms}Z`);
+  const cb = (id, hms, makerSide, size) => ({ trade_id: id, time: new Date(at(hms)).toISOString(), price: "60000", size, side: makerSide });
+  const pages = { cbNewest: [], cbOlder: {}, okx: [{ instId: "BTC-USDT-SWAP", tradeId: "7", ts: String(at("10:00")), px: "60000", sz: "5", side: "buy" }] };
+  const urls = [];
+  const get = async (url) => {
+    urls.push(url);
+    if (url.includes("/public/instruments")) return { code: "0", data: [{ instId: "BTC-USDT-SWAP", ctVal, ctValCcy: "BTC" }] };
+    if (url.includes("okx.com/api/v5/market/trades")) return { code: "0", data: pages.okx };
+    const after = /after=(\d+)/.exec(url);
+    if (url.includes("coinbase")) return after ? pages.cbOlder[after[1]] ?? [] : pages.cbNewest;
+    throw new Error(`unexpected ${url}`);
+  };
+  const close = Date.parse("2026-09-28T15:15:00Z");
+  const frame = { snap: { ticker: "KXBTC15M-FLOW", close_time: close, as_of: at("11:59"), demo: false, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5 } };
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } })(FLOW);
+  const minutes = () => calls.filter((c) => /^\s*insert into desk_research_flow_minutes/.test(c.text)).map((c) => ({ venue: c.values[0], minute: c.values[1], complete: c.values[3], flags: JSON.parse(c.values[4]), n_buy: c.values[5], n_sell: c.values[6], buy_base: c.values[7], sell_base: c.values[8] }));
+  const marks = () => calls.filter((c) => /^\s*insert into desk_research_flow_marks/.test(c.text)).map((c) => ({ clock: c.values[2], age: c.values[4], yes_mid: c.values[9] }));
+  return { calls, get, pages, urls, cb, at, mod, minutes, marks };
+}
+
+test("trade-flow collector: env-gated on a literal flag; aggressor sides as frozen; pages back to close a break instead of guessing; marks the price at fixed clocks; writes only its own tables", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(FLOW);
+  for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(off.ensureTradeFlow({ RESEARCH_TRADE_FLOW_ENABLED: v }), "disabled", String(v));
+  const f = flowFixture();
+  f.pages.cbNewest = [f.cb(101, "11:40", "buy", "1"), f.cb(100, "11:10", "sell", "1")];
+  await f.mod.tradeFlowTick(f.at("12:00"), f.get);                      // first poll; T-3:00 of the 15:15 window
+  assert.deepEqual(f.marks(), [{ clock: 180, age: 1000, yes_mid: 84.5 }]);
+  await f.mod.tradeFlowTick(f.at("12:01"), f.get);
+  assert.equal(f.marks().length, 1, "one mark per clock per window");
+  f.pages.cbNewest = [f.cb(103, "12:50", "buy", "0.1"), f.cb(102, "12:10", "sell", "0.4"), ...f.pages.cbNewest];
+  await f.mod.tradeFlowTick(f.at("13:15"), f.get);
+  const m1 = f.minutes().filter((r) => r.venue === "COINBASE_SPOT");
+  assert.deepEqual(m1, [{ venue: "COINBASE_SPOT", minute: "2026-09-28T15:12:00.000Z", complete: true, flags: [], n_buy: 1, n_sell: 1, buy_base: 0.4, sell_base: 0.1 }],
+    "15:11 was only partly seen and is never written; a maker 'sell' is an aggressive BUY");
+  // The newest page no longer reaches trade 103: the collector pages back instead of assuming nothing happened.
+  f.pages.cbNewest = [f.cb(301, "14:05", "sell", "2"), f.cb(300, "13:30", "sell", "1")];
+  f.pages.cbOlder["300"] = [f.cb(105, "13:20", "buy", "0.5"), f.cb(104, "13:05", "sell", "0.5"), f.cb(103, "12:50", "buy", "0.1")];
+  await f.mod.tradeFlowTick(f.at("14:15"), f.get);
+  assert.ok(f.urls.some((u) => u.endsWith("after=300")), "requested the page before the oldest fetched trade");
+  const m2 = f.minutes().filter((r) => r.venue === "COINBASE_SPOT").at(-1);
+  assert.deepEqual([m2.minute, m2.complete, m2.n_buy, m2.n_sell, m2.buy_base, m2.sell_base], ["2026-09-28T15:13:00.000Z", true, 2, 1, 1.5, 0.5], "the break was closed, so the minute is complete");
+  // A break the bounded backfill cannot close is a GAP, never filled in.
+  f.pages.cbNewest = [f.cb(900, "15:40", "sell", "1")];
+  await f.mod.tradeFlowTick(f.at("16:15"), f.get);
+  const gapped = f.minutes().filter((r) => r.venue === "COINBASE_SPOT" && r.minute >= "2026-09-28T15:14");
+  assert.ok(gapped.length >= 1 && gapped.every((r) => !r.complete && r.flags.includes("GAP")), JSON.stringify(gapped));
+  assert.equal(f.mod.tradeFlowHealth().venues.COINBASE_SPOT.gaps, 1);
+  assert.ok(f.minutes().some((r) => r.venue === "OKX_PERP" && r.complete), "the perp venue is collected separately");
+  assert.ok(f.calls.every((c) => /^\s*insert into desk_research_flow_(minutes|marks)/.test(c.text)), "writes only its own tables");
+  assert.equal(f.mod.tradeFlowHealth().decision_use, "NONE");
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/trade-flow\.server"\)\s*\.then\(\(m\) => m\.ensureTradeFlow\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  // A changed perp contract halts that venue: nothing is written under a definition that no longer holds.
+  const h = flowFixture("0.001");
+  h.pages.cbNewest = [h.cb(1, "11:40", "buy", "1")];
+  await h.mod.tradeFlowTick(h.at("12:00"), h.get);
+  await h.mod.tradeFlowTick(h.at("14:00"), h.get);
+  assert.match(h.mod.tradeFlowHealth().venues.OKX_PERP.halted, /CONTRACT_SPEC_MISMATCH/);
+  assert.equal(h.minutes().filter((r) => r.venue === "OKX_PERP").length, 0);
+  assert.ok(!h.urls.some((u) => u.includes("okx.com/api/v5/market")), "a halted venue is never polled");
+});
+
+test("trade_flow report: the rollup reports collection quality per venue and clock, and holds the H0 until its minimum clean sample", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 3; i += 1) {
+    const closeMs = base + i * 900_000, ticker = `KXBTC15M-TF${i}`;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    await sql`insert into desk_research_flow_marks (ticker, close_time, clock_secs, as_of, quote_age_ms, yes_bid, yes_ask, no_bid, no_ask, yes_mid)
+      values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 180, ${new Date(closeMs - 180_000).toISOString()}::timestamptz, 500, 84, 85, 15, 16, 84.5)`;
+    for (let k = 1; k <= 5; k += 1) {
+      const minute = new Date(closeMs - 180_000 - k * 60_000).toISOString();
+      const complete = !(i === 2 && k === 3); // one GAP minute breaks window 2's span
+      await sql`insert into desk_research_flow_minutes (venue, minute, def_version, complete, flags, n_buy, n_sell, buy_base, sell_base, buy_quote, sell_quote)
+        values ('COINBASE_SPOT', ${minute}::timestamptz, 1, ${complete}, ${complete ? [] : ["GAP"]}, 3, 1, 3, 1, 180000, 60000)`;
+    }
+  }
+  await m.enqueue(sql, "rollup", "flow");
+  const job = await m.claim(sql, "flow", Date.now());
+  assert.equal(await m.runJob(sql, job, "flow", { sampler: calm }), "complete", JSON.stringify(await jobsOf(sql)));
+  const rep = (await sql`select payload from desk_research_reports where report_kind = 'trade_flow' and report_key = 'latest'`)[0].payload;
+  const spot = rep.quality.venues.find((v) => v.venue === "COINBASE_SPOT");
+  assert.equal(spot.minutes_recorded, 15);
+  assert.deepEqual(spot.flags, [{ flag: "GAP", n: 1 }]);
+  const c180 = rep.quality.by_clock.find((c) => c.clock === 180);
+  assert.deepEqual([c180.settled_windows, c180.marks, c180.fresh_marks, c180.complete_spot_5m, c180.complete_perp_5m], [3, 3, 3, 2, 0]);
+  assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.h0.clean_observations, 2);
   assert.equal(rep.decision_use, "NONE");
 });

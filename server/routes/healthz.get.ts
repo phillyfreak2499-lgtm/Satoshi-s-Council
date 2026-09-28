@@ -85,6 +85,11 @@ export default function healthz() {
   void import("../../src/lib/desk/book-depth.server")
     .then((m) => m.ensureBookDepth())
     .catch(() => {});
+  // Spot/perp signed trade-flow collector: env-gated, default OFF (RESEARCH_TRADE_FLOW_ENABLED=true).
+  // Public trade endpoints only; writes only desk_research_flow_minutes and _marks; no decision use.
+  void import("../../src/lib/desk/trade-flow.server")
+    .then((m) => m.ensureTradeFlow())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.

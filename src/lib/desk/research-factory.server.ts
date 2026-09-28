@@ -36,6 +36,7 @@ import {
 } from "./research-factory-analysis.ts";
 import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
 import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
+import { flowH0, flowQuality, indexMinutes, type FlowMark, type FlowVenue, type FlowWindow, type StoredMinute } from "./trade-flow.ts";
 import {
   abstentionReport, briefAccuracy, researchSummary, signalValueReport, stageUnlocks, survivalReport, transitionReport,
   type TapeWindow,
@@ -311,6 +312,54 @@ export async function readDepth(sql: Sql, between: () => Promise<void> = yieldTo
   return { rows, settled_windows: Number(settled[0]?.n ?? 0) };
 }
 
+/** Trade-flow windows read back for the report: bounded to the most recent marked windows. */
+export const FLOW_HORIZON_WINDOWS = 2_000;
+
+/** Settled windows with their price marks, and every stored flow minute that can feed them (keyset paged). */
+export async function readFlow(sql: Sql, between: () => Promise<void> = yieldToLoop): Promise<{ windows: FlowWindow[]; minutes: StoredMinute[] }> {
+  const keys = await sql<{ close_time: string }>`
+    select distinct close_time::text as close_time from desk_research_flow_marks order by close_time desc limit ${FLOW_HORIZON_WINDOWS}`;
+  if (!keys.length) return { windows: [], minutes: [] };
+  const oldest = keys[keys.length - 1]!.close_time;
+  const settled = await sql<{ ticker: string; close_ms: number; winner: string | null }>`
+    select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, winner from desk_ledger_research
+    where close_time >= ${oldest}::timestamptz and winner in ('UP', 'DOWN')`;
+  const windows = new Map<string, FlowWindow>();
+  for (const r of settled) windows.set(`${r.ticker}|${Number(r.close_ms)}`, { ticker: r.ticker, close_ms: Number(r.close_ms), winner: r.winner === "UP" ? "UP" : "DOWN", marks: {} });
+  const n = (x: unknown) => (x == null ? null : Number(x));
+  let after: [string, string, number] = ["1970-01-01T00:00:00Z", "", -1];
+  for (;;) {
+    const page = await sql<Record<string, unknown>>`
+      select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, close_time::text as close_key, clock_secs, quote_age_ms, yes_bid, yes_ask, no_bid, no_ask, yes_mid
+      from desk_research_flow_marks
+      where close_time >= ${oldest}::timestamptz and (close_time, ticker, clock_secs) > (${after[0]}::timestamptz, ${after[1]}, ${after[2]})
+      order by close_time, ticker, clock_secs limit ${READ_PAGE}`;
+    for (const r of page) {
+      const w = windows.get(`${String(r.ticker)}|${Number(r.close_ms)}`);
+      if (w) w.marks[Number(r.clock_secs)] = { yes_bid: n(r.yes_bid), yes_ask: n(r.yes_ask), no_bid: n(r.no_bid), no_ask: n(r.no_ask), yes_mid: n(r.yes_mid), quote_age_ms: n(r.quote_age_ms) } satisfies FlowMark;
+    }
+    if (page.length < READ_PAGE) break;
+    const last = page[page.length - 1]!;
+    after = [String(last.close_key), String(last.ticker), Number(last.clock_secs)];
+    await between();
+  }
+  const minutes: StoredMinute[] = [];
+  let from: [string, string] = ["", "1970-01-01T00:00:00Z"];
+  for (;;) {
+    const page = await sql<Record<string, unknown>>`
+      select venue, minute::text as minute_key, (extract(epoch from minute) * 1000)::bigint as minute_ms, complete, flags, buy_base, sell_base, n_buy + n_sell as n
+      from desk_research_flow_minutes
+      where minute >= ${oldest}::timestamptz - interval '15 minutes' and (venue, minute) > (${from[0]}, ${from[1]}::timestamptz)
+      order by venue, minute limit ${READ_PAGE}`;
+    for (const r of page) minutes.push({ venue: String(r.venue) as FlowVenue, minute_ms: Number(r.minute_ms), complete: r.complete === true, flags: (r.flags as string[]) ?? [], buy_base: Number(r.buy_base), sell_base: Number(r.sell_base), n: Number(r.n) });
+    if (page.length < READ_PAGE) break;
+    const last = page[page.length - 1]!;
+    from = [String(last.venue), String(last.minute_key)];
+    await between();
+  }
+  return { windows: [...windows.values()].sort((a, b) => a.close_ms - b.close_ms), minutes };
+}
+
 /** Tape rows for one window, oldest first. */
 async function readTape(sql: Sql, ticker: string, closeMs: number): Promise<TapeEvent[]> {
   const rows = await sql<Record<string, unknown>>`
@@ -556,6 +605,16 @@ export const rollupHandler: Handler = async (ctx) => {
     ctx.scanned(depth.rows.length);
     return { quality: collectionQuality(depth.rows, depth.settled_windows), h0: depthH0(depth.rows), decision_use: "NONE" };
   });
+  // Spot and perp signed flow: collection quality first; the pre-registered H0 runs only at its minimum clean sample.
+  await step("trade_flow", async () => {
+    const flow = await readFlow(ctx.sql, ctx.unit);
+    ctx.scanned(flow.minutes.length);
+    const idx = indexMinutes(flow.minutes);
+    await ctx.unit();
+    const quality = flowQuality(flow.minutes, flow.windows, idx);
+    await ctx.unit();
+    return { quality, h0: flowH0(flow.windows, idx), decision_use: "NONE" };
+  });
   const since = ctx.nowMs - 86_400_000;
   const jobs = await readJobTelemetry(ctx.sql, since);
   await step("utilization", async () => utilization(jobs, since, ctx.nowMs, availableParallelism()));
@@ -716,5 +775,6 @@ export async function researchFactoryReport(kind?: string, key = "latest") {
     : await sql<Record<string, unknown>>`select report_kind, report_key, report_version, created_at from desk_research_reports order by created_at desc limit 50`;
   const { decisionTapeHealth } = await import("./research-factory-tape.server.ts");
   const { bookDepthHealth } = await import("./book-depth.server.ts");
-  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
+  const { tradeFlowHealth } = await import("./trade-flow.server.ts");
+  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
 }

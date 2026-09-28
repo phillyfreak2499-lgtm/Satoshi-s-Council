@@ -191,7 +191,8 @@ a paid API.
 | built with them | counterfactual survival (3) and honesty rail (4) | built; research summary (5) built |
 | **INSTRUMENT NEXT** | Kalshi book depth (C) | collector built (default OFF); collection quality first, pre-registered H0 gated at 300 clean snapshots |
 | **ANALYZE AFTER INTEGRITY** | per-seat debrief (D) | design below; the signal-value report is its first cut |
-| **RESEARCH QUEUE** | spot/perp delta (E), formalized WICK (F) | feasibility and design below; not built |
+| **INSTRUMENT NEXT** | spot/perp signed flow (E) | collector built (default OFF); definition frozen; collection quality first, pre-registered H0 gated at 300 clean windows |
+| **RESEARCH QUEUE** | formalized WICK (F) | design below; not built |
 | **BLOCKED** | parameter or genetic search (G) | prerequisites below |
 
 ## A + B. The production decision tape
@@ -404,22 +405,63 @@ Chair, and a signal-survival matrix: generated → authority → folding →
 contribution → Chair direction → support → confirmation → qualified → booked.
 It asks "when is this seat useful?", and it never alters authority.
 
-## E. Spot/perp delta: not reconstructable from stored data
+## E. Spot/perp signed flow: built (instrument only, no decision use)
 
-- **Stored data:** only per-minute *basis* (`desk_basis_minutes`), Kalshi
-  taker share (`desk_taker`) and legacy model features (`desk_samples`). No
-  spot or perp **signed** trade flow is stored.
-- **Live feeds:** the only WebSocket feed in the app is Kalshi's. No spot or
-  perp trade stream exists live either.
+`RESEARCH_TRADE_FLOW_ENABLED=true` (literal; off by default). Files:
+`trade-flow.ts` (pure), `trade-flow.server.ts` (collector) and migration
+`0063_desk_research_trade_flow.sql`.
 
-**Bounded proposal:**
+**Why a collector.** Nothing stored could reconstruct it: the desk keeps
+per-minute basis (`desk_basis_minutes`), Kalshi taker share (`desk_taker`)
+and model features (`desk_samples`), but no signed spot or perp trade flow,
+and the only live WebSocket is Kalshi's.
 
-1. Add a research-only trade collector per venue (spot and perp, kept
-   separate) that aggregates to fixed 1-minute and final-5-minute buckets:
-   signed volume from the aggressor flag and cumulative delta.
-2. Freeze the signed-flow definition before collecting.
-3. Only after enough clean windows, run the price-only versus price+flow
-   walk-forward test with the scorer above, including real Kalshi fees.
+**Source.** Each venue's free, public, unauthenticated recent-trades endpoint,
+on hosts the desk already polls for prices. The venues are kept separate:
+
+| venue | market | endpoint | aggressor |
+|---|---|---|---|
+| `COINBASE_SPOT` | BTC-USD | `api.exchange.coinbase.com/products/BTC-USD/trades` | the **opposite** of `side` (Coinbase reports the maker order's side) |
+| `OKX_PERP` | BTC-USDT-SWAP | `www.okx.com/api/v5/market/trades` | `side` (OKX reports the taker's side) |
+
+**Frozen definition `FLOW_DEF_V1`**, fixed before any trade is collected:
+- signed volume = aggressor-buy BTC − aggressor-sell BTC;
+- normalized delta = signed volume ÷ total volume over the same minutes;
+- OKX size = contracts × 0.01 BTC. The collector checks the instrument's
+  `ctVal` first and **halts that venue** if it is not 0.01 BTC;
+- bucket = the exchange's trade timestamp, floored to the UTC minute.
+
+Changing any of this means a new definition id, never a silent edit.
+
+**Continuity.** Every 2 s the collector fetches the newest page per venue. If
+that page does not reach the last trade it saw, it pages back (at most five
+pages). If it still cannot reach it, the break is a `GAP` on every minute it
+touches; a break longer than 30 minutes leaves those minutes absent.
+
+A minute is written once, only after a poll lands 10 s past its end. Empty
+minutes are written as zero. Other flags: `CLOCK_SKEW` (a trade stamped
+ahead of our clock) and `OUT_OF_ORDER`. Trades that land in an
+already-written minute are counted, never rewritten. The first, partly seen
+minute is never written.
+
+**Price control.** `desk_research_flow_marks` stores the engine's quote at
+T-600, 300, 180 and 60 s, with its age, so the test does not depend on
+another collector being on.
+
+**Report (`trade_flow`).**
+- **Collection quality first:** per venue, minutes recorded, coverage,
+  complete rate, flag counts and trades per minute. Per clock, windows with
+  a fresh mark and a complete five-minute span.
+- **Pre-registered `TRADE_FLOW_H0_V1`:** spot normalized delta over the five
+  minutes before T-3:00 adds nothing beyond the same-time price. It runs only
+  at 300 clean settled windows: every minute complete and a mark no older
+  than 10 s. It uses walk-forward, price-band-controlled incremental Brier
+  and log loss, plus a hypothetical favourite entry (80–99¢, taker fee)
+  against the price-only control.
+- If flow only restates the price, the verdict is `RETIRE_CANDIDATE`.
+  `INFORMATIVE_CANDIDATE` only earns a frozen prospective shadow test.
+- Perp flow, and spot and perp agreeing, are reported as `EXPLORATORY`
+  secondaries. They cannot rescue or replace the primary verdict.
 
 It never becomes a production seat.
 
