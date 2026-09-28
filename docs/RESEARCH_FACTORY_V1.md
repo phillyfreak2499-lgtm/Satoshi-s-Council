@@ -189,7 +189,7 @@ a paid API.
 | built with them | choke-transition engine (1) | built for production, plus per-arm stage unlocks versus CONTROL |
 | built with them | marginal-information scorer (2) | engine built; seat and family report from tape checkpoints (EXPLORATORY) |
 | built with them | counterfactual survival (3) and honesty rail (4) | built; research summary (5) built |
-| **INSTRUMENT NEXT** | Kalshi book depth (C) | feasibility below; collector proposed for the next PR |
+| **INSTRUMENT NEXT** | Kalshi book depth (C) | collector built (default OFF); collection quality first, pre-registered H0 gated at 300 clean snapshots |
 | **ANALYZE AFTER INTEGRITY** | per-seat debrief (D) | design below; the signal-value report is its first cut |
 | **RESEARCH QUEUE** | spot/perp delta (E), formalized WICK (F) | feasibility and design below; not built |
 | **BLOCKED** | parameter or genetic search (G) | prerequisites below |
@@ -324,34 +324,70 @@ everything here is EXPLORATORY.
   earn a frozen prospective test, never production authority, and nothing is
   promoted from COMBINED_DIAG or P2-contaminated evidence.
 
-## C. Kalshi book depth: feasible, instrument next
+## C. Kalshi book depth: built (instrument only, no decision use)
 
-The Lab already keeps a full per-level Kalshi book in memory
-(`lab.server.ts` `L.books`, built by `lab-book.ts`) from the `orderbook_delta`
-WebSocket channel:
+`RESEARCH_BOOK_DEPTH_ENABLED=true` (literal; off by default). Files:
+`book-depth.ts` (pure), `book-depth.server.ts` (collector) and migration
+`0062_desk_research_book_depth.sql`.
 
-- YES-bid and NO-bid level maps (price → size); asks are implied by the
-  opposite side's bids;
-- trust flags: `ok` (a snapshot has loaded), `stale` (a sequence gap is
-  outstanding), a `gaps` count and `upd_t`;
-- a phantom-level guard (`QTY_EPS`) that removes floating-point residue;
-- a REST fallback, `GET /markets/{ticker}/orderbook?depth=N` (`fast-pulse`
-  uses `depth=1`).
+**Source.** The Lab already rebuilds the full per-level Kalshi book from the
+`orderbook_delta` WebSocket channel, for the engine's current ticker, in
+every production process. A read-only accessor, `labBookDepth(ticker)`,
+returns a copy of that book on one YES price axis (`yesView`) plus its trust
+flags: `ok`, `stale` after a sequence gap, `gaps` and `upd_t`. It never
+subscribes, requests or mutates anything, so no new feed and no API cost is
+needed.
 
-**Proposal (next PR):**
+Kalshi books are resting bids on both sides:
 
-1. Add a read-only accessor, `labBookLevels(ticker, n)`.
-2. Add an env-gated collector writing `desk_research_book_depth` at
-   T-600, 300, 180 and 60, with:
-   - YES and NO bid depth for the top 10 levels, best bid and ask, spread;
-   - total, near-touch-weighted and imbalance measures, and the depth slope;
-   - adds and removes since the previous snapshot;
-   - quality flags: untrusted, stale, gap count, snapshot age, missing book.
-3. Deliver collection quality first: coverage and trust rates per clock.
-4. Only then test H0 ("resting depth imbalance adds no information beyond the
-   same-time market price"). Use `marginalValue` with stance = sign of the
-   imbalance, walk-forward, inside price bands. Retire the study if depth
-   restates price.
+- YES asks are the NO bids mirrored (YES ask depth ≡ NO bid depth);
+- NO asks are the YES bids mirrored (NO ask depth ≡ YES bid depth).
+
+**Snapshots.** One insert-once row per window at T-600, 300, 180 and 60 s.
+Each holds:
+
+- the top 10 levels per side;
+- best bid and ask, spread and mid;
+- total and near-touch depth, weighted 1/(1 + cents from the touch) within
+  5¢;
+- the near-touch imbalance, (bid − ask) / (bid + ask);
+- the depth slope within 10¢;
+- adds and removals versus the same window's previous snapshot;
+- whether the imbalance kept its sign;
+- the engine's same-instant quote, which is the market-price control.
+
+**Quality flags.** A snapshot is `clean` only with none of these:
+
+- `BOOK_MISSING`
+- `NO_SNAPSHOT_LOADED`
+- `SEQUENCE_GAP_STALE`
+- `BOOK_OLD` (over 30 s)
+- `BOOK_FROM_FUTURE`
+- `EMPTY_BIDS` / `EMPTY_ASKS`
+- `CROSSED`
+- `QUOTE_MISMATCH_BID` / `QUOTE_MISMATCH_ASK` (more than 1¢ from the engine
+  quote)
+- `TICKER_MISMATCH`
+- `GAPS_SINCE_PREV`
+- `ENGINE_QUOTE_OLD`
+
+Displayed depth is resting interest, not executable truth.
+
+**Reports.** The factory rollup writes `book_depth`:
+
+- **Collection quality first.** Per clock: snapshots, coverage of settled
+  windows, clean rate, flag counts, median book age and median levels per
+  side.
+- **Then `BOOK_DEPTH_H0_V1`.** It is PRESPECIFIED and frozen in code: the
+  primary clock is T-3:00, the stance threshold is |imbalance| ≥ 0.2, and it
+  runs only at 300 clean settled snapshots. The test is walk-forward,
+  price-band-controlled incremental Brier and log loss against the same-time
+  market price, plus a hypothetical entry rule compared with the price-only
+  favourite on the same windows, with the taker fee applied.
+- **Verdicts.**
+  - `RETIRE_CANDIDATE`: depth restates price.
+  - `INFORMATIVE_CANDIDATE`: earns only a frozen prospective shadow test.
+  - Neither changes production.
 
 ## D. Per-seat debrief: analyze after integrity
 

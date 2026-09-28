@@ -310,20 +310,21 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
-    "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts"];
+    "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
+    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts"];
   for (const f of files) {
     const src = codeOf(f);
     const writes = [...src.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:\w+\s+)?set|delete from\s+(\w+)/gi)].map((x) => x[1] || x[2] || x[3]);
-    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape)$/, `${f} writes ${w}`);
+    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth)$/, `${f} writes ${w}`);
     assert.doesNotMatch(src, /openai|anthropic|fetch\(|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
   }
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth")) continue;
     assert.ok(!read(f).includes("research-factory"), `${f} imports the research factory`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "floor-policy.ts", "call-recovery-candidate.ts"]) {
-    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_/, `${prod} is untouched by the factory`);
+    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth/, `${prod} is untouched by the factory and the depth collector`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
 });
@@ -436,4 +437,75 @@ test("tape end to end: window jobs grade each settled window's tape; the rollup 
   assert.deepEqual(summary.authority, { production_authority: "NONE", automatic_changes: false });
   const grade = await report("matched_grade");
   assert.equal(grade.experiments.some((e) => e.experiment.startsWith("PRODUCTION")), false, "the tape is never graded as an experiment");
+});
+
+// ---------------------------------------------------------------------------
+// Kalshi order-book depth collector.
+// ---------------------------------------------------------------------------
+
+const DEPTH = "src/lib/desk/book-depth.server.ts";
+
+test("depth collector: env-gated on a literal flag; one snapshot per fixed clock per window; a missing book is recorded as missing; writes only its own table", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(DEPTH);
+  for (const v of [undefined, "TRUE", "1", "yes"]) assert.equal(off.ensureBookDepth({ RESEARCH_BOOK_DEPTH_ENABLED: v }), "disabled", String(v));
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  const close = Date.parse("2026-09-28T15:15:00Z");
+  let book = { ticker: "KXBTC15M-DEPTH", view: { bids: [{ price: 84, size: 100 }], asks: [{ price: 85, size: 40 }] }, ok: true, stale: false, gaps: 0, flips: 0, snap_t: close - 700_000, upd_t: close - 602_000, level_count: 2, trusted: true };
+  const frame = { snap: { ticker: "KXBTC15M-DEPTH", close_time: close, as_of: close - 601_000, demo: false, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, quote_seq: 3 } };
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame }, "./lab.server": { labBookDepth: (t) => (t === book?.ticker ? structuredClone(book) : null) } })(DEPTH);
+  const inserts = () => calls.filter((c) => /^\s*insert into desk_research_book_depth/.test(c.text)).map((c) => ({ clock: c.values[2], clean: c.values[5], quality: JSON.parse(c.values[6]), features: c.values[7] == null ? null : JSON.parse(c.values[7]) }));
+  await mod.bookDepthTick(close - 700_000);                    // T-11:40: no clock
+  assert.equal(inserts().length, 0);
+  await mod.bookDepthTick(close - 600_000);                    // T-10:00
+  await mod.bookDepthTick(close - 598_000);                    // still T-10 grace: already taken
+  frame.snap.as_of = close - 300_500; book = { ...book, upd_t: close - 301_000 };
+  await mod.bookDepthTick(close - 300_000);                    // T-5:00
+  book = null;
+  frame.snap.as_of = close - 180_500;
+  await mod.bookDepthTick(close - 180_000);                    // T-3:00 with no book
+  const rows = inserts();
+  assert.deepEqual(rows.map((r) => [r.clock, r.clean]), [[600, true], [300, true], [180, false]]);
+  assert.deepEqual(rows[2].quality.flags, ["BOOK_MISSING"]);
+  assert.equal(rows[2].features, null);
+  assert.equal(rows[1].features.bid_added, 0, "flow is measured against this window's previous snapshot");
+  assert.ok(calls.every((c) => /^\s*insert into desk_research_book_depth/.test(c.text)), "writes only its own table");
+  assert.equal(mod.bookDepthHealth().decision_use, "NONE");
+  assert.equal(mod.bookDepthHealth().book_missing, 1);
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/book-depth\.server"\)\s*\.then\(\(m\) => m\.ensureBookDepth\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  // The Lab accessor returns copies and never touches a book.
+  assert.match(read("src/lib/desk/lab.server.ts"), /export function labBookDepth\(ticker: string\)[\s\S]*?view: yesView\(b\)/);
+});
+
+test("book_depth report: the rollup reports collection quality and holds the H0 until its minimum clean sample", async (t) => {
+  const vite = await createServer({ envDir: false, server: { middlewareMode: true }, appType: "custom" });
+  t.after(() => vite.close());
+  const m = await vite.ssrLoadModule("/src/lib/desk/research-factory.server.ts");
+  const d = await vite.ssrLoadModule("/src/lib/desk/book-depth.ts");
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 4; i += 1) {
+    const closeMs = base + i * 900_000, ticker = `KXBTC15M-BD${i}`;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    for (const clock of [600, 300, 180, 60]) {
+      if (i === 3 && clock === 180) continue; // one missed clock: coverage must show it
+      const shot = d.depthSnapshot(clock, { ticker, as_of: closeMs - clock * 1000, close_time: closeMs, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, quote_seq: 1 },
+        i === 2 ? null : { ticker, view: { bids: [{ price: 84, size: 100 }], asks: [{ price: 85, size: 40 }] }, ok: true, stale: false, gaps: 0, flips: 0, snap_t: 0, upd_t: closeMs - clock * 1000 - 500, level_count: 2, trusted: true }, null);
+      await sql`insert into desk_research_book_depth (ticker, close_time, clock_secs, as_of, secs_left, clean, quality, features, levels, market)
+        values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, ${clock}, ${new Date(closeMs - clock * 1000).toISOString()}::timestamptz, ${clock}, ${shot.quality.clean},
+          ${JSON.stringify(shot.quality)}::jsonb, ${shot.features == null ? null : JSON.stringify(shot.features)}::jsonb, ${shot.levels == null ? null : JSON.stringify(shot.levels)}::jsonb, ${JSON.stringify(shot.market)}::jsonb)`;
+    }
+  }
+  await m.enqueue(sql, "rollup", "depth");
+  const job = await m.claim(sql, "depth", Date.now());
+  assert.equal(await m.runJob(sql, job, "depth", { sampler: calm }), "complete", JSON.stringify(await jobsOf(sql)));
+  const rep = (await sql`select payload from desk_research_reports where report_kind = 'book_depth' and report_key = 'latest'`)[0].payload;
+  const c180 = rep.quality.by_clock.find((c) => c.clock === 180);
+  assert.equal(rep.quality.settled_windows_in_period, 4);
+  assert.equal(c180.snapshots, 3);
+  assert.equal(c180.coverage_pct, 75);
+  assert.equal(c180.clean, 2, "window 2 had no book");
+  assert.deepEqual(c180.flags, [{ flag: "BOOK_MISSING", n: 1 }]);
+  assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.decision_use, "NONE");
 });

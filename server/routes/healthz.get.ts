@@ -80,6 +80,11 @@ export default function healthz() {
   void import("../../src/lib/desk/research-factory-tape.server")
     .then((m) => m.ensureDecisionTape())
     .catch(() => {});
+  // Kalshi order-book depth collector: env-gated, default OFF (RESEARCH_BOOK_DEPTH_ENABLED=true).
+  // Reads a copy of the Lab's rebuilt book; writes only desk_research_book_depth; no decision use.
+  void import("../../src/lib/desk/book-depth.server")
+    .then((m) => m.ensureBookDepth())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.

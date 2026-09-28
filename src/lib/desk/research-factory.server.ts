@@ -35,6 +35,7 @@ import {
   type Annotation, type CardCounters, type IntegrityStatus, type LedgerRow, type OpeningRow, type ReceiptRow, type WindowFact, type WindowInput,
 } from "./research-factory-analysis.ts";
 import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
+import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
 import {
   abstentionReport, briefAccuracy, researchSummary, signalValueReport, stageUnlocks, survivalReport, transitionReport,
   type TapeWindow,
@@ -276,6 +277,40 @@ async function readWindow(sql: Sql, ticker: string, closeMs: number): Promise<Wi
   };
 }
 
+/** Depth snapshots read back for the report: bounded to the most recent windows. */
+export const DEPTH_HORIZON_WINDOWS = 3_000;
+
+/** Settled depth snapshots (newest windows first, bounded) and the settled windows in the collection period. */
+export async function readDepth(sql: Sql, between: () => Promise<void> = yieldToLoop): Promise<{ rows: SettledDepth[]; settled_windows: number }> {
+  const keys = await sql<{ close_time: string }>`
+    select distinct close_time::text as close_time from desk_research_book_depth order by close_time desc limit ${DEPTH_HORIZON_WINDOWS}`;
+  if (!keys.length) return { rows: [], settled_windows: 0 };
+  const oldest = keys[keys.length - 1]!.close_time;
+  const rows: SettledDepth[] = [];
+  let after: [string, string, number] = ["1970-01-01T00:00:00Z", "", -1];
+  for (;;) {
+    const page = await sql<Record<string, unknown>>`
+      select d.ticker, (extract(epoch from d.close_time) * 1000)::bigint as close_ms, d.close_time::text as close_key, d.clock_secs, (extract(epoch from d.as_of) * 1000)::bigint as as_of_ms,
+        d.secs_left, d.quality, d.features, d.levels, d.market, l.winner
+      from desk_research_book_depth d join desk_ledger_research l on l.ticker = d.ticker and l.close_time = d.close_time
+      where d.close_time >= ${oldest}::timestamptz
+        and (d.close_time, d.ticker, d.clock_secs) > (${after[0]}::timestamptz, ${after[1]}, ${after[2]})
+      order by d.close_time, d.ticker, d.clock_secs
+      limit ${READ_PAGE}`;
+    for (const r of page) rows.push({
+      ticker: String(r.ticker), close_ms: Number(r.close_ms), clock: Number(r.clock_secs), as_of: Number(r.as_of_ms), secs_left: Number(r.secs_left),
+      quality: r.quality as SettledDepth["quality"], features: (r.features as SettledDepth["features"]) ?? null, levels: (r.levels as SettledDepth["levels"]) ?? null,
+      market: r.market as SettledDepth["market"], winner: r.winner === "UP" || r.winner === "DOWN" ? r.winner : null,
+    });
+    if (page.length < READ_PAGE) break;
+    const last = page[page.length - 1]!;
+    after = [String(last.close_key), String(last.ticker), Number(last.clock_secs)];
+    await between();
+  }
+  const settled = await sql<{ n: number }>`select count(*)::int as n from desk_ledger_research where close_time >= ${oldest}::timestamptz`;
+  return { rows, settled_windows: Number(settled[0]?.n ?? 0) };
+}
+
 /** Tape rows for one window, oldest first. */
 async function readTape(sql: Sql, ticker: string, closeMs: number): Promise<TapeEvent[]> {
   const rows = await sql<Record<string, unknown>>`
@@ -515,6 +550,12 @@ export const rollupHandler: Handler = async (ctx) => {
     await ctx.unit();
     return researchSummary({ transitions: transitionReport(tape), abstention: abstentionReport(tape), survival: survivalReport(tape), signals: signalValueReport(tape), pockets_promising: promising, lifecycle_flags: flags });
   });
+  // Order-book depth: collection quality first; the pre-registered H0 runs only at its minimum clean sample.
+  await step("book_depth", async () => {
+    const depth = await readDepth(ctx.sql, ctx.unit);
+    ctx.scanned(depth.rows.length);
+    return { quality: collectionQuality(depth.rows, depth.settled_windows), h0: depthH0(depth.rows), decision_use: "NONE" };
+  });
   const since = ctx.nowMs - 86_400_000;
   const jobs = await readJobTelemetry(ctx.sql, since);
   await step("utilization", async () => utilization(jobs, since, ctx.nowMs, availableParallelism()));
@@ -673,5 +714,7 @@ export async function researchFactoryReport(kind?: string, key = "latest") {
   const reports = kind
     ? await sql<Record<string, unknown>>`select report_kind, report_key, report_version, payload, build_sha, created_at from desk_research_reports where report_kind = ${kind} and report_key = ${key} order by report_version desc limit 1`
     : await sql<Record<string, unknown>>`select report_kind, report_key, report_version, created_at from desk_research_reports order by created_at desc limit 50`;
-  return { health: researchFactoryHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
+  const { decisionTapeHealth } = await import("./research-factory-tape.server.ts");
+  const { bookDepthHealth } = await import("./book-depth.server.ts");
+  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
 }
