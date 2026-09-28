@@ -192,7 +192,7 @@ a paid API.
 | **INSTRUMENT NEXT** | Kalshi book depth (C) | collector built (default OFF); collection quality first, pre-registered H0 gated at 300 clean snapshots |
 | **ANALYZE AFTER INTEGRITY** | per-seat debrief (D) | design below; the signal-value report is its first cut |
 | **INSTRUMENT NEXT** | spot/perp signed flow (E) | collector built (default OFF); definition frozen; collection quality first, pre-registered H0 gated at 300 clean windows |
-| **RESEARCH QUEUE** | formalized WICK (F) | design below; not built |
+| **RESEARCH QUEUE** | formalized WICK (F) | shadow recorder built (default OFF); predicate frozen; scored against price, settlement and WICK's own output |
 | **BLOCKED** | parameter or genetic search (G) | prerequisites below |
 
 ## A + B. The production decision tape
@@ -465,17 +465,62 @@ another collector being on.
 
 It never becomes a production seat.
 
-## F. Formalized WICK "no demand / no supply": research queue
+## F. Formalized WICK "no demand / no supply": built in shadow (no decision use)
 
-The design only, not built:
+`RESEARCH_WICK_SHADOW_ENABLED=true` (literal; off by default). Files:
+`wick-effort.ts` (pure), `wick-effort.server.ts` (recorder) and migration
+`0064_desk_research_wick_shadow.sql`.
 
-- **Predicate:** freeze a predicate over ATR-normalised effort (volume)
-  versus result (absolute and directional progress), plus range expansion,
-  wick and body shape, and follow-through.
-- **Evaluation:** once frozen, run it in parallel to the unchanged WICK and
-  score it against settlement, WICK's output and market probability with
-  `marginalValue`.
-- **Retire** it if it adds no incremental information.
+**What it is.** The WICK seat reads candle *shapes*: pins, hammers, engulfs,
+AMD boxes and sweeps. This is a separate, frozen question in the
+volume-spread tradition: did the **effort** (volume) behind the last bar buy
+a matching **result** (range and progress in ATR units), and did the next bar
+follow through? It runs in shadow beside the unchanged WICK seat. It never
+feeds the seat, its learner, the Chair, a gate or booking.
+
+**Frozen predicate `WICK_EFFORT_RESULT_V1`.**
+- **Bars.** Closed 1m spot candles that ended at or before the frame's
+  `as_of`. S is the second-to-last bar; F, the last, is the follow-through bar.
+- **Measures.**
+  - ATR: 14 bars before S.
+  - Effort: S's volume over the median of the 30 bars before S.
+  - Prior run: the 5 bars before S, in ATR units.
+
+| label | condition | stance |
+|---|---|---|
+| `NO_DEMAND` | up bar, effort ≤ 0.7, range ≤ 0.8 ATR, after a run ≥ +1 ATR, and F makes no new high | DOWN |
+| `NO_SUPPLY` | the mirror, after a run ≤ −1 ATR, and F makes no new low | UP |
+| `ABSORPTION_TOP` | effort ≥ 1.8, range ≥ 1.2 ATR, body ≤ 35%, upper wick ≥ 50%, after a run ≥ +1 ATR, and F closes no higher | DOWN |
+| `ABSORPTION_BOTTOM` | the mirror | UP |
+| `NONE` | anything else | silent |
+
+Changing any threshold means a new id.
+
+**Quality flags:**
+- `INSUFFICIENT_BARS` (under 32), `GAPPED_BARS`, `MIXED_SOURCE` and
+  `BARS_STALE` (the last bar ended more than 90 s before `as_of`);
+- `ZERO_ATR`, `ZERO_VOLUME_BASE`, and `ENGINE_QUOTE_OLD`.
+
+Only a flag-free row is clean.
+
+**Rows.** One insert-once row per window at T-600, 300, 180 and 60 s. Each
+holds the predicate's label, stance and every measured input. It also holds
+the live WICK seat's same-instant output, copied from the published Chair,
+and the engine's quote as the price control.
+
+**Report (`wick_shadow`).**
+- **Collection quality first:** coverage, clean rate, flags, fire rate and
+  label mix per clock.
+- **The PRESPECIFIED `WICK_EFFORT_RESULT_H0_V1`:** the predicate adds nothing
+  beyond the same-time price. It runs only at 300 clean settled rows at
+  T-3:00 with at least 30 fires. It uses walk-forward, price-band-controlled
+  incremental Brier and log loss, plus a hypothetical favourite entry at
+  80–99¢ with the taker fee, against the price-only control.
+- **Verdicts:** `RETIRE_CANDIDATE` means it restates price.
+  `INFORMATIVE_CANDIDATE` only earns a frozen prospective shadow test.
+- **Comparison with WICK** (`EXPLORATORY`, descriptive): when both speak,
+  agreement and who was right on disagreements; accuracy when only one
+  speaks. It never changes the verdict.
 
 ## G. Parameter or genetic search: blocked
 

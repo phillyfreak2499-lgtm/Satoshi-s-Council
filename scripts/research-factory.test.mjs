@@ -313,11 +313,12 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
-    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts", "src/lib/desk/trade-flow.ts", "src/lib/desk/trade-flow.server.ts"];
+    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts", "src/lib/desk/trade-flow.ts", "src/lib/desk/trade-flow.server.ts",
+    "src/lib/desk/wick-effort.ts", "src/lib/desk/wick-effort.server.ts"];
   for (const f of files) {
     const src = codeOf(f);
     const writes = [...src.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:\w+\s+)?set|delete from\s+(\w+)/gi)].map((x) => x[1] || x[2] || x[3]);
-    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth|flow_minutes|flow_marks)$/, `${f} writes ${w}`);
+    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth|flow_minutes|flow_marks|wick_shadow)$/, `${f} writes ${w}`);
     assert.doesNotMatch(src, /openai|anthropic|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
     if (f !== "src/lib/desk/trade-flow.server.ts") assert.doesNotMatch(src, /fetch\(/, `${f} fetches`);
   }
@@ -329,11 +330,11 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.doesNotMatch(flowSrc, /authorization|api[-_]?key|secret|method:\s*"(POST|PUT|DELETE)"/i, "unauthenticated GETs only");
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow") || f.startsWith("src/lib/desk/wick-effort")) continue;
     assert.ok(!read(f).includes("research-factory"), `${f} imports the research factory`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "floor-policy.ts", "call-recovery-candidate.ts"]) {
-    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow/, `${prod} is untouched by the factory and the collectors`);
+    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow|wick-effort/, `${prod} is untouched by the factory and the collectors`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
 });
@@ -616,5 +617,88 @@ test("trade_flow report: the rollup reports collection quality per venue and clo
   assert.deepEqual([c180.settled_windows, c180.marks, c180.fresh_marks, c180.complete_spot_5m, c180.complete_perp_5m], [3, 3, 3, 2, 0]);
   assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
   assert.equal(rep.h0.clean_observations, 2);
+  assert.equal(rep.decision_use, "NONE");
+});
+
+// ---------------------------------------------------------------------------
+// Formalized WICK in shadow.
+// ---------------------------------------------------------------------------
+
+const WICK_SHADOW = "src/lib/desk/wick-effort.server.ts";
+
+/** 30 flat bars, a run up, then a quiet up bar on half volume and a bar with no new high: NO_DEMAND. */
+function noDemandCandles(endMs) {
+  const bars = [];
+  let p = 1000;
+  for (let i = 0; i < 30; i += 1) bars.push({ o: p, c: p, h: p + 3, l: p - 3, v: 100 });
+  for (let i = 0; i < 5; i += 1) { bars.push({ o: p, c: p + 3, h: p + 4.5, l: p - 1.5, v: 100 }); p += 3; }
+  bars.push({ o: p, c: p + 0.5, h: p + 1.5, l: p - 1, v: 50 }, { o: p + 0.5, c: p, h: p + 1.4, l: p - 0.5, v: 80 });
+  const t0 = endMs - bars.length * 60_000;
+  return bars.map((b, i) => ({ t: t0 + i * 60_000, open: b.o, close: b.c, high: b.h, low: b.l, volume: b.v, closed: true, receipt_ts: 0, source: "binance" }));
+}
+
+test("wick shadow: env-gated on a literal flag; one row per fixed clock per window; copies WICK's same-instant output; writes only its own table and never touches the seat", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(WICK_SHADOW);
+  for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(off.ensureWickShadow({ RESEARCH_WICK_SHADOW_ENABLED: v }), "disabled", String(v));
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  const close = Date.parse("2026-09-28T15:15:00Z");
+  const frame = {
+    snap: { ticker: "KXBTC15M-WICK", close_time: close, as_of: close - 181_000, demo: false, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, candles_1m: noDemandCandles(close - 185_000) },
+    chair: { rows: [{ seat: "WICK", lean: "UP", status: "LIVE", conf: 61, folded: false }, { seat: "STREAK", lean: "UP", status: "LIVE", conf: 64, folded: false }] },
+  };
+  const before = JSON.stringify(frame);
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } })(WICK_SHADOW);
+  const inserts = () => calls.filter((c) => /^\s*insert into desk_research_wick_shadow/.test(c.text)).map((c) => ({ clock: c.values[2], clean: c.values[5], quality: JSON.parse(c.values[6]), label: c.values[7], stance: c.values[8], wick: JSON.parse(c.values[10]), market: JSON.parse(c.values[11]) }));
+  await mod.wickShadowTick(close - 240_000);                     // T-4:00: no clock
+  assert.equal(inserts().length, 0);
+  await mod.wickShadowTick(close - 180_000);                     // T-3:00
+  await mod.wickShadowTick(close - 178_000);                     // same clock, already taken
+  const rows = inserts();
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].clock, rows[0].clean, rows[0].label, rows[0].stance], [180, true, "NO_DEMAND", "DOWN"], JSON.stringify(rows[0].quality));
+  assert.deepEqual(rows[0].wick, { lean: "UP", status: "LIVE", conf: 61, folded: false }, "WICK's live read is copied beside the predicate's, for comparison only");
+  assert.equal(rows[0].market.quote_age_ms, 1000);
+  assert.equal(JSON.stringify(frame), before, "the published frame is never mutated");
+  // An old engine quote is flagged, not trusted.
+  frame.snap.as_of = close - 90_000;
+  await mod.wickShadowTick(close - 60_000);                      // T-1:00 with a 30 s old quote
+  const last = inserts().at(-1);
+  assert.equal(last.clock, 60);
+  assert.equal(last.clean, false);
+  assert.ok(last.quality.flags.includes("ENGINE_QUOTE_OLD"));
+  assert.ok(calls.every((c) => /^\s*insert into desk_research_wick_shadow/.test(c.text)), "writes only its own table");
+  assert.equal(mod.wickShadowHealth().decision_use, "NONE");
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/wick-effort\.server"\)\s*\.then\(\(m\) => m\.ensureWickShadow\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  for (const f of ["src/lib/desk/wick-effort.ts", WICK_SHADOW]) {
+    assert.doesNotMatch(codeOf(f), /from "\.\/(bots|learner|skills|patterns|chair)(\.ts)?"|rememberPatterns|pattern_book/, `${f} never reaches the WICK seat or its learner`);
+  }
+});
+
+test("wick_shadow report: the rollup reports collection quality and the WICK comparison, and holds the H0 until its minimum clean sample", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 3; i += 1) {
+    const closeMs = base + i * 900_000, ticker = `KXBTC15M-WS${i}`;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    const clean = i !== 2;
+    await sql`insert into desk_research_wick_shadow (ticker, close_time, clock_secs, as_of, def_version, clean, quality, label, stance, features, wick, market)
+      values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 180, ${new Date(closeMs - 181_000).toISOString()}::timestamptz, 1, ${clean},
+        ${JSON.stringify({ clean, flags: clean ? [] : ["BARS_STALE"] })}::jsonb, ${i === 0 ? "NO_SUPPLY" : "NONE"}, ${i === 0 ? "UP" : null}, null,
+        ${JSON.stringify({ lean: "UP", status: "LIVE", conf: 60, folded: false })}::jsonb,
+        ${JSON.stringify({ yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, quote_age_ms: 500 })}::jsonb)`;
+  }
+  await m.enqueue(sql, "rollup", "wick", {}, EPOCH);
+  const job = await m.claim(sql, "wick", Date.now());
+  assert.equal(await m.runJob(sql, job, "wick", { sampler: calm }), "complete", JSON.stringify(await jobsOf(sql)));
+  const rep = (await sql`select payload from desk_research_reports where report_kind = 'wick_shadow' and report_key = 'latest'`)[0].payload;
+  const c180 = rep.quality.by_clock.find((c) => c.clock === 180);
+  assert.deepEqual([c180.rows, c180.coverage_pct, c180.clean, c180.fire_rate_pct], [3, 100, 2, 50]);
+  assert.deepEqual(c180.flags, [{ flag: "BARS_STALE", n: 1 }]);
+  assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.h0.clean_observations, 2);
+  assert.equal(rep.h0.versus_wick.both_speak, 1);
+  assert.equal(rep.h0.versus_wick.agree.right, 1);
   assert.equal(rep.decision_use, "NONE");
 });

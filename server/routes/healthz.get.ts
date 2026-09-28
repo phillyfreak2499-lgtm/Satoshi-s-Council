@@ -90,6 +90,11 @@ export default function healthz() {
   void import("../../src/lib/desk/trade-flow.server")
     .then((m) => m.ensureTradeFlow())
     .catch(() => {});
+  // Formalized-WICK shadow recorder: env-gated, default OFF (RESEARCH_WICK_SHADOW_ENABLED=true).
+  // Reads the published frame; writes only desk_research_wick_shadow; never touches the WICK seat.
+  void import("../../src/lib/desk/wick-effort.server")
+    .then((m) => m.ensureWickShadow())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.

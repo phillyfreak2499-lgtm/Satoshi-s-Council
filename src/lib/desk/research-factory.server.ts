@@ -37,6 +37,7 @@ import {
 import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
 import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
 import { flowH0, flowQuality, indexMinutes, type FlowMark, type FlowVenue, type FlowWindow, type StoredMinute } from "./trade-flow.ts";
+import { wickShadowH0, wickShadowQuality, type ShadowRow } from "./wick-effort.ts";
 import {
   abstentionReport, briefAccuracy, researchSummary, signalValueReport, stageUnlocks, survivalReport, transitionReport,
   type TapeWindow,
@@ -208,14 +209,15 @@ export async function claim(sql: Sql, owner: string, nowMs: number): Promise<Job
 
 type Telemetry = { wall_ms: number; cpu_ms: number; peak_rss_mb: number; db_queries: number; db_ms: number; rows_scanned: number; rows_written: number };
 
-async function finish(sql: Sql, job: JobRow, owner: string, status: "complete" | "failed" | "skipped_resource_guard" | "queued", t: Telemetry, extra: { error?: string; guard?: string; checkpoint?: Record<string, unknown>; not_before_ms?: number }): Promise<void> {
+/** Close out a run. `atMs` is the runner's clock, the same one claims and leases use. */
+async function finish(sql: Sql, job: JobRow, owner: string, status: "complete" | "failed" | "skipped_resource_guard" | "queued", t: Telemetry, extra: { error?: string; guard?: string; checkpoint?: Record<string, unknown>; not_before_ms?: number }, atMs: number): Promise<void> {
   await sql`
     update desk_research_jobs
-    set status = ${status}, lease_owner = null, lease_until = null, finished_at = now(), updated_at = now(),
+    set status = ${status}, lease_owner = null, lease_until = null, finished_at = ${new Date(atMs).toISOString()}::timestamptz, updated_at = now(),
         wall_ms = ${t.wall_ms}, cpu_ms = ${t.cpu_ms}, peak_rss_mb = ${t.peak_rss_mb}, db_queries = ${t.db_queries}, db_ms = ${t.db_ms},
         rows_scanned = ${t.rows_scanned}, rows_written = ${t.rows_written}, error = ${extra.error ?? null}, guard_reason = ${extra.guard ?? null},
         checkpoint = ${JSON.stringify(extra.checkpoint ?? job.checkpoint ?? {})}::jsonb,
-        not_before = ${new Date(extra.not_before_ms ?? Date.now()).toISOString()}::timestamptz,
+        not_before = ${new Date(extra.not_before_ms ?? atMs).toISOString()}::timestamptz,
         attempts = case when ${status} = 'skipped_resource_guard' or ${status} = 'queued' then greatest(0, attempts - 1) else attempts end
     where job_kind = ${job.job_kind} and job_key = ${job.job_key} and lease_owner = ${owner}`;
 }
@@ -358,6 +360,37 @@ export async function readFlow(sql: Sql, between: () => Promise<void> = yieldToL
     await between();
   }
   return { windows: [...windows.values()].sort((a, b) => a.close_ms - b.close_ms), minutes };
+}
+
+/** Settled formalized-WICK shadow rows (newest windows first, bounded) and the settled windows in the period. */
+export async function readWickShadow(sql: Sql, between: () => Promise<void> = yieldToLoop): Promise<{ rows: ShadowRow[]; settled_windows: number }> {
+  const keys = await sql<{ close_time: string }>`
+    select distinct close_time::text as close_time from desk_research_wick_shadow order by close_time desc limit ${DEPTH_HORIZON_WINDOWS}`;
+  if (!keys.length) return { rows: [], settled_windows: 0 };
+  const oldest = keys[keys.length - 1]!.close_time;
+  const rows: ShadowRow[] = [];
+  let after: [string, string, number] = ["1970-01-01T00:00:00Z", "", -1];
+  for (;;) {
+    const page = await sql<Record<string, unknown>>`
+      select w.ticker, (extract(epoch from w.close_time) * 1000)::bigint as close_ms, w.close_time::text as close_key, w.clock_secs, w.clean, w.quality, w.label, w.stance, w.wick, w.market, l.winner
+      from desk_research_wick_shadow w join desk_ledger_research l on l.ticker = w.ticker and l.close_time = w.close_time
+      where w.close_time >= ${oldest}::timestamptz
+        and (w.close_time, w.ticker, w.clock_secs) > (${after[0]}::timestamptz, ${after[1]}, ${after[2]})
+      order by w.close_time, w.ticker, w.clock_secs
+      limit ${READ_PAGE}`;
+    for (const r of page) rows.push({
+      ticker: String(r.ticker), close_ms: Number(r.close_ms), clock: Number(r.clock_secs), clean: r.clean === true,
+      flags: ((r.quality as { flags?: string[] } | null)?.flags) ?? [], label: String(r.label) as ShadowRow["label"],
+      stance: r.stance === "UP" || r.stance === "DOWN" ? r.stance : null, wick: (r.wick as ShadowRow["wick"]) ?? null,
+      market: r.market as ShadowRow["market"], winner: r.winner === "UP" || r.winner === "DOWN" ? r.winner : null,
+    });
+    if (page.length < READ_PAGE) break;
+    const last = page[page.length - 1]!;
+    after = [String(last.close_key), String(last.ticker), Number(last.clock_secs)];
+    await between();
+  }
+  const settled = await sql<{ n: number }>`select count(*)::int as n from desk_ledger_research where close_time >= ${oldest}::timestamptz`;
+  return { rows, settled_windows: Number(settled[0]?.n ?? 0) };
 }
 
 /** Tape rows for one window, oldest first. */
@@ -615,6 +648,12 @@ export const rollupHandler: Handler = async (ctx) => {
     await ctx.unit();
     return { quality, h0: flowH0(flow.windows, idx), decision_use: "NONE" };
   });
+  // Formalized WICK in shadow: collection quality first; the pre-registered H0 runs only at its minimum clean sample.
+  await step("wick_shadow", async () => {
+    const shadow = await readWickShadow(ctx.sql, ctx.unit);
+    ctx.scanned(shadow.rows.length);
+    return { quality: wickShadowQuality(shadow.rows, shadow.settled_windows), h0: wickShadowH0(shadow.rows), decision_use: "NONE" };
+  });
   const since = ctx.nowMs - 86_400_000;
   const jobs = await readJobTelemetry(ctx.sql, since);
   await step("utilization", async () => utilization(jobs, since, ctx.nowMs, availableParallelism()));
@@ -689,19 +728,19 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
   try {
     if (!handler || !(JOB_KINDS as readonly string[]).includes(job.job_kind)) throw new Error(`unknown job kind ${job.job_kind}`);
     await handler(ctx);
-    await finish(rawSql, job, owner, "complete", telemetry(), { checkpoint });
+    await finish(rawSql, job, owner, "complete", telemetry(), { checkpoint }, now());
     return "complete";
   } catch (error) {
     if (error instanceof ResourceGuardPause) {
-      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), { guard: error.reasons.join(","), checkpoint, not_before_ms: now() + 60_000 });
+      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), { guard: error.reasons.join(","), checkpoint, not_before_ms: now() + 60_000 }, now());
       return "skipped_resource_guard";
     }
     if (error instanceof Defer) {
-      await finish(rawSql, job, owner, "queued", telemetry(), { error: error.message, checkpoint, not_before_ms: now() + error.ms });
+      await finish(rawSql, job, owner, "queued", telemetry(), { error: error.message, checkpoint, not_before_ms: now() + error.ms }, now());
       return "queued";
     }
     const message = error instanceof Error ? error.message : String(error);
-    await finish(rawSql, job, owner, "failed", telemetry(), { error: message.slice(0, 2000), checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) });
+    await finish(rawSql, job, owner, "failed", telemetry(), { error: message.slice(0, 2000), checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) }, now());
     return "failed";
   }
 }
@@ -776,5 +815,6 @@ export async function researchFactoryReport(kind?: string, key = "latest") {
   const { decisionTapeHealth } = await import("./research-factory-tape.server.ts");
   const { bookDepthHealth } = await import("./book-depth.server.ts");
   const { tradeFlowHealth } = await import("./trade-flow.server.ts");
-  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
+  const { wickShadowHealth } = await import("./wick-effort.server.ts");
+  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), wick_shadow: wickShadowHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
 }
