@@ -5,8 +5,8 @@
 -- desk_replay and desk_decision_snapshots are read, never updated: an integrity
 -- finding is an annotation row beside the receipt, never an edit of it.
 --
--- Rollback: drop table desk_research_reports, desk_research_integrity,
--- desk_research_window_facts, desk_research_jobs.
+-- Rollback: drop table desk_research_decision_tape, desk_research_reports,
+-- desk_research_integrity, desk_research_window_facts, desk_research_jobs.
 
 -- One row per (kind, key): the primary key IS the idempotency guarantee. A
 -- scheduler that enqueues the same settled window twice, or a restarted process
@@ -122,3 +122,32 @@ create table if not exists desk_research_reports (
   primary key (report_kind, report_key, report_version),
   check (jsonb_typeof(payload) = 'object')
 );
+
+-- The production DECISION TAPE: a structured observation of the production
+-- decision state at each designated checkpoint and at every change of state,
+-- read from the frame the engine already published (Chair + admission audit).
+-- Insert-once per frame; never updated. `record` holds the primary blocker,
+-- every blocker, the machine-readable next-stage conditions with current and
+-- required values, and production's raw reasons verbatim.
+create table if not exists desk_research_decision_tape (
+  ticker           text not null,
+  close_time       timestamptz not null,
+  as_of            timestamptz not null,
+  secs_left        double precision not null,
+  checkpoint_secs  integer,
+  state            text not null,
+  label            text not null,
+  stage            text not null,
+  primary_blocker  text,
+  blockers         text[] not null default '{}',
+  partial_window   boolean not null default false,
+  record           jsonb not null,
+  build_sha        text not null default '',
+  recorded_at      timestamptz not null default now(),
+  primary key (ticker, close_time, as_of),
+  check (state in ('WAIT', 'DIRECTIONAL', 'QUALIFIED', 'BOOKED')),
+  check (as_of < close_time),
+  check (jsonb_typeof(record) = 'object')
+);
+create index if not exists desk_research_decision_tape_close_idx
+  on desk_research_decision_tape (close_time desc);

@@ -34,8 +34,13 @@ import {
   auditWindow, isDiagnosticOnly, windowFacts,
   type Annotation, type CardCounters, type IntegrityStatus, type LedgerRow, type OpeningRow, type ReceiptRow, type WindowFact, type WindowInput,
 } from "./research-factory-analysis.ts";
+import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
 import {
-  LIFECYCLE_REGISTRY, assembleGrade, chokeAttribution, counterfactualGates, dailyDigest, evidenceSafety, gradeArmOn, lifecycle, lifecycleRow, matchedSets, pocketScan, utilization,
+  abstentionReport, briefAccuracy, researchSummary, signalValueReport, stageUnlocks, survivalReport, transitionReport,
+  type TapeWindow,
+} from "./research-factory-insight.ts";
+import {
+  LIFECYCLE_REGISTRY, assembleGrade, isProductionAny, chokeAttribution, counterfactualGates, dailyDigest, evidenceSafety, gradeArmOn, lifecycle, lifecycleRow, matchedSets, pocketScan, utilization,
   type GradedFact, type JobTelemetry,
 } from "./research-factory-reports.ts";
 
@@ -146,7 +151,8 @@ export async function enqueueDue(sql: Sql, nowMs: number): Promise<number> {
       from desk_ledger_research l
       where l.close_time > ${new Date(nowMs - LOOKBACK_DAYS * 86_400_000).toISOString()}::timestamptz
         and l.close_time < ${new Date(nowMs - 120_000).toISOString()}::timestamptz
-        and exists (select 1 from desk_shadow_receipts r where r.ticker = l.ticker and r.close_time = l.close_time)
+        and (exists (select 1 from desk_shadow_receipts r where r.ticker = l.ticker and r.close_time = l.close_time)
+          or exists (select 1 from desk_research_decision_tape t where t.ticker = l.ticker and t.close_time = l.close_time))
       on conflict (job_kind, job_key) do nothing
       returning 1)
     select count(*)::int as n from due`;
@@ -270,6 +276,44 @@ async function readWindow(sql: Sql, ticker: string, closeMs: number): Promise<Wi
   };
 }
 
+/** Tape rows for one window, oldest first. */
+async function readTape(sql: Sql, ticker: string, closeMs: number): Promise<TapeEvent[]> {
+  const rows = await sql<Record<string, unknown>>`
+    select checkpoint_secs, partial_window, build_sha, record from desk_research_decision_tape
+    where ticker = ${ticker} and close_time = ${new Date(closeMs).toISOString()}::timestamptz order by as_of asc`;
+  return rows.map(tapeEventOf);
+}
+const tapeEventOf = (r: Record<string, unknown>): TapeEvent => ({
+  ...(r.record as TapeRecord), checkpoint: r.checkpoint_secs == null ? null : Number(r.checkpoint_secs), partial_window: r.partial_window === true, build_sha: String(r.build_sha ?? ""),
+});
+
+/** The tape reports read at most this many recent settled windows: bounded memory however long the tape runs. */
+export const TAPE_HORIZON_WINDOWS = 720;
+
+/** Recent settled windows with tape, graded, newest first; read in pages with `between()` after each. */
+export async function readTapeWindows(sql: Sql, between: () => Promise<void> = yieldToLoop): Promise<TapeWindow[]> {
+  const keys = await sql<{ ticker: string; close_ms: number; winner: string | null }>`
+    select t.ticker, (extract(epoch from t.close_time) * 1000)::bigint as close_ms, max(l.winner) as winner
+    from desk_research_decision_tape t join desk_ledger_research l on l.ticker = t.ticker and l.close_time = t.close_time
+    group by t.ticker, t.close_time order by t.close_time desc limit ${TAPE_HORIZON_WINDOWS}`;
+  const out: TapeWindow[] = [];
+  for (let i = 0; i < keys.length; i += 40) {
+    const page = keys.slice(i, i + 40);
+    const rows = await sql<Record<string, unknown>>`
+      select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, checkpoint_secs, partial_window, build_sha, record
+      from desk_research_decision_tape
+      where (ticker, close_time) in (select k.ticker, k.close_time from jsonb_to_recordset(${JSON.stringify(page.map((k) => ({ ticker: k.ticker, close_time: new Date(Number(k.close_ms)).toISOString() })))}::jsonb) as k(ticker text, close_time timestamptz))
+      order by as_of asc`;
+    for (const k of page) {
+      const events = rows.filter((r) => r.ticker === k.ticker && Number(r.close_ms) === Number(k.close_ms)).map(tapeEventOf);
+      const winner = k.winner === "UP" || k.winner === "DOWN" ? k.winner : null;
+      out.push({ ticker: k.ticker, close_ms: Number(k.close_ms), events, timeline: gradeWindow(events, winner) });
+    }
+    await between();
+  }
+  return out;
+}
+
 async function writeFacts(sql: Sql, facts: readonly WindowFact[]): Promise<number> {
   let n = 0;
   for (const f of facts) {
@@ -317,6 +361,25 @@ export const windowHandler: Handler = async (ctx) => {
   if (ctx.job.checkpoint.integrity !== true) {
     ctx.written(await writeAnnotations(ctx.sql, auditWindow(input)));
     await ctx.checkpoint({ ...ctx.job.checkpoint, integrity: true });
+  }
+  await ctx.unit();
+  if (ctx.job.checkpoint.tape !== true) {
+    const events = await readTape(ctx.sql, ticker, closeMs);
+    ctx.scanned(events.length);
+    if (events.length && input.ledger) {
+      const timeline = gradeWindow(events, input.ledger.winner);
+      const fact: WindowFact = {
+        ticker, close_ms: closeMs, experiment: "PRODUCTION_TAPE", arm: "DECISION_TAPE", fact_version: RESEARCH_FACTORY.fact_version,
+        replay_quality: timeline.partial_window ? "PARTIAL" : "EXACT", quality_reasons: timeline.partial_window ? ["PARTIAL_WINDOW"] : [],
+        experiment_version: null, source_build_sha: [...new Set(events.map((e) => e.build_sha))].sort().join(",") || null, decided_ms: events[0]!.as_of,
+        observed: true, terminal_kind: timeline.terminal_label, side: null, ask_cents: null, fee_cents: null, official_winner: input.ledger.winner, net_cents: null,
+        production_lean: input.ledger.chair_lean, production_booked: input.ledger.entry_cents != null,
+        funnel_stage: null, first_blocker: null, blockers: [...new Set(events.flatMap((e) => e.blockers))],
+        facts: { source: "desk_research_decision_tape", recorded_not_rederived: true, timeline },
+      };
+      ctx.written(await writeFacts(ctx.sql, [fact]));
+    }
+    await ctx.checkpoint({ ...ctx.job.checkpoint, tape: true });
   }
 };
 
@@ -419,7 +482,7 @@ export const rollupHandler: Handler = async (ctx) => {
     for (const x of items) { await ctx.unit(); out.push(f(x)); }
     return out;
   };
-  const experiments = [...new Set(graded.filter((f) => f.experiment !== "PRODUCTION").map((f) => f.experiment))].sort();
+  const experiments = [...new Set(graded.filter((f) => !isProductionAny(f)).map((f) => f.experiment))].sort();
   const tested = RECOVERED_ARMS.filter(([e, a]) => !isDiagnosticOnly(e, a));
   // One arm per governed unit: the matched sets are built once per experiment, then each arm is graded on them.
   await step("matched_grade", async () => {
@@ -436,6 +499,22 @@ export const rollupHandler: Handler = async (ctx) => {
   await step("pockets", async () => ({ arms: await each(tested, ([e, a]) => pocketScan(graded, e, a)) }));
   await step("counterfactual_gates", async () => ({ arms: await each(tested, ([e, a]) => ({ experiment: e, arm: a, changes: counterfactualGates(graded, e, a) })), rule: "One gate change at a time. COMBINED changes are never tested here." }));
   await step("lifecycle", async () => ({ rows: await each(LIFECYCLE_REGISTRY, (spec) => lifecycleRow(graded, spec)), authority: { production_authority: "NONE", auto_promotion: false } }));
+  // Production decision tape and the insight reports built on it.
+  const tape = await readTapeWindows(ctx.sql, ctx.unit);
+  ctx.scanned(tape.reduce((a, w) => a + w.events.length, 0));
+  await step("abstention", async () => abstentionReport(tape));
+  await step("transitions", async () => transitionReport(tape));
+  await step("brief_accuracy", async () => briefAccuracy(tape));
+  await step("survival", async () => survivalReport(tape));
+  await step("stage_unlocks", async () => ({ experiments: await each(experiments, (e) => stageUnlocks(graded, e)) }));
+  await step("signal_value", async () => signalValueReport(tape));
+  await step("research_summary", async () => {
+    const pockets = await each(tested, ([e, a]) => pocketScan(graded, e, a));
+    const promising = pockets.flatMap((p) => p.pockets.filter((x) => x.label === "PROMISING").map((x) => ({ experiment: p.experiment, arm: p.arm, dimension: x.dimension, value: x.value })));
+    const flags = lifecycle(graded).filter((l) => l.flag_for_human_review).map((l) => ({ experiment: l.experiment, arm: l.arm }));
+    await ctx.unit();
+    return researchSummary({ transitions: transitionReport(tape), abstention: abstentionReport(tape), survival: survivalReport(tape), signals: signalValueReport(tape), pockets_promising: promising, lifecycle_flags: flags });
+  });
   const since = ctx.nowMs - 86_400_000;
   const jobs = await readJobTelemetry(ctx.sql, since);
   await step("utilization", async () => utilization(jobs, since, ctx.nowMs, availableParallelism()));

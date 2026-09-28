@@ -75,6 +75,11 @@ export default function healthz() {
   void import("../../src/lib/desk/research-factory.server")
     .then((m) => m.ensureResearchFactory())
     .catch(() => {});
+  // Production decision tape: env-gated, default OFF (RESEARCH_DECISION_TAPE_ENABLED=true).
+  // Reads the frame the engine already published; writes only desk_research_decision_tape.
+  void import("../../src/lib/desk/research-factory-tape.server")
+    .then((m) => m.ensureDecisionTape())
+    .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch
   // SKILL_STATUS_LOG_DISABLED=true. No path back into the learner.

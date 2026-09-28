@@ -14,6 +14,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import vm from "node:vm";
+import ts from "typescript";
 import { createServer } from "vite";
 
 const root = new URL("../", import.meta.url);
@@ -306,11 +308,13 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   const m = await factory(t);
   for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(m.ensureResearchFactory({ RESEARCH_FACTORY_ENABLED: v }), "disabled", String(v));
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => \{\}\);/);
-  const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts"];
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
+    "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts"];
   for (const f of files) {
     const src = codeOf(f);
     const writes = [...src.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:\w+\s+)?set|delete from\s+(\w+)/gi)].map((x) => x[1] || x[2] || x[3]);
-    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports)$/, `${f} writes ${w}`);
+    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape)$/, `${f} writes ${w}`);
     assert.doesNotMatch(src, /openai|anthropic|fetch\(|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
   }
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
@@ -322,4 +326,114 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
     assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_/, `${prod} is untouched by the factory`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+});
+
+// ---------------------------------------------------------------------------
+// The production decision tape.
+// ---------------------------------------------------------------------------
+
+function loader(deps = {}, env = {}) {
+  const cache = new Map();
+  function load(file) {
+    if (cache.has(file)) return cache.get(file);
+    const exports = {};
+    cache.set(file, exports);
+    const code = ts.transpileModule(read(file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    vm.runInNewContext(code, { exports, require: (key) => {
+      if (key in deps) return deps[key];
+      const bare = key.replace(/\.ts$/, "");
+      if (bare in deps) return deps[bare];
+      assert.ok(key.startsWith("."), `unexpected dependency ${key}`);
+      const path = new URL(key.endsWith(".ts") ? key : `${key}.ts`, new URL(file, root));
+      return load(path.href.slice(root.href.length));
+    }, Date, Math, JSON, Number, Array, Object, Map, Set, Intl, Promise, Error, structuredClone, setInterval: () => ({ unref() {} }), clearInterval: () => {}, globalThis: {}, console, process: { env: { ...env } } });
+    return exports;
+  }
+  return load;
+}
+const TAPE = "src/lib/desk/research-factory-tape.server.ts";
+const tapeClose = Date.parse("2026-09-28T15:15:00Z");
+const tapeSnap = (secsLeft, extra = {}) => ({
+  as_of: tapeClose - secsLeft * 1000, close_time: tapeClose, ticker: "KXBTC15M-TAPE", mins_left: secsLeft / 60, secs_left: secsLeft, demo: false,
+  yes_ask: 85, yes_bid: 84, no_ask: 16, no_bid: 15, no_bid_size: 40, yes_bid_size: 30, yes_mid: 84.5, edge_up: 5, edge_down: -9, lab_fair_yes: 92, lab_age_s: 1, quote_seq: 1, regime_key: "trend-quiet",
+  obs: { receipt_ts: tapeClose - secsLeft * 1000, gap: "ok" }, health: { spot_ok: true, kalshi_ok: true, spot: "LIVE", kalshi: "LIVE" }, ...extra,
+});
+const tapeChair = (lean = "WAIT", vs = 0.4) => ({
+  lean, score: 0.5, vs_bar: vs, bar: 0.5, dir_mass: 0.2, sit_mass: 0.9, aggressiveness: 1.15, confidence: 60,
+  bar_breakdown: { sit_mass: 0.16, pre_clamp: 0.5 }, gates: [{ id: "bar", label: "bar", pass: lean !== "WAIT", hard: true, value: "" }],
+  quorum: { up: 2, down: 0, wait: 1 }, rows: [{ seat: "STREAK", lean: "UP", health: "LIVE", status: "LIVE", folded: false, weight: 0.1, forced_sit: false, conf: 64 }, { seat: "CHAIN", lean: "UP", health: "LIVE", status: "LIVE", folded: false, weight: 0.1, forced_sit: false, conf: 64 }],
+});
+const AUDIT_IDS = ["risk_history", "daily_risk", "complete_window", "direction", "team", "supporters", "families", "opposition", "time", "feeds", "quote", "profit_reserve", "model_edge", "index_fresh", "index_edge", "confirmation"];
+/** A full production admission audit: directional frames pass everything but confirmation; WAIT frames leave side checks unevaluated. */
+const tapeAudit = (lean) => ({ mode: "normal", positioned: false, eligible: false, checks: AUDIT_IDS.map((id) => ({ id, label: id,
+  pass: id === "confirmation" ? (lean === "WAIT" ? null : false) : id === "direction" ? lean !== "WAIT" : lean === "WAIT" && ["team", "supporters", "families", "opposition", "quote", "profit_reserve", "model_edge", "index_edge"].includes(id) ? null : true })) });
+const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { audit: tapeAudit(lean), daily: { tightened: false } } });
+
+test("decision tape: env-gated on a literal flag; records checkpoints and changes only; marks the window open at boot partial; never mutates the frame", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(TAPE);
+  for (const v of [undefined, "TRUE", "1", "yes"]) assert.equal(off.ensureDecisionTape({ RESEARCH_DECISION_TAPE_ENABLED: v }), "disabled", String(v));
+  const { sql, calls } = (() => { const calls = []; const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; }; return { sql, calls }; })();
+  let frame = tapeFrame(610);
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } })(TAPE);
+  assert.equal(mod.ensureDecisionTape({ RESEARCH_DECISION_TAPE_ENABLED: "true" }, tapeClose - 611_000), "started", "the session starts inside this window");
+  const inserts = () => calls.filter((c) => /^\s*insert into desk_research_decision_tape/.test(c.text)).map((c) => ({ secs: c.values[3], checkpoint: c.values[4], label: c.values[6], partial: c.values[10], record: JSON.parse(c.values[11]) }));
+  const before = JSON.stringify(frame);
+  await mod.decisionTapeTick(tapeClose - 610_000);             // first frame of the window: a change
+  assert.equal(JSON.stringify(frame), before, "the published frame is never mutated");
+  await mod.decisionTapeTick(tapeClose - 610_000);             // the same frame again: nothing
+  frame = tapeFrame(598); await mod.decisionTapeTick(tapeClose - 598_000); // T-10 checkpoint, same state: recorded as a brief
+  frame = tapeFrame(590); await mod.decisionTapeTick(tapeClose - 590_000); // same state, no checkpoint: not recorded
+  frame = tapeFrame(500, "UP", 0.6); await mod.decisionTapeTick(tapeClose - 500_000); // the Chair turns directional: a change
+  const rows = inserts();
+  assert.deepEqual(rows.map((r) => [r.secs, r.checkpoint, r.label]), [[610, null, "DIRECTION_BELOW_BAR"], [598, 600, "DIRECTION_BELOW_BAR"], [500, null, "CONFIRMATION_INCOMPLETE"]]);
+  assert.ok(rows.every((r) => r.partial === true), "this window was already open when the observer started");
+  assert.ok(rows.find((r) => r.checkpoint === 600).record.seats?.length === 2, "seat reads ride on checkpoint briefs");
+  assert.equal(rows.find((r) => r.checkpoint == null).record.seats, undefined, "change events stay compact");
+  assert.equal(rows[1].record.conditions[0].metric, "vs_bar_minus_bar");
+  assert.ok(calls.every((c) => /^\s*insert into desk_research_decision_tape/.test(c.text)), "writes only its own table");
+  assert.equal(mod.decisionTapeHealth().production_authority, "NONE");
+});
+
+async function seedTape(m, sql, ticker, closeMs, events) {
+  for (const [secsLeft, lean, vs, checkpoint] of events) {
+    const f = tapeFrame(secsLeft, lean, vs);
+    const rec = m.classifyTape({ snap: { ...f.snap, ticker, close_time: closeMs, as_of: closeMs - secsLeft * 1000 }, chair: f.chair, audit: f.selective.audit, daily: f.selective.daily, call_log: [] });
+    await sql`insert into desk_research_decision_tape (ticker, close_time, as_of, secs_left, checkpoint_secs, state, label, stage, primary_blocker, blockers, partial_window, record, build_sha)
+      values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, ${new Date(closeMs - secsLeft * 1000).toISOString()}::timestamptz, ${secsLeft}, ${checkpoint}, ${rec.state}, ${rec.label}, ${rec.stage},
+        ${rec.primary_blocker}, array(select jsonb_array_elements_text(${JSON.stringify(rec.blockers)}::jsonb)), false, ${JSON.stringify(rec)}::jsonb, 'abc1234')`;
+  }
+}
+
+test("tape end to end: window jobs grade each settled window's tape; the rollup writes every tape and insight report", async (t) => {
+  const vite = await createServer({ envDir: false, server: { middlewareMode: true }, appType: "custom" });
+  t.after(() => vite.close());
+  const m = await vite.ssrLoadModule("/src/lib/desk/research-factory.server.ts");
+  const tapeMod = await vite.ssrLoadModule("/src/lib/desk/research-factory-tape.ts");
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 3; i += 1) {
+    const ticker = `KXBTC15M-TAPE${i}`, closeMs = base + i * 900_000;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    await seedTape(tapeMod, sql, ticker, closeMs, [[600, "WAIT", 0.4, 600], [450, "WAIT", 0.45, 450], [400, "UP", 0.6, null], [300, "UP", 0.6, 300]]);
+  }
+  const now = base + 3 * 900_000 + 600_000;
+  await m.enqueueDue(sql, now);
+  for (;;) {
+    const job = await m.claim(sql, "tape", now);
+    if (!job) break;
+    assert.notEqual(await m.runJob(sql, job, "tape", { sampler: calm, now: () => now }), "failed", JSON.stringify((await jobsOf(sql)).filter((r) => r.error)));
+  }
+  const facts = await sql`select experiment, arm, replay_quality, facts from desk_research_window_facts where experiment = 'PRODUCTION_TAPE' order by ticker`;
+  assert.equal(facts.length, 3, "one graded tape timeline per settled window");
+  assert.equal(facts[0].facts.timeline.became_directional, true);
+  assert.equal(facts[0].facts.timeline.briefs.find((b) => b.checkpoint === 600).next_blocker, "CONFIRMATION_INCOMPLETE");
+  const report = async (kind) => (await sql`select payload from desk_research_reports where report_kind = ${kind} and report_key = 'latest'`)[0]?.payload;
+  for (const k of ["abstention", "transitions", "brief_accuracy", "survival", "stage_unlocks", "signal_value", "research_summary"]) assert.ok(await report(k), k);
+  const tr = await report("transitions");
+  assert.equal(tr.rolling[tr.rolling.length - 1].windows, 3);
+  assert.deepEqual(tr.rolling[0].matrix.map((x) => [x.from, x.to, x.count]), [["DIRECTION_BELOW_BAR", "CONFIRMATION_INCOMPLETE", 3]]);
+  const summary = await report("research_summary");
+  assert.deepEqual(summary.authority, { production_authority: "NONE", automatic_changes: false });
+  const grade = await report("matched_grade");
+  assert.equal(grade.experiments.some((e) => e.experiment.startsWith("PRODUCTION")), false, "the tape is never graded as an experiment");
 });

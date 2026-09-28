@@ -31,6 +31,8 @@ const winKey = (f: Pick<WindowFact, "ticker" | "close_ms">) => `${f.ticker}|${f.
 const armKey = (f: Pick<WindowFact, "experiment" | "arm">) => `${f.experiment}|${f.arm}`;
 const facts = (f: GradedFact): Obj => (f.facts ?? {}) as Obj;
 const isProduction = (f: Pick<WindowFact, "experiment">) => f.experiment === "PRODUCTION";
+/** Production's own rows (the ledger fact and the decision-tape timeline): never an experiment, never pooled with one. */
+export const isProductionAny = (f: Pick<WindowFact, "experiment">) => f.experiment === "PRODUCTION" || f.experiment === "PRODUCTION_TAPE";
 /** The official ledger is not a receipt the auditor annotates; its EXACT replay is its evidence bar. */
 export const clean = (f: GradedFact): boolean => (isProduction(f) ? f.replay_quality === "EXACT" : evidenceEligible(f, f.integrity));
 const fillOf = (f: GradedFact): Fill | null =>
@@ -257,7 +259,7 @@ export type Pocket = {
   label: "PROMISING" | "EXPLORATORY" | "INSUFFICIENT_SAMPLE";
 };
 
-export type PocketReport = { experiment: string; arm: string; tests: number; fdr_q: number; pockets: Pocket[]; caution: string };
+export type PocketReport = { experiment: string; arm: string; tests: number; fdr_q: number; pockets: Pocket[]; caution: string; hypothesis_kind: "EXPLORATORY"; variants_tested: number };
 
 export function pocketScan(all: readonly GradedFact[], experiment: string, arm: string, q = 0.1): PocketReport {
   const mine = all.filter((f) => f.experiment === experiment && f.arm === arm && f.observed);
@@ -282,7 +284,7 @@ export function pocketScan(all: readonly GradedFact[], experiment: string, arm: 
       : x.bh_pass && lo != null && x.stats.breakeven_win_rate_pct != null && lo > x.stats.breakeven_win_rate_pct && (x.stats.net_cents ?? 0) > 0 ? "PROMISING" : "EXPLORATORY";
   });
   return {
-    experiment, arm, tests: pockets.length, fdr_q: q, pockets,
+    experiment, arm, tests: pockets.length, fdr_q: q, pockets, hypothesis_kind: "EXPLORATORY", variants_tested: pockets.length,
     caution: `${pockets.length} pockets tested across ${POCKET_DIMENSIONS.length} pre-registered single dimensions. PROMISING requires >= ${MIN_SETTLED_FOR_CLAIM} clean settled fills, a Wilson 95% lower bound above break-even, positive net, and surviving Benjamini-Hochberg at q=${q}. Everything else is exploratory.`,
   };
 }
@@ -415,19 +417,25 @@ export type LifecycleSpec = {
   retirement_criteria: string;
   lab_registry_id: string;
   retired: boolean;
+  /** Research honesty rail. */
+  hypothesis_kind: "PRESPECIFIED" | "EXPLORATORY";
+  variants_tested: number;
+  sample_windows: { training: string; validation: string; holdout: string };
 };
+
+const PROSPECTIVE = Object.freeze({ training: "none: frozen before collection", validation: "none", holdout: "every prospective window from the start boundary" });
 
 const PROMOTION = `>= 50 CLEAN settled fills on MATCHED windows; Wilson 95% lower bound above break-even; positive after-fee net; beats NULL_FAV_80 on the same windows; zero INVALID and zero unresolved-P2 fills. Promotion then needs a separate, human-approved production trial.`;
 const RETIREMENT = `>= 50 CLEAN settled fills with the Wilson 95% upper bound below break-even, or >= 500 observed windows with fewer than 5 fills.`;
 const TARGET = "after-fee net cents per CLEAN settled fill, against NULL_FAV_80 on identical windows";
 
 export const LIFECYCLE_REGISTRY: readonly LifecycleSpec[] = Object.freeze([
-  { experiment: MID_RECOVERY_EXPERIMENT.id, arm: "RECOVERED_MID", version: MID_RECOVERY_EXPERIMENT.version, hypothesis: "Hearing the frozen E1 roster through the inactive recovery path turns production WAITs into profitable directional entries under every production rule.", authority: "NONE", controls: ["BASELINE", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "mid-recovery-v1", retired: false },
-  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "CONTROL", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Reference: the V1 recovered path unchanged, on the LOCKS cohort.", authority: "NONE", controls: ["NULL_FAV_80"], target_metric: TARGET, promotion_criteria: "Reference arm: never promoted.", retirement_criteria: "Retires with the experiment.", lab_registry_id: "recovery-locks", retired: false },
-  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "BAR_NO_SITMASS", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "The Chair bar's sit-mass term alone suppresses profitable recovered directional reads.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "recovery-locks", retired: false },
-  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "SUPPORT_UNCAL_E1", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Refusing UNCALIBRATED recovered E1 rows as support alone suppresses profitable entries.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "recovery-locks", retired: false },
-  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "COMBINED_DIAG", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Diagnostic: both locks removed at once. Not attributable to either lock.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: "Never. DIAGNOSTIC_ONLY.", retirement_criteria: "Retires with the experiment.", lab_registry_id: "recovery-locks", retired: false },
-  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "NULL_FAV_80", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Matched-window control: buy the favourite at >= 80c.", authority: "NONE", controls: [], target_metric: TARGET, promotion_criteria: "Control arm: never promoted.", retirement_criteria: "Never retired while any arm it controls is collecting.", lab_registry_id: "recovery-locks", retired: false },
+  { experiment: MID_RECOVERY_EXPERIMENT.id, arm: "RECOVERED_MID", version: MID_RECOVERY_EXPERIMENT.version, hypothesis: "Hearing the frozen E1 roster through the inactive recovery path turns production WAITs into profitable directional entries under every production rule.", authority: "NONE", controls: ["BASELINE", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "mid-recovery-v1", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
+  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "CONTROL", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Reference: the V1 recovered path unchanged, on the LOCKS cohort.", authority: "NONE", controls: ["NULL_FAV_80"], target_metric: TARGET, promotion_criteria: "Reference arm: never promoted.", retirement_criteria: "Retires with the experiment.", lab_registry_id: "recovery-locks", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
+  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "BAR_NO_SITMASS", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "The Chair bar's sit-mass term alone suppresses profitable recovered directional reads.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "recovery-locks", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
+  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "SUPPORT_UNCAL_E1", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Refusing UNCALIBRATED recovered E1 rows as support alone suppresses profitable entries.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: PROMOTION, retirement_criteria: RETIREMENT, lab_registry_id: "recovery-locks", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
+  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "COMBINED_DIAG", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Diagnostic: both locks removed at once. Not attributable to either lock.", authority: "NONE", controls: ["CONTROL", "NULL_FAV_80"], target_metric: TARGET, promotion_criteria: "Never. DIAGNOSTIC_ONLY.", retirement_criteria: "Retires with the experiment.", lab_registry_id: "recovery-locks", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
+  { experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id, arm: "NULL_FAV_80", version: MID_RECOVERY_LOCKS_EXPERIMENT.version, hypothesis: "Matched-window control: buy the favourite at >= 80c.", authority: "NONE", controls: [], target_metric: TARGET, promotion_criteria: "Control arm: never promoted.", retirement_criteria: "Never retired while any arm it controls is collecting.", lab_registry_id: "recovery-locks", retired: false, hypothesis_kind: "PRESPECIFIED", variants_tested: 1, sample_windows: PROSPECTIVE },
 ]);
 
 export type LifecycleRow = LifecycleSpec & {
@@ -491,7 +499,7 @@ export function lifecycleRow(all: readonly GradedFact[], spec: LifecycleSpec): L
 export function evidenceSafety(all: readonly GradedFact[], reasons: ReadonlyArray<{ experiment: string; arm: string; status: IntegrityStatus; codes: readonly string[] }>) {
   const byArm = new Map<string, { windows: number; fills: number; evidence_fills: number; statuses: Record<IntegrityStatus, number>; reasons: Map<string, number> }>();
   for (const f of all) {
-    if (isProduction(f) || !f.observed) continue;
+    if (isProductionAny(f) || !f.observed) continue;
     const k = armKey(f);
     const cur = byArm.get(k) ?? { windows: 0, fills: 0, evidence_fills: 0, statuses: { CLEAN: 0, SUSPECT: 0, INVALID: 0, UNVERIFIABLE: 0 }, reasons: new Map() };
     cur.windows += 1;
@@ -550,11 +558,11 @@ const MILESTONES = [25, 50, 100, 250, 500] as const;
 export function dailyDigest(all: readonly GradedFact[], dayStartMs: number, dayEndMs: number, integrityToday: ReadonlyArray<{ status: IntegrityStatus; codes: readonly string[] }>, extras: { lifecycle: LifecycleRow[]; choke: ChokeReport[]; utilization: ReturnType<typeof utilization> }) {
   const today = all.filter((f) => f.close_ms >= dayStartMs && f.close_ms < dayEndMs);
   const before = all.filter((f) => f.close_ms < dayStartMs);
-  const windows = new Set(today.map(winKey));
-  const experiments = [...new Set(today.filter((f) => !isProduction(f)).map((f) => f.experiment))].sort();
+  const windows = new Set(today.filter((f) => !isProductionAny(f) || isProduction(f)).map(winKey));
+  const experiments = [...new Set(today.filter((f) => !isProductionAny(f)).map((f) => f.experiment))].sort();
   const matched = experiments.map((e) => { const g = matchedGrade(today, e); return { experiment: e, matched_windows: g.matched_windows, matched_clean_windows: g.matched_clean_windows }; });
   const prodFills = today.filter((f) => isProduction(f) && fillOf(f));
-  const shadow = today.filter((f) => !isProduction(f) && fillOf(f));
+  const shadow = today.filter((f) => !isProductionAny(f) && fillOf(f));
   const isolated = extras.lifecycle.filter((l) => l.promotion_eligible && l.current_result.settled >= 10);
   const byCpf = [...isolated].sort((a, b) => (b.current_result.cents_per_fill ?? -Infinity) - (a.current_result.cents_per_fill ?? -Infinity));
   const codeCount = new Map<string, number>();

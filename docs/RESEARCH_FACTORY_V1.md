@@ -172,3 +172,246 @@ months of history accumulates, switch the rollup to incremental aggregation
 (keep running totals per arm and window bucket), or scope it per experiment.
 The governor will pause earlier than that if units start to show in the
 event-loop p99.
+
+---
+
+# Addendum: decision tape, transitions, value-add
+
+None of this adds production authority, changes a gate, adds a seat, or calls
+a paid API.
+
+## Delivery categories
+
+| category | item | status in this PR |
+|---|---|---|
+| **BUILD NOW** | structured WAIT receipts (A) | built: `desk_research_decision_tape`, `research-factory-tape.ts` |
+| **BUILD NOW** | frame-brief receipts and grading (B) | built: checkpoint briefs, graded after settlement |
+| built with them | choke-transition engine (1) | built for production, plus per-arm stage unlocks versus CONTROL |
+| built with them | marginal-information scorer (2) | engine built; seat and family report from tape checkpoints (EXPLORATORY) |
+| built with them | counterfactual survival (3) and honesty rail (4) | built; research summary (5) built |
+| **INSTRUMENT NEXT** | Kalshi book depth (C) | feasibility below; collector proposed for the next PR |
+| **ANALYZE AFTER INTEGRITY** | per-seat debrief (D) | design below; the signal-value report is its first cut |
+| **RESEARCH QUEUE** | spot/perp delta (E), formalized WICK (F) | feasibility and design below; not built |
+| **BLOCKED** | parameter or genetic search (G) | prerequisites below |
+
+## A + B. The production decision tape
+
+An env-gated observer (`RESEARCH_DECISION_TAPE_ENABLED=true`, literal; off by
+default). It reads the frame the engine already publishes on each tick: the
+Chair, the admission audit, the daily admission state and the call log, all
+from the same tick. Nothing is recomputed.
+
+It writes one insert-once row at each designated checkpoint (T-600, 450, 300,
+240, 180, 120 and 60 s) and at every change of decision label or funnel stage,
+capped at 80 rows per window. Each row holds:
+
+- the **primary blocker**, **all blockers** and the **deepest stage**;
+- production's raw reason, preserved verbatim: telemetry's
+  `chairWaitReason`, the same string `desk_chair_evals` stores, plus every
+  failing check and hard gate;
+- the machine-readable **conditions** for the next stage, with exact current
+  values and required values;
+- the directional evidence (score, `vs_bar`, bar, sit term, supporters,
+  families) and the market state.
+
+Rules the tape follows:
+
+- **Taxonomy:** the 16 required classes, plus `DIRECTION_CONFLICT` and
+  `UNKNOWN`. An unmapped gate keeps its raw id under `OTHER_EXPLICIT`. A WAIT
+  that production's own fields do not explain is recorded as `UNKNOWN`, never
+  guessed.
+- **Required values** come only from `admissionRequirements(daily)`, the
+  function production itself enforces. Without the daily state the
+  requirement is `null` and the brief is not gradable.
+- **Confirmation:** the production confirmation latch is not published in the
+  frame. Its requirement is stated, but its current count is recorded as
+  unknown.
+- **Levers are not conditions:** "the sit-mass term alone would clear the
+  bar" is a lever (`bar_without_sit`) used only by the survival analysis. It
+  is never graded as a condition that "occurred".
+- **Partial windows:** a window already open when the observer started is
+  marked `partial_window` and excluded from first-blocker and dwell
+  statistics.
+
+After settlement, the factory's window job grades each brief:
+
+- did the condition occur, and when;
+- did the blocker clear, and what blocked next;
+- did the window become directional, qualify or book;
+- the official result.
+
+The grades feed these metrics:
+
+- `brief_condition_hit_rate`
+- `brief_correct_transition_rate` (the condition occurred, and the blocker
+  then cleared)
+- `brief_false_hope_rate` (the condition occurred, but the window never
+  advanced)
+- `unexplained_clear_rate` (the blocker cleared without the stated
+  condition, meaning the brief was incomplete)
+
+**Relation to existing telemetry:** `desk_chair_evals` and `desk_seat_reads`
+(`SEAT_TELEMETRY_ENABLED`) already sample the Chair tape every 10 s. The
+decision tape adds what those tables lack (the admission audit, taxonomy,
+conditions and grading) without touching the engine's telemetry call site.
+
+## 1. Choke-transition engine
+
+- `transitions`: for production, the from/to matrix with rates, median dwell
+  per label, advance and regression rates, first, terminal and deepest stage.
+  It rolls over the last 25, 50, 100, 250, 500 windows and the horizon, and
+  breaks down by direction, regime, favourite strength, build and day.
+- `stage_unlocks`: per isolated arm, on windows matched with CONTROL,
+  `incremental_stage_unlocks` per stage and the next blocker after an
+  unlock. For example, BAR_NO_SITMASS might read +7 directional, +2 support,
+  +0 qualified.
+- **Limit:** the recorders keep each arm's deepest evaluation per window, not
+  a per-tick tape, so arm-level dwell times need a future per-tick arm tape
+  (for example a LOCKS V2). Production has them now.
+
+## 2. Marginal-information scorer
+
+`marginalValue` takes the favourite's point of view and runs two tests:
+
+- **Price-band control:** inside fixed narrow price bands (50–60 … 85–90,
+  90–95, 95–100¢), it compares the favourite's win rate when the signal
+  agrees versus opposes.
+- **Walk-forward incremental Brier and log loss:** each window is scored by a
+  band × stance offset fitted only on earlier windows and shrunk toward the
+  market price.
+
+A signal that merely restates the price scores about 0. That is tested.
+`redundancy` reports pairwise agreement, and who is right when two signals
+disagree. `signal_value` applies both to every seat and family read at the
+T-5:00 brief, with raw value and incremental value reported separately.
+It is labelled EXPLORATORY with its variant count, and it never mutes or
+promotes a seat.
+
+## 3. Counterfactual survival
+
+For each settled window that never qualified, the analysis takes the
+window's deepest recorded frame and finds the smallest **single** change
+that clears its primary blocker, using production's own gap:
+
+- bar points,
+- one fewer supporter or family,
+- a floor that many cents lower,
+- a lower edge requirement.
+
+Every other blocker production measured on that same frame still stands.
+Changes are ranked by `qualified_fills_created_per_rule_change`, not by
+windows unblocked, and priced at the frame's ask with the taker fee.
+Changes that only move a window to its next blocker are listed as
+`false_unlocks`. Confirmation is PARTIAL (assumed) or UNAVAILABLE, and
+everything here is EXPLORATORY.
+
+## 4. Honesty rail and 5. summary
+
+- Every lifecycle spec carries `hypothesis_kind` (PRESPECIFIED for the frozen
+  prospective arms), `variants_tested` and `sample_windows` (training,
+  validation, holdout).
+- Pockets, survival and signal value are EXPLORATORY, each with its variant
+  count.
+- `research_summary` answers, deterministically:
+  - the current bottleneck;
+  - the highest-leverage isolated change;
+  - the best incremental signal;
+  - the most redundant signal;
+  - false unlocks;
+  - the next prospective experiment.
+
+  Each answer carries its population and the rule: EXPLORATORY findings can
+  earn a frozen prospective test, never production authority, and nothing is
+  promoted from COMBINED_DIAG or P2-contaminated evidence.
+
+## C. Kalshi book depth: feasible, instrument next
+
+The Lab already keeps a full per-level Kalshi book in memory
+(`lab.server.ts` `L.books`, built by `lab-book.ts`) from the `orderbook_delta`
+WebSocket channel:
+
+- YES-bid and NO-bid level maps (price → size); asks are implied by the
+  opposite side's bids;
+- trust flags: `ok` (a snapshot has loaded), `stale` (a sequence gap is
+  outstanding), a `gaps` count and `upd_t`;
+- a phantom-level guard (`QTY_EPS`) that removes floating-point residue;
+- a REST fallback, `GET /markets/{ticker}/orderbook?depth=N` (`fast-pulse`
+  uses `depth=1`).
+
+**Proposal (next PR):**
+
+1. Add a read-only accessor, `labBookLevels(ticker, n)`.
+2. Add an env-gated collector writing `desk_research_book_depth` at
+   T-600, 300, 180 and 60, with:
+   - YES and NO bid depth for the top 10 levels, best bid and ask, spread;
+   - total, near-touch-weighted and imbalance measures, and the depth slope;
+   - adds and removes since the previous snapshot;
+   - quality flags: untrusted, stale, gap count, snapshot age, missing book.
+3. Deliver collection quality first: coverage and trust rates per clock.
+4. Only then test H0 ("resting depth imbalance adds no information beyond the
+   same-time market price"). Use `marginalValue` with stance = sign of the
+   imbalance, walk-forward, inside price bands. Retire the study if depth
+   restates price.
+
+## D. Per-seat debrief: analyze after integrity
+
+The raw material exists:
+
+- `desk_seat_reads` (per-seat raw and final lean, speak threshold,
+  suppression reason, weight, status, contribution);
+- `desk_chair_evals`;
+- the tape's checkpoint seat reads.
+
+The debrief is `signal_value` extended with conditioning on session, ATR
+regime, favourite or underdog, ask, time remaining, agreement with the
+Chair, and a signal-survival matrix: generated → authority → folding →
+contribution → Chair direction → support → confirmation → qualified → booked.
+It asks "when is this seat useful?", and it never alters authority.
+
+## E. Spot/perp delta: not reconstructable from stored data
+
+- **Stored data:** only per-minute *basis* (`desk_basis_minutes`), Kalshi
+  taker share (`desk_taker`) and legacy model features (`desk_samples`). No
+  spot or perp **signed** trade flow is stored.
+- **Live feeds:** the only WebSocket feed in the app is Kalshi's. No spot or
+  perp trade stream exists live either.
+
+**Bounded proposal:**
+
+1. Add a research-only trade collector per venue (spot and perp, kept
+   separate) that aggregates to fixed 1-minute and final-5-minute buckets:
+   signed volume from the aggressor flag and cumulative delta.
+2. Freeze the signed-flow definition before collecting.
+3. Only after enough clean windows, run the price-only versus price+flow
+   walk-forward test with the scorer above, including real Kalshi fees.
+
+It never becomes a production seat.
+
+## F. Formalized WICK "no demand / no supply": research queue
+
+The design only, not built:
+
+- **Predicate:** freeze a predicate over ATR-normalised effort (volume)
+  versus result (absolute and directional progress), plus range expansion,
+  wick and body shape, and follow-through.
+- **Evaluation:** once frozen, run it in parallel to the unchanged WICK and
+  score it against settlement, WICK's output and market probability with
+  `marginalValue`.
+- **Retire** it if it adds no incremental information.
+
+## G. Parameter or genetic search: blocked
+
+Prerequisites that are not met yet:
+
+1. P2 resolved or bounded.
+2. The EXACT replay path validated.
+3. A train / validation / untouched-holdout workflow.
+4. Multiple-comparison protection beyond per-report BH.
+5. A registry recording every tested hypothesis.
+6. A search that cannot mutate production.
+7. A full audit trail.
+
+When allowed: authority NONE, exploratory results, multi-metric objectives
+with a complexity penalty, the number of hypotheses reported, and a truly
+untouched final holdout. One winner out of 10,000 combinations is never
+equivalent to one prespecified success.
