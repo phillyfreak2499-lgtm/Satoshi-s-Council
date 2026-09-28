@@ -140,6 +140,17 @@ safe enough to use as evidence?"* per arm with `ALL_FILLS`,
 
 ## Reports (`GET /research/factory?key=<DESK_ADMIN_KEY>&kind=…`)
 
+**Admin page:** `GET /research/reports?key=<DESK_ADMIN_KEY>` (404 without the
+key) shows everything below on one read-only HTML page, in this order:
+- collector and factory health, jobs and failures;
+- the research summary;
+- experiment lifecycle and evidence safety;
+- the instrument tests' verdicts, research compute and the latest digest;
+- every report as escaped raw JSON.
+
+The page is static: no script, no external resource, a no-script CSP, and the
+key is never written into it.
+
 - `matched_grade`: every arm plus production on **identical window IDs**
   (`MATCHED`, then `MATCHED_CLEAN`). Anything else is labelled `UNMATCHED`.
   It reports Wilson intervals and the market-implied Brier, log loss and ECE.

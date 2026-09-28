@@ -330,13 +330,19 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.doesNotMatch(flowSrc, /authorization|api[-_]?key|secret|method:\s*"(POST|PUT|DELETE)"/i, "unauthenticated GETs only");
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow") || f.startsWith("src/lib/desk/wick-effort")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f === "server/routes/research/reports.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow") || f.startsWith("src/lib/desk/wick-effort")) continue;
     assert.ok(!read(f).includes("research-factory"), `${f} imports the research factory`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "floor-policy.ts", "call-recovery-candidate.ts"]) {
     assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow|wick-effort/, `${prod} is untouched by the factory and the collectors`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+  // The reports page: the same 404 guard, static HTML under a no-script CSP, and the key never passed to the renderer.
+  const page = read("server/routes/research/reports.get.ts");
+  assert.match(page, /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+  assert.match(page, /"content-security-policy": "default-src 'none'; style-src 'unsafe-inline';/);
+  assert.match(page, /researchReportsPage\(\)/, "the renderer is called without the key");
+  assert.doesNotMatch(codeOf("src/lib/desk/research-factory-page.ts"), /insert into|update \w+ set|delete from|fetch\(|process\.env/i, "the page renderer is pure");
   // The auditor's P2 boundary is the producer's capture policy, held as data: the two literals must stay equal.
   const policy = /export const CAPTURE_POLICY = "([A-Z0-9_]+)" as const;/.exec(read("src/lib/desk/bots.ts"))?.[1];
   assert.ok(policy, "bots.ts exports CAPTURE_POLICY");
@@ -707,4 +713,25 @@ test("wick_shadow report: the rollup reports collection quality and the WICK com
   assert.equal(rep.h0.versus_wick.both_speak, 1);
   assert.equal(rep.h0.versus_wick.agree.right, 1);
   assert.equal(rep.decision_use, "NONE");
+});
+
+test("reports page: renders the stored reports from real SQL, read only", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const put = (kind, key, payload) => sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values (${kind}, ${key}, 1, ${JSON.stringify(payload)}::jsonb)`;
+  await put("lifecycle", "latest", { rows: [{ experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE", arm: "CONTROL", status: "INSUFFICIENT_SAMPLE", promotion_eligible: false, current_sample: { observed_windows: 3, fills: 0, clean_settled_fills: 0, suspect_fills: 0, invalid_fills: 0 }, current_result: {}, matched_null_fav: {} }] });
+  await put("wick_shadow", "latest", { h0: { verdict: "INSUFFICIENT_SAMPLE", clean_observations: 2, fires: 1, h0: { id: "WICK_EFFORT_RESULT_H0_V1", min_clean_observations: 300 } } });
+  await put("daily_digest", "2026-09-26", { day: "2026-09-26" });
+  await put("daily_digest", "2026-09-27", { day: "2026-09-27" });
+  await m.enqueue(sql, "window", "W|1", {}, EPOCH);
+  const before = JSON.stringify(await sql`select * from desk_research_reports order by report_kind, report_key`) + JSON.stringify(await jobsOf(sql));
+  const html = await m.researchReportsPage(sql, Date.parse("2026-09-28T17:30:00Z"));
+  assert.equal(JSON.stringify(await sql`select * from desk_research_reports order by report_kind, report_key`) + JSON.stringify(await jobsOf(sql)), before, "rendering writes nothing");
+  assert.match(html, /^<!doctype html>/);
+  assert.ok(html.includes("generated 2026-09-28T17:30:00.000Z"));
+  assert.ok(html.includes("MID_RECOVERY_LOCKS_V2_INACTIVE"));
+  assert.ok(html.includes("2 / 300 · 1 fires"));
+  assert.ok(html.includes("Latest daily digest (2026-09-27)"), "the newest digest");
+  assert.ok(html.includes("window") && html.includes("queued"), "job counts come from the queue");
+  assert.equal(/<script/i.test(html), false);
 });

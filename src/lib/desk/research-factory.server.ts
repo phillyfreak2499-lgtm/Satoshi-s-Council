@@ -38,6 +38,7 @@ import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory
 import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
 import { flowH0, flowQuality, indexMinutes, type FlowMark, type FlowVenue, type FlowWindow, type StoredMinute } from "./trade-flow.ts";
 import { wickShadowH0, wickShadowQuality, type ShadowRow } from "./wick-effort.ts";
+import { renderResearchPage, type StoredReport } from "./research-factory-page.ts";
 import {
   abstentionReport, briefAccuracy, researchSummary, signalValueReport, stageUnlocks, survivalReport, transitionReport,
   type TapeWindow,
@@ -805,8 +806,8 @@ export function researchFactoryHealth() {
   };
 }
 
-export async function researchFactoryReport(kind?: string, key = "latest") {
-  const sql = await getSql();
+export async function researchFactoryReport(kind?: string, key = "latest", sqlIn?: Sql) {
+  const sql = sqlIn ?? await getSql();
   const jobs = await sql<{ job_kind: string; status: string; n: number }>`select job_kind, status, count(*)::int as n from desk_research_jobs group by 1, 2 order by 1, 2`;
   const failures = await sql<Record<string, unknown>>`select job_kind, job_key, attempts, error, updated_at from desk_research_jobs where status = 'failed' order by updated_at desc limit 10`;
   const reports = kind
@@ -817,4 +818,19 @@ export async function researchFactoryReport(kind?: string, key = "latest") {
   const { tradeFlowHealth } = await import("./trade-flow.server.ts");
   const { wickShadowHealth } = await import("./wick-effort.server.ts");
   return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), wick_shadow: wickShadowHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
+}
+
+/** The admin reports page: the overview plus the latest version of every report and the newest daily digest, rendered as static HTML. */
+export async function researchReportsPage(sqlIn?: Sql, nowMs: number = Date.now()): Promise<string> {
+  const sql = sqlIn ?? await getSql();
+  const overview = await researchFactoryReport(undefined, "latest", sql);
+  const latest = await sql<StoredReport>`
+    select distinct on (report_kind) report_kind, report_key, report_version, payload, build_sha, created_at::text as created_at
+    from desk_research_reports where report_key = 'latest' order by report_kind, report_version desc`;
+  const digest = await sql<StoredReport>`
+    select report_kind, report_key, report_version, payload, build_sha, created_at::text as created_at
+    from desk_research_reports where report_kind = 'daily_digest' order by report_key desc, report_version desc limit 1`;
+  const { reports: _list, ...rest } = overview;
+  void _list;
+  return renderResearchPage({ generated_at: new Date(nowMs).toISOString(), overview: rest, latest, digest: digest[0] ?? null });
 }
