@@ -43,7 +43,7 @@ import {
   type LocksArmState, type LocksInput, type LocksIntervention, type LocksRecoveredArm, type LocksSummary,
 } from "./shadow-lab-mid-recovery-locks.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
-import type { ChairResult, SeatId, SeatRow } from "./types";
+import type { ChairResult, Learner, SeatId, SeatRow } from "./types";
 
 /** bots.ts CAPTURE_POLICY, held as data (a rail test pins the two equal). */
 export const REQUIRED_CAPTURE_POLICY = "P2_EXPLOIT_GUARD_V1";
@@ -113,7 +113,7 @@ const blankTrace = (arm: LocksRecoveredArm): LocksV2Intervention => ({
  * simulated vote set from the original producer votes and release only the
  * candidate card ids. The shared V1 path is deliberately left untouched.
  */
-function candidateOnlyProjection(frame: EvaluatedCandidateFrame, learner: Parameters<MidRecoveryDeps["projectInactiveE1Recovery"]>[1], projection: RecoveryProjection): RecoveryProjection {
+function candidateOnlyProjection(frame: EvaluatedCandidateFrame, learner: Learner, projection: RecoveryProjection): RecoveryProjection {
   const bySeat = new Map(projection.candidates.map((candidate) => [candidate.seat, candidate.vote] as const));
   const projectedVotes = frame.votes.map((vote) => bySeat.get(vote.seat) ?? vote);
   const cards = projection.candidates.map((candidate) => candidate.card_id);
