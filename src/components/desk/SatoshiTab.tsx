@@ -26,6 +26,7 @@ import { CouncilFloorRoom } from "./CouncilFloorRoom";
 import { ChairSignalGauge } from "./ChairSignalGauge";
 import { chairSignalOf, signalDescription } from "@/lib/desk/chair-signal";
 import { ProOverview } from "./ProFloor/ProOverview";
+import { WaitResearchNote } from "./WaitResearchNote";
 import { beacon } from "@/lib/desk/beacon";
 
 /**
@@ -712,6 +713,7 @@ export function SatoshiTab({
           </CouncilFloorRoom>
         }
       />
+      {chair.lean === "WAIT" ? <WaitResearchNote /> : null}
       {density === "full" && strip ? <div>{strip}</div> : null}
 
       <details className="company-decision-notes"><summary>Decision notes and voting context</summary><WhyBlock why={why} chair={chair} /></details>
