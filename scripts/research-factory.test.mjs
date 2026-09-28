@@ -40,6 +40,8 @@ async function factory(t) {
   return vite.ssrLoadModule("/src/lib/desk/research-factory.server.ts");
 }
 
+/** Jobs in the fixed-clock tests are due from the epoch, so they never depend on the machine's real clock. */
+const EPOCH = 0;
 const calm = async () => ({ rss_mb: 200, load_per_cpu: 0.1, event_loop_p99_ms: 5, db_waiting: null, db_in_use: null, db_ping_ms: null });
 const pressure = async () => ({ rss_mb: 99_999, load_per_cpu: 0.1, event_loop_p99_ms: 5, db_waiting: null, db_in_use: null, db_ping_ms: null });
 const jobsOf = (sql) => sql`select job_kind, job_key, status, attempts, checkpoint, guard_reason, error, lease_owner, rows_written, db_queries, cpu_ms, wall_ms from desk_research_jobs order by job_kind, job_key`;
@@ -62,8 +64,8 @@ test("duplicate jobs are impossible: the same (kind, key) enqueues once, however
 test("one job at a time: nothing is claimed while a live lease exists; a lapsed lease is reclaimed and resumes from its checkpoint; a completed job never runs again", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "A|1");
-  await m.enqueue(sql, "window", "B|2");
+  await m.enqueue(sql, "window", "A|1", {}, EPOCH);
+  await m.enqueue(sql, "window", "B|2", {}, EPOCH);
   const t0 = Date.parse("2026-09-28T16:00:00Z");
   const first = await m.claim(sql, "proc-1", t0);
   assert.equal(first.job_key, "A|1");
@@ -93,7 +95,7 @@ test("one job at a time: nothing is claimed while a live lease exists; a lapsed 
 test("the resource governor pauses a job under pressure, keeps its checkpoint and retry budget, and it resumes when pressure clears", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "P|1");
+  await m.enqueue(sql, "window", "P|1", {}, EPOCH);
   const t0 = Date.parse("2026-09-28T16:00:00Z");
   let sampler = calm;
   const seen = [];
@@ -126,7 +128,7 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
 test("a failing job is retried with back-off and stops at the attempt limit; the error is recorded", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "F|1");
+  await m.enqueue(sql, "window", "F|1", {}, EPOCH);
   let now = Date.parse("2026-09-28T16:00:00Z");
   const boom = { window: async () => { throw new Error("boom"); } };
   for (let i = 1; i <= 3; i += 1) {
@@ -311,22 +313,42 @@ test("rails: default OFF on a literal flag, kicked by healthz, writes only its o
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
-    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts"];
+    "src/lib/desk/book-depth.ts", "src/lib/desk/book-depth.server.ts", "src/lib/desk/trade-flow.ts", "src/lib/desk/trade-flow.server.ts",
+    "src/lib/desk/wick-effort.ts", "src/lib/desk/wick-effort.server.ts"];
   for (const f of files) {
     const src = codeOf(f);
     const writes = [...src.matchAll(/insert into\s+(\w+)|update\s+(\w+)\s+(?:\w+\s+)?set|delete from\s+(\w+)/gi)].map((x) => x[1] || x[2] || x[3]);
-    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth)$/, `${f} writes ${w}`);
-    assert.doesNotMatch(src, /openai|anthropic|fetch\(|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
+    for (const w of writes) assert.match(w, /^desk_research_(jobs|window_facts|integrity|reports|decision_tape|book_depth|flow_minutes|flow_marks|wick_shadow)$/, `${f} writes ${w}`);
+    assert.doesNotMatch(src, /openai|anthropic|api\.kalshi|noteCall\(|applyDeskOp\(|promoteToLive|setKnob|reviewSeats|saveSettings/i, `${f} reaches a paid API or production state`);
+    if (f !== "src/lib/desk/trade-flow.server.ts") assert.doesNotMatch(src, /fetch\(/, `${f} fetches`);
   }
+  // The flow collector's only network reads: public market-data hosts, each checked against the allowlist before any fetch.
+  const flowSrc = codeOf("src/lib/desk/trade-flow.server.ts");
+  const hosts = [...new Set([...flowSrc.matchAll(/https?:\/\/([^/"'`\s]+)/g)].map((x) => x[1]))].sort();
+  assert.deepEqual(hosts, ["api.exchange.coinbase.com", "www.okx.com"]);
+  assert.match(flowSrc, /if \(!FLOW_HOSTS\.includes\(new URL\(url\)\.host\)\) throw/);
+  assert.doesNotMatch(flowSrc, /authorization|api[-_]?key|secret|method:\s*"(POST|PUT|DELETE)"/i, "unauthenticated GETs only");
   assert.doesNotMatch(codeOf("src/lib/desk/research-factory.server.ts"), /delete from|drop table|truncate/i, "never deletes research history");
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/factory.get.ts" || f === "server/routes/research/reports.get.ts" || f.startsWith("src/lib/desk/research-factory") || f.startsWith("src/lib/desk/book-depth") || f.startsWith("src/lib/desk/trade-flow") || f.startsWith("src/lib/desk/wick-effort")) continue;
     assert.ok(!read(f).includes("research-factory"), `${f} imports the research factory`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "floor-policy.ts", "call-recovery-candidate.ts"]) {
-    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth/, `${prod} is untouched by the factory and the depth collector`);
+    assert.doesNotMatch(read(`src/lib/desk/${prod}`), /research-factory|desk_research_|book-depth|labBookDepth|trade-flow|wick-effort/, `${prod} is untouched by the factory and the collectors`);
   }
   assert.match(read("server/routes/research/factory.get.ts"), /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+  // The reports page: the same 404 guard, static HTML under a no-script CSP, and the key never passed to the renderer.
+  const page = read("server/routes/research/reports.get.ts");
+  assert.match(page, /adminKeyOk\(key\)\) return new Response\("not found", \{ status: 404 \}\)/);
+  assert.match(page, /"content-security-policy": "default-src 'none'; style-src 'unsafe-inline';/);
+  assert.match(page, /researchReportsPage\(\)/, "the renderer is called without the key");
+  assert.doesNotMatch(codeOf("src/lib/desk/research-factory-page.ts"), /insert into|update \w+ set|delete from|fetch\(|process\.env/i, "the page renderer is pure");
+  // The auditor's P2 boundary is the producer's capture policy, held as data: the two literals must stay equal.
+  const policy = /export const CAPTURE_POLICY = "([A-Z0-9_]+)" as const;/.exec(read("src/lib/desk/bots.ts"))?.[1];
+  assert.ok(policy, "bots.ts exports CAPTURE_POLICY");
+  assert.match(read("src/lib/desk/research-factory-analysis.ts"), new RegExp(`export const P2_FIXED_POLICY = "${policy}";`));
+  assert.match(read("src/lib/desk/shadow-lab-mid-recovery-locks.ts"), /capture_policy: frame\.capture_policy \?\? null/, "the LOCKS arm carries the producer's stamp");
+  assert.match(read("src/lib/desk/shadow-lab-mid-recovery-locks.server.ts"), /capture_policy: a\.capture_policy,/, "and writes it into every receipt");
 });
 
 // ---------------------------------------------------------------------------
@@ -508,4 +530,208 @@ test("book_depth report: the rollup reports collection quality and holds the H0 
   assert.deepEqual(c180.flags, [{ flag: "BOOK_MISSING", n: 1 }]);
   assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
   assert.equal(rep.decision_use, "NONE");
+});
+
+// ---------------------------------------------------------------------------
+// Spot/perp signed trade-flow collector.
+// ---------------------------------------------------------------------------
+
+const FLOW = "src/lib/desk/trade-flow.server.ts";
+
+function flowFixture(ctVal = "0.01") {
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  const at = (hms) => Date.parse(`2026-09-28T15:${hms}Z`);
+  const cb = (id, hms, makerSide, size) => ({ trade_id: id, time: new Date(at(hms)).toISOString(), price: "60000", size, side: makerSide });
+  const pages = { cbNewest: [], cbOlder: {}, okx: [{ instId: "BTC-USDT-SWAP", tradeId: "7", ts: String(at("10:00")), px: "60000", sz: "5", side: "buy" }] };
+  const urls = [];
+  const get = async (url) => {
+    urls.push(url);
+    if (url.includes("/public/instruments")) return { code: "0", data: [{ instId: "BTC-USDT-SWAP", ctVal, ctValCcy: "BTC" }] };
+    if (url.includes("okx.com/api/v5/market/trades")) return { code: "0", data: pages.okx };
+    const after = /after=(\d+)/.exec(url);
+    if (url.includes("coinbase")) return after ? pages.cbOlder[after[1]] ?? [] : pages.cbNewest;
+    throw new Error(`unexpected ${url}`);
+  };
+  const close = Date.parse("2026-09-28T15:15:00Z");
+  const frame = { snap: { ticker: "KXBTC15M-FLOW", close_time: close, as_of: at("11:59"), demo: false, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5 } };
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } })(FLOW);
+  const minutes = () => calls.filter((c) => /^\s*insert into desk_research_flow_minutes/.test(c.text)).map((c) => ({ venue: c.values[0], minute: c.values[1], complete: c.values[3], flags: JSON.parse(c.values[4]), n_buy: c.values[5], n_sell: c.values[6], buy_base: c.values[7], sell_base: c.values[8] }));
+  const marks = () => calls.filter((c) => /^\s*insert into desk_research_flow_marks/.test(c.text)).map((c) => ({ clock: c.values[2], age: c.values[4], yes_mid: c.values[9] }));
+  return { calls, get, pages, urls, cb, at, mod, minutes, marks };
+}
+
+test("trade-flow collector: env-gated on a literal flag; aggressor sides as frozen; pages back to close a break instead of guessing; marks the price at fixed clocks; writes only its own tables", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(FLOW);
+  for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(off.ensureTradeFlow({ RESEARCH_TRADE_FLOW_ENABLED: v }), "disabled", String(v));
+  const f = flowFixture();
+  f.pages.cbNewest = [f.cb(101, "11:40", "buy", "1"), f.cb(100, "11:10", "sell", "1")];
+  await f.mod.tradeFlowTick(f.at("12:00"), f.get);                      // first poll; T-3:00 of the 15:15 window
+  assert.deepEqual(f.marks(), [{ clock: 180, age: 1000, yes_mid: 84.5 }]);
+  await f.mod.tradeFlowTick(f.at("12:01"), f.get);
+  assert.equal(f.marks().length, 1, "one mark per clock per window");
+  f.pages.cbNewest = [f.cb(103, "12:50", "buy", "0.1"), f.cb(102, "12:10", "sell", "0.4"), ...f.pages.cbNewest];
+  await f.mod.tradeFlowTick(f.at("13:15"), f.get);
+  const m1 = f.minutes().filter((r) => r.venue === "COINBASE_SPOT");
+  assert.deepEqual(m1, [{ venue: "COINBASE_SPOT", minute: "2026-09-28T15:12:00.000Z", complete: true, flags: [], n_buy: 1, n_sell: 1, buy_base: 0.4, sell_base: 0.1 }],
+    "15:11 was only partly seen and is never written; a maker 'sell' is an aggressive BUY");
+  // The newest page no longer reaches trade 103: the collector pages back instead of assuming nothing happened.
+  f.pages.cbNewest = [f.cb(301, "14:05", "sell", "2"), f.cb(300, "13:30", "sell", "1")];
+  f.pages.cbOlder["300"] = [f.cb(105, "13:20", "buy", "0.5"), f.cb(104, "13:05", "sell", "0.5"), f.cb(103, "12:50", "buy", "0.1")];
+  await f.mod.tradeFlowTick(f.at("14:15"), f.get);
+  assert.ok(f.urls.some((u) => u.endsWith("after=300")), "requested the page before the oldest fetched trade");
+  const m2 = f.minutes().filter((r) => r.venue === "COINBASE_SPOT").at(-1);
+  assert.deepEqual([m2.minute, m2.complete, m2.n_buy, m2.n_sell, m2.buy_base, m2.sell_base], ["2026-09-28T15:13:00.000Z", true, 2, 1, 1.5, 0.5], "the break was closed, so the minute is complete");
+  // A break the bounded backfill cannot close is a GAP, never filled in.
+  f.pages.cbNewest = [f.cb(900, "15:40", "sell", "1")];
+  await f.mod.tradeFlowTick(f.at("16:15"), f.get);
+  const gapped = f.minutes().filter((r) => r.venue === "COINBASE_SPOT" && r.minute >= "2026-09-28T15:14");
+  assert.ok(gapped.length >= 1 && gapped.every((r) => !r.complete && r.flags.includes("GAP")), JSON.stringify(gapped));
+  assert.equal(f.mod.tradeFlowHealth().venues.COINBASE_SPOT.gaps, 1);
+  assert.ok(f.minutes().some((r) => r.venue === "OKX_PERP" && r.complete), "the perp venue is collected separately");
+  assert.ok(f.calls.every((c) => /^\s*insert into desk_research_flow_(minutes|marks)/.test(c.text)), "writes only its own tables");
+  assert.equal(f.mod.tradeFlowHealth().decision_use, "NONE");
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/trade-flow\.server"\)\s*\.then\(\(m\) => m\.ensureTradeFlow\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  // A changed perp contract halts that venue: nothing is written under a definition that no longer holds.
+  const h = flowFixture("0.001");
+  h.pages.cbNewest = [h.cb(1, "11:40", "buy", "1")];
+  await h.mod.tradeFlowTick(h.at("12:00"), h.get);
+  await h.mod.tradeFlowTick(h.at("14:00"), h.get);
+  assert.match(h.mod.tradeFlowHealth().venues.OKX_PERP.halted, /CONTRACT_SPEC_MISMATCH/);
+  assert.equal(h.minutes().filter((r) => r.venue === "OKX_PERP").length, 0);
+  assert.ok(!h.urls.some((u) => u.includes("okx.com/api/v5/market")), "a halted venue is never polled");
+});
+
+test("trade_flow report: the rollup reports collection quality per venue and clock, and holds the H0 until its minimum clean sample", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 3; i += 1) {
+    const closeMs = base + i * 900_000, ticker = `KXBTC15M-TF${i}`;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    await sql`insert into desk_research_flow_marks (ticker, close_time, clock_secs, as_of, quote_age_ms, yes_bid, yes_ask, no_bid, no_ask, yes_mid)
+      values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 180, ${new Date(closeMs - 180_000).toISOString()}::timestamptz, 500, 84, 85, 15, 16, 84.5)`;
+    for (let k = 1; k <= 5; k += 1) {
+      const minute = new Date(closeMs - 180_000 - k * 60_000).toISOString();
+      const complete = !(i === 2 && k === 3); // one GAP minute breaks window 2's span
+      await sql`insert into desk_research_flow_minutes (venue, minute, def_version, complete, flags, n_buy, n_sell, buy_base, sell_base, buy_quote, sell_quote)
+        values ('COINBASE_SPOT', ${minute}::timestamptz, 1, ${complete}, ${complete ? [] : ["GAP"]}, 3, 1, 3, 1, 180000, 60000)`;
+    }
+  }
+  await m.enqueue(sql, "rollup", "flow");
+  const job = await m.claim(sql, "flow", Date.now());
+  assert.equal(await m.runJob(sql, job, "flow", { sampler: calm }), "complete", JSON.stringify(await jobsOf(sql)));
+  const rep = (await sql`select payload from desk_research_reports where report_kind = 'trade_flow' and report_key = 'latest'`)[0].payload;
+  const spot = rep.quality.venues.find((v) => v.venue === "COINBASE_SPOT");
+  assert.equal(spot.minutes_recorded, 15);
+  assert.deepEqual(spot.flags, [{ flag: "GAP", n: 1 }]);
+  const c180 = rep.quality.by_clock.find((c) => c.clock === 180);
+  assert.deepEqual([c180.settled_windows, c180.marks, c180.fresh_marks, c180.complete_spot_5m, c180.complete_perp_5m], [3, 3, 3, 2, 0]);
+  assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.h0.clean_observations, 2);
+  assert.equal(rep.decision_use, "NONE");
+});
+
+// ---------------------------------------------------------------------------
+// Formalized WICK in shadow.
+// ---------------------------------------------------------------------------
+
+const WICK_SHADOW = "src/lib/desk/wick-effort.server.ts";
+
+/** 30 flat bars, a run up, then a quiet up bar on half volume and a bar with no new high: NO_DEMAND. */
+function noDemandCandles(endMs) {
+  const bars = [];
+  let p = 1000;
+  for (let i = 0; i < 30; i += 1) bars.push({ o: p, c: p, h: p + 3, l: p - 3, v: 100 });
+  for (let i = 0; i < 5; i += 1) { bars.push({ o: p, c: p + 3, h: p + 4.5, l: p - 1.5, v: 100 }); p += 3; }
+  bars.push({ o: p, c: p + 0.5, h: p + 1.5, l: p - 1, v: 50 }, { o: p + 0.5, c: p, h: p + 1.4, l: p - 0.5, v: 80 });
+  const t0 = endMs - bars.length * 60_000;
+  return bars.map((b, i) => ({ t: t0 + i * 60_000, open: b.o, close: b.c, high: b.h, low: b.l, volume: b.v, closed: true, receipt_ts: 0, source: "binance" }));
+}
+
+test("wick shadow: env-gated on a literal flag; one row per fixed clock per window; copies WICK's same-instant output; writes only its own table and never touches the seat", async () => {
+  const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(WICK_SHADOW);
+  for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(off.ensureWickShadow({ RESEARCH_WICK_SHADOW_ENABLED: v }), "disabled", String(v));
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  const close = Date.parse("2026-09-28T15:15:00Z");
+  const frame = {
+    snap: { ticker: "KXBTC15M-WICK", close_time: close, as_of: close - 181_000, demo: false, yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, candles_1m: noDemandCandles(close - 185_000) },
+    chair: { rows: [{ seat: "WICK", lean: "UP", status: "LIVE", conf: 61, folded: false }, { seat: "STREAK", lean: "UP", status: "LIVE", conf: 64, folded: false }] },
+  };
+  const before = JSON.stringify(frame);
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } })(WICK_SHADOW);
+  const inserts = () => calls.filter((c) => /^\s*insert into desk_research_wick_shadow/.test(c.text)).map((c) => ({ clock: c.values[2], clean: c.values[5], quality: JSON.parse(c.values[6]), label: c.values[7], stance: c.values[8], wick: JSON.parse(c.values[10]), market: JSON.parse(c.values[11]) }));
+  await mod.wickShadowTick(close - 240_000);                     // T-4:00: no clock
+  assert.equal(inserts().length, 0);
+  await mod.wickShadowTick(close - 180_000);                     // T-3:00
+  await mod.wickShadowTick(close - 178_000);                     // same clock, already taken
+  const rows = inserts();
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].clock, rows[0].clean, rows[0].label, rows[0].stance], [180, true, "NO_DEMAND", "DOWN"], JSON.stringify(rows[0].quality));
+  assert.deepEqual(rows[0].wick, { lean: "UP", status: "LIVE", conf: 61, folded: false }, "WICK's live read is copied beside the predicate's, for comparison only");
+  assert.equal(rows[0].market.quote_age_ms, 1000);
+  assert.equal(JSON.stringify(frame), before, "the published frame is never mutated");
+  // An old engine quote is flagged, not trusted.
+  frame.snap.as_of = close - 90_000;
+  await mod.wickShadowTick(close - 60_000);                      // T-1:00 with a 30 s old quote
+  const last = inserts().at(-1);
+  assert.equal(last.clock, 60);
+  assert.equal(last.clean, false);
+  assert.ok(last.quality.flags.includes("ENGINE_QUOTE_OLD"));
+  assert.ok(calls.every((c) => /^\s*insert into desk_research_wick_shadow/.test(c.text)), "writes only its own table");
+  assert.equal(mod.wickShadowHealth().decision_use, "NONE");
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/wick-effort\.server"\)\s*\.then\(\(m\) => m\.ensureWickShadow\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  for (const f of ["src/lib/desk/wick-effort.ts", WICK_SHADOW]) {
+    assert.doesNotMatch(codeOf(f), /from "\.\/(bots|learner|skills|patterns|chair)(\.ts)?"|rememberPatterns|pattern_book/, `${f} never reaches the WICK seat or its learner`);
+  }
+});
+
+test("wick_shadow report: the rollup reports collection quality and the WICK comparison, and holds the H0 until its minimum clean sample", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const base = Date.parse("2026-09-28T15:15:00Z");
+  for (let i = 0; i < 3; i += 1) {
+    const closeMs = base + i * 900_000, ticker = `KXBTC15M-WS${i}`;
+    await sql`insert into desk_ledger (ticker, close_time, source, winner, chair_lean) values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 'kalshi-result', 'UP', 'WAIT')`;
+    const clean = i !== 2;
+    await sql`insert into desk_research_wick_shadow (ticker, close_time, clock_secs, as_of, def_version, clean, quality, label, stance, features, wick, market)
+      values (${ticker}, ${new Date(closeMs).toISOString()}::timestamptz, 180, ${new Date(closeMs - 181_000).toISOString()}::timestamptz, 1, ${clean},
+        ${JSON.stringify({ clean, flags: clean ? [] : ["BARS_STALE"] })}::jsonb, ${i === 0 ? "NO_SUPPLY" : "NONE"}, ${i === 0 ? "UP" : null}, null,
+        ${JSON.stringify({ lean: "UP", status: "LIVE", conf: 60, folded: false })}::jsonb,
+        ${JSON.stringify({ yes_bid: 84, yes_ask: 85, no_bid: 15, no_ask: 16, yes_mid: 84.5, quote_age_ms: 500 })}::jsonb)`;
+  }
+  await m.enqueue(sql, "rollup", "wick", {}, EPOCH);
+  const job = await m.claim(sql, "wick", Date.now());
+  assert.equal(await m.runJob(sql, job, "wick", { sampler: calm }), "complete", JSON.stringify(await jobsOf(sql)));
+  const rep = (await sql`select payload from desk_research_reports where report_kind = 'wick_shadow' and report_key = 'latest'`)[0].payload;
+  const c180 = rep.quality.by_clock.find((c) => c.clock === 180);
+  assert.deepEqual([c180.rows, c180.coverage_pct, c180.clean, c180.fire_rate_pct], [3, 100, 2, 50]);
+  assert.deepEqual(c180.flags, [{ flag: "BARS_STALE", n: 1 }]);
+  assert.equal(rep.h0.verdict, "INSUFFICIENT_SAMPLE");
+  assert.equal(rep.h0.clean_observations, 2);
+  assert.equal(rep.h0.versus_wick.both_speak, 1);
+  assert.equal(rep.h0.versus_wick.agree.right, 1);
+  assert.equal(rep.decision_use, "NONE");
+});
+
+test("reports page: renders the stored reports from real SQL, read only", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const put = (kind, key, payload) => sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values (${kind}, ${key}, 1, ${JSON.stringify(payload)}::jsonb)`;
+  await put("lifecycle", "latest", { rows: [{ experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE", arm: "CONTROL", status: "INSUFFICIENT_SAMPLE", promotion_eligible: false, current_sample: { observed_windows: 3, fills: 0, clean_settled_fills: 0, suspect_fills: 0, invalid_fills: 0 }, current_result: {}, matched_null_fav: {} }] });
+  await put("wick_shadow", "latest", { h0: { verdict: "INSUFFICIENT_SAMPLE", clean_observations: 2, fires: 1, h0: { id: "WICK_EFFORT_RESULT_H0_V1", min_clean_observations: 300 } } });
+  await put("daily_digest", "2026-09-26", { day: "2026-09-26" });
+  await put("daily_digest", "2026-09-27", { day: "2026-09-27" });
+  await m.enqueue(sql, "window", "W|1", {}, EPOCH);
+  const before = JSON.stringify(await sql`select * from desk_research_reports order by report_kind, report_key`) + JSON.stringify(await jobsOf(sql));
+  const html = await m.researchReportsPage(sql, Date.parse("2026-09-28T17:30:00Z"));
+  assert.equal(JSON.stringify(await sql`select * from desk_research_reports order by report_kind, report_key`) + JSON.stringify(await jobsOf(sql)), before, "rendering writes nothing");
+  assert.match(html, /^<!doctype html>/);
+  assert.ok(html.includes("generated 2026-09-28T17:30:00.000Z"));
+  assert.ok(html.includes("MID_RECOVERY_LOCKS_V2_INACTIVE"));
+  assert.ok(html.includes("2 / 300 · 1 fires"));
+  assert.ok(html.includes("Latest daily digest (2026-09-27)"), "the newest digest");
+  assert.ok(html.includes("window") && html.includes("queued"), "job counts come from the queue");
+  assert.equal(/<script/i.test(html), false);
 });

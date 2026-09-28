@@ -1,30 +1,30 @@
 /**
- * MID_RECOVERY_LOCKS_V1_INACTIVE — the recorder (server only).
+ * MID_RECOVERY_LOCKS_V2_INACTIVE — the recorder (server only).
  *
- * WIRED, ENV-GATED, DEFAULT OFF. healthz kicks `ensureMidRecoveryLocksObserver`
- * beside the other observers; it returns "disabled" unless
- * MID_RECOVERY_LOCKS_SHADOW_ENABLED=true (the literal string), so a deploy
- * alone cannot start collection. It is independent of the MID_RECOVERY_V1
- * recorder and its flag: either can run without the other. It holds no
- * shadow-manifest slot and never registers, activates or edits a manifest.
+ * LOCKS V1's recorder, unchanged in behaviour, bound to the V2 evaluator
+ * (shadow-lab-mid-recovery-locks-v2.ts): the same five arms with the P1
+ * supporter correction in every recovered arm, and only producer frames
+ * captured under the P2 guard (a frame without capture_policy
+ * P2_EXPLOIT_GUARD_V1 is not evaluated; the tick records the error).
+ *
+ * WIRED, ENV-GATED, DEFAULT OFF. healthz kicks
+ * `ensureMidRecoveryLocksV2Observer`; it returns "disabled" unless
+ * MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED=true (the literal string). It is
+ * independent of the V1 recorders and their flags: any can run without the
+ * others. It holds no shadow-manifest slot.
  *
  * WHAT IT READS. A structuredClone of the engine frame (getServerFrame). It
- * never assigns into the frame. The same three real downstream functions the
- * V1 recorder binds are bound here (MID_RECOVERY_LOCKS_DEPS) and handed to the
- * pure evaluator; the V1 recorder module itself is never imported.
+ * never assigns into the frame.
  *
  * WHAT IT WRITES. Only desk_shadow_receipts, through the shadow lab's
- * append-only writer (primary key experiment|arm|ticker|close_time|kind), under
- * experiment MID_RECOVERY_LOCKS_V1_INACTIVE with arms CONTROL, BAR_NO_SITMASS,
- * SUPPORT_UNCAL_E1, COMBINED_DIAG and NULL_FAV_80 — five arms, five keys, on
- * the same window. Never a MID_RECOVERY_V1_INACTIVE row. The shared settle
- * sweep fills official_winner/net_cents on fill rows. A fill is a SIMULATED
- * booking, stamped so; production authority is NONE.
+ * append-only writer, under experiment MID_RECOVERY_LOCKS_V2_INACTIVE with arms
+ * CONTROL, BAR_NO_SITMASS, SUPPORT_UNCAL_E1, COMBINED_DIAG and NULL_FAV_80.
+ * Never a V1 row. A fill is a SIMULATED booking, stamped so; production
+ * authority is NONE.
  *
- * FRESH SESSION BOUNDARY. Each process start begins a new observer session;
- * the market already open at boot is skipped (never back-filled), so the first
- * window this experiment can record is the next one to open. The T-3 sit is
- * written only for a window this session evaluated in band.
+ * FRESH SESSION BOUNDARY. As V1: the market already open at boot is skipped
+ * (never back-filled), and the T-3 sit is written only for a window this
+ * session evaluated in band.
  */
 import { getSql, type Sql } from "@/lib/db";
 import { runBotsWithEvaluatedCandidates } from "./bots";
@@ -36,21 +36,22 @@ import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import { armCalls, exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
 import type { MidRecoveryDeps, MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
 import {
-  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_ENV_FLAG, MID_RECOVERY_LOCKS_EXPERIMENT, evaluateLocks, summarizeLocks,
-  type LocksArmEvaluation, type LocksArmState, type LocksRecoveredArm, type LocksSummary,
-} from "./shadow-lab-mid-recovery-locks.ts";
+  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2, summarizeLocksV2,
+  type LocksV2ArmEvaluation, type LocksV2Summary,
+} from "./shadow-lab-mid-recovery-locks-v2.ts";
+import type { LocksArmState, LocksRecoveredArm } from "./shadow-lab-mid-recovery-locks.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
 import type { CallLogRow, Lean, Snapshot } from "./types";
 
-export const MID_RECOVERY_LOCKS_POLL_MS = 2_000;
-export const MID_RECOVERY_LOCKS_SETTLE_EVERY_MS = 60_000;
-const EXPERIMENT = MID_RECOVERY_LOCKS_EXPERIMENT.id;
+export const MID_RECOVERY_LOCKS_V2_POLL_MS = 2_000;
+export const MID_RECOVERY_LOCKS_V2_SETTLE_EVERY_MS = 60_000;
+const EXPERIMENT = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
 
-/** The one downstream path, the same merged modules the V1 recorder binds; never re-implemented. */
-export const MID_RECOVERY_LOCKS_DEPS: MidRecoveryDeps = Object.freeze({ runBotsWithEvaluatedCandidates, projectInactiveE1Recovery, runChair });
+/** The one downstream path, the same merged modules the V1 recorders bind; never re-implemented. */
+export const MID_RECOVERY_LOCKS_V2_DEPS: MidRecoveryDeps = Object.freeze({ runBotsWithEvaluatedCandidates, projectInactiveE1Recovery, runChair });
 
-export function midRecoveryLocksEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env[MID_RECOVERY_LOCKS_ENV_FLAG] === "true";
+export function midRecoveryLocksV2Enabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env[MID_RECOVERY_LOCKS_V2_ENV_FLAG] === "true";
 }
 
 /** One recovered arm's in-memory state. Nothing is shared between arms. */
@@ -76,8 +77,8 @@ type Observer = {
 };
 const blankArm = (): ArmMemory => ({ watch: null, lastLean: null, stages: new Map(), lastRecord: null });
 const blankArms = (): Record<LocksRecoveredArm, ArmMemory> => ({ CONTROL: blankArm(), BAR_NO_SITMASS: blankArm(), SUPPORT_UNCAL_E1: blankArm(), COMBINED_DIAG: blankArm() });
-const globalRef = globalThis as typeof globalThis & { __midRecoveryLocks__?: Observer };
-const state = (): Observer => globalRef.__midRecoveryLocks__ ??= {
+const globalRef = globalThis as typeof globalThis & { __midRecoveryLocksV2__?: Observer };
+const state = (): Observer => globalRef.__midRecoveryLocksV2__ ??= {
   timer: null, busy: false, arms: blankArms(), decided: new Set(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null,
 };
 
@@ -88,19 +89,19 @@ const receipt = (arm: string, snap: Snapshot, kind: ShadowReceipt["kind"], side:
 });
 
 /** The stored record of one arm's evaluation: every measured field plus the arm's identity and intervention, minus the in-memory latch. */
-function record(a: LocksArmEvaluation, extra: Record<string, unknown> = {}): Record<string, unknown> {
+function record(a: LocksV2ArmEvaluation, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const { confirmation, ...rest } = a.evaluation;
   const { watch, ...confirmationRest } = confirmation;
   void watch;
   return {
-    ...rest, version: EXPERIMENT, experiment: EXPERIMENT, experiment_version: a.experiment_version, evaluator: MID_RECOVERY_LOCKS_EXPERIMENT.evaluator,
-    arm: a.arm, promotion_eligible: a.promotion_eligible, production_authority: MID_RECOVERY_LOCKS_EXPERIMENT.production_authority, intervention: a.intervention, capture_policy: a.capture_policy,
+    ...rest, version: EXPERIMENT, experiment: EXPERIMENT, experiment_version: a.experiment_version, evaluator: MID_RECOVERY_LOCKS_V2_EXPERIMENT.evaluator,
+    arm: a.arm, promotion_eligible: a.promotion_eligible, production_authority: MID_RECOVERY_LOCKS_V2_EXPERIMENT.production_authority, intervention: a.intervention, capture_policy: a.capture_policy,
     confirmation: confirmationRest, funnel_stage: a.evaluation.flags.funnel_stage, funnel_stage_index: a.evaluation.flags.funnel_stage_index, ...extra,
   };
 }
 
 /** One tick. Exported for the harness; the timer calls it. */
-export async function midRecoveryLocksTick(now?: number): Promise<void> {
+export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
   const injectedNow = now;
   const currentTime = () => injectedNow ?? Date.now();
   now = currentTime();
@@ -110,7 +111,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
   st.busy = true;
   try {
     const sql = await getSql();
-    if (now - st.lastSettle > MID_RECOVERY_LOCKS_SETTLE_EVERY_MS) {
+    if (now - st.lastSettle > MID_RECOVERY_LOCKS_V2_SETTLE_EVERY_MS) {
       st.lastSettle = now;
       await settleShadowReceipts(sql);
     }
@@ -123,7 +124,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
     now = currentTime();
     if (!Number.isFinite(now) || now <= 0 || !Number.isFinite(snap.as_of) || snap.as_of <= 0 || !Number.isFinite(snap.close_time) || snap.close_time <= 0 || snap.as_of > now) return;
     const secs = (snap.close_time - snap.as_of) / 1000;
-    const band = MID_RECOVERY_LOCKS_EXPERIMENT.band_secs;
+    const band = MID_RECOVERY_LOCKS_V2_EXPERIMENT.band_secs;
     const entryOpen = () => {
       const wallNow = currentTime();
       const wallSecs = (snap.close_time - wallNow) / 1000;
@@ -171,7 +172,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
     if (!inEntryWindow) {
       // T-3 grace, receipt-only: finalize only a window this session evaluated in band; never replay or synthesize.
       const observed = st.lastObservedWindow;
-      const maxObservationAge = MID_RECOVERY_LOCKS_POLL_MS + NULL_FAV_GRACE_SECS * 1000;
+      const maxObservationAge = MID_RECOVERY_LOCKS_V2_POLL_MS + NULL_FAV_GRACE_SECS * 1000;
       if (!observed || observed.key !== windowKey || observed.asOf > snap.as_of || snap.as_of > now || now - observed.asOf > maxObservationAge
         || !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
       for (const arm of LOCKS_RECOVERED_ARMS) {
@@ -199,7 +200,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
       const mem = st.arms[arm];
       arms[arm] = { watch: mem.watch, calls: calls[arm], last_lean: mem.lastLean?.key === windowKey ? mem.lastLean.lean : "WAIT" };
     }
-    const ev = evaluateLocks({ snap, chair, learner, settings, call_log, audit, ready: true, start, arms }, MID_RECOVERY_LOCKS_DEPS);
+    const ev = evaluateLocksV2({ snap, chair, learner, settings, call_log, audit, ready: true, start, arms }, MID_RECOVERY_LOCKS_V2_DEPS);
 
     // NULL_FAV_80 at its frozen checkpoints: the same benchmark rule and identity as the shadow lab.
     const cp = scheduledCheckpoint(secs);
@@ -208,7 +209,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
         const q = exactSideQuote(snap, ev.null_fav.side);
         once(receipt(LOCKS_ARMS.null_fav, snap, "fill", ev.null_fav.side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, `checkpoint ${cp}s`), {
           experiment: EXPERIMENT, arm: LOCKS_ARMS.null_fav, checkpoint: cp, secs_left: secs, execution_qualified: true, hittability: "UNKNOWN at 2s poll",
-          qualification_ask_cents: ev.null_fav.ask_cents, exact_ask_cents: q.exactAsk, price_lane: "exact_measurement", production_authority: MID_RECOVERY_LOCKS_EXPERIMENT.production_authority,
+          qualification_ask_cents: ev.null_fav.ask_cents, exact_ask_cents: q.exactAsk, price_lane: "exact_measurement", production_authority: MID_RECOVERY_LOCKS_V2_EXPERIMENT.production_authority,
         });
       } else if (cp === 300) {
         once(receipt(LOCKS_ARMS.null_fav, snap, "no_fill", null, null, null, null, null, "no eligible favourite at 450s or 300s"), { experiment: EXPERIMENT, arm: LOCKS_ARMS.null_fav, checkpoint: cp });
@@ -231,7 +232,7 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
       if (a.evaluation.recovered.eligible && side && q) once(receipt(arm, snap, "intention", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "first eligible tick"), payload);
       if (a.evaluation.simulated.booked && side && q) {
         once(receipt(arm, snap, "fill", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "confirmed; SIMULATED booking, research only"), {
-          ...payload, execution_qualified: true, simulated: true, authority: MID_RECOVERY_LOCKS_EXPERIMENT.authority,
+          ...payload, execution_qualified: true, simulated: true, authority: MID_RECOVERY_LOCKS_V2_EXPERIMENT.authority,
         });
       }
       if (shouldWriteSitReceipt(secs, decidedKinds(arm))) {
@@ -251,19 +252,19 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
 }
 
 /** Env-gated, default OFF. No manifest, no activation: each process start is a fresh session boundary. */
-export function ensureMidRecoveryLocksObserver(env: Record<string, string | undefined> = process.env): "started" | "already" | "disabled" {
-  if (!midRecoveryLocksEnabled(env)) return "disabled";
+export function ensureMidRecoveryLocksV2Observer(env: Record<string, string | undefined> = process.env): "started" | "already" | "disabled" {
+  if (!midRecoveryLocksV2Enabled(env)) return "disabled";
   const st = state();
   if (st.timer) return "already";
   st.sessionStartedAt = Date.now();
-  st.timer = setInterval(() => void midRecoveryLocksTick(), MID_RECOVERY_LOCKS_POLL_MS);
-  void midRecoveryLocksTick();
+  st.timer = setInterval(() => void midRecoveryLocksV2Tick(), MID_RECOVERY_LOCKS_V2_POLL_MS);
+  void midRecoveryLocksV2Tick();
   return "started";
 }
 
-export function midRecoveryLocksHealth(): {
+export function midRecoveryLocksV2Health(): {
   experiment: typeof EXPERIMENT;
-  env_flag: typeof MID_RECOVERY_LOCKS_ENV_FLAG;
+  env_flag: typeof MID_RECOVERY_LOCKS_V2_ENV_FLAG;
   enabled: boolean;
   running: boolean;
   session_start: number | null;
@@ -272,15 +273,15 @@ export function midRecoveryLocksHealth(): {
   rejected: number;
   error: string | null;
 } {
-  const st = globalRef.__midRecoveryLocks__;
+  const st = globalRef.__midRecoveryLocksV2__;
   return {
-    experiment: EXPERIMENT, env_flag: MID_RECOVERY_LOCKS_ENV_FLAG, enabled: midRecoveryLocksEnabled(), running: !!st?.timer, session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
+    experiment: EXPERIMENT, env_flag: MID_RECOVERY_LOCKS_V2_ENV_FLAG, enabled: midRecoveryLocksV2Enabled(), running: !!st?.timer, session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
     last_capture: st?.lastCapture ?? null, written: st?.written ?? 0, rejected: st?.rejected ?? 0, error: st?.error ?? null,
   };
 }
 
 /** This experiment's receipts only, oldest window first. Read only. */
-export async function midRecoveryLocksRows(sql: Sql): Promise<MidRecoveryRow[]> {
+export async function midRecoveryLocksV2Rows(sql: Sql): Promise<MidRecoveryRow[]> {
   const rows = await sql<{ arm: string; ticker: string; close_ms: number | string; kind: MidRecoveryRow["kind"]; decided_ms: number | string; side: MidRecoveryRow["side"]; ask_cents: number | null; fee_cents: number | null; official_winner: MidRecoveryRow["official_winner"]; net_cents: number | string | null; payload: Record<string, unknown> | null }>`
     select arm, ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, kind, (extract(epoch from decided_at) * 1000)::bigint as decided_ms,
       side, ask_cents, fee_cents, official_winner, net_cents, payload
@@ -292,9 +293,9 @@ export async function midRecoveryLocksRows(sql: Sql): Promise<MidRecoveryRow[]> 
   }));
 }
 
-export async function midRecoveryLocksReport(): Promise<{ experiment: typeof MID_RECOVERY_LOCKS_EXPERIMENT; health: ReturnType<typeof midRecoveryLocksHealth>; first_receipt_at: string | null; summary: LocksSummary }> {
+export async function midRecoveryLocksV2Report(): Promise<{ experiment: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT; health: ReturnType<typeof midRecoveryLocksV2Health>; first_receipt_at: string | null; summary: LocksV2Summary }> {
   const sql = await getSql();
-  const rows = await midRecoveryLocksRows(sql);
+  const rows = await midRecoveryLocksV2Rows(sql);
   const first = rows.length ? new Date(Math.min(...rows.map((r) => r.decided_ms))).toISOString() : null;
-  return { experiment: MID_RECOVERY_LOCKS_EXPERIMENT, health: midRecoveryLocksHealth(), first_receipt_at: first, summary: summarizeLocks(rows) };
+  return { experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT, health: midRecoveryLocksV2Health(), first_receipt_at: first, summary: summarizeLocksV2(rows) };
 }

@@ -67,6 +67,11 @@ export default function healthz() {
   void import("../../src/lib/desk/shadow-lab-mid-recovery-locks.server")
     .then((m) => m.ensureMidRecoveryLocksObserver())
     .catch(() => {});
+  // MID_RECOVERY_LOCKS_V2_INACTIVE: LOCKS with the P1 and P2 corrections. Env-gated, default OFF
+  // (MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED=true); writes only its own desk_shadow_receipts rows.
+  void import("../../src/lib/desk/shadow-lab-mid-recovery-locks-v2.server")
+    .then((m) => m.ensureMidRecoveryLocksV2Observer())
+    .catch(() => {});
   // Research factory: env-gated, default OFF (RESEARCH_FACTORY_ENABLED=true).
   // A resource-governed background queue that re-grades settled windows and
   // audits research integrity. Writes only its own desk_research_* tables;
@@ -84,6 +89,16 @@ export default function healthz() {
   // Reads a copy of the Lab's rebuilt book; writes only desk_research_book_depth; no decision use.
   void import("../../src/lib/desk/book-depth.server")
     .then((m) => m.ensureBookDepth())
+    .catch(() => {});
+  // Spot/perp signed trade-flow collector: env-gated, default OFF (RESEARCH_TRADE_FLOW_ENABLED=true).
+  // Public trade endpoints only; writes only desk_research_flow_minutes and _marks; no decision use.
+  void import("../../src/lib/desk/trade-flow.server")
+    .then((m) => m.ensureTradeFlow())
+    .catch(() => {});
+  // Formalized-WICK shadow recorder: env-gated, default OFF (RESEARCH_WICK_SHADOW_ENABLED=true).
+  // Reads the published frame; writes only desk_research_wick_shadow; never touches the WICK seat.
+  void import("../../src/lib/desk/wick-effort.server")
+    .then((m) => m.ensureWickShadow())
     .catch(() => {});
   // Skill-status transition log: drains the engine's in-memory transition
   // buffer into insert-once system events. Telemetry only; kill switch

@@ -35,6 +35,7 @@ export const RESEARCH_FACTORY = Object.freeze({
 export const KNOWN_EXPERIMENTS = Object.freeze({
   mid_recovery_v1: Object.freeze({ id: "MID_RECOVERY_V1_INACTIVE", version: 1 }),
   mid_recovery_locks_v1: Object.freeze({ id: "MID_RECOVERY_LOCKS_V1_INACTIVE", version: 1 }),
+  mid_recovery_locks_v2: Object.freeze({ id: "MID_RECOVERY_LOCKS_V2_INACTIVE", version: 1 }),
   /** The recorders' entry band starts 180 s before the close: nothing is decided later. */
   decision_cutoff_secs: 180,
 } as const);

@@ -110,3 +110,33 @@ test("health-suppressed evaluated votes cannot become recovery candidates", asyn
   assert.equal(drift.lean, "WAIT", "captured candidate includes producer stale-health treatment");
   assert.equal(m.projectInactiveE1Recovery(frame, learner).candidates.some((item) => item.card_id === "DRIFT.aligned_3h"), false);
 });
+
+/** A learner whose DRIFT.aligned_3h card is LIVE, heard by the Chair's pool, with the given record and phase. */
+function liveDrift(m, { phase, n, wilson }) {
+  const learner = m.freshLearner();
+  const card = learner.skills["DRIFT.aligned_3h"];
+  Object.assign(card, { status: "LIVE", n, wilson, manual_hold: false, min_walkforward_n: 0, min_regime_n: 0 });
+  learner.learn_phase = phase;
+  return learner;
+}
+
+test("P2: a LIVE card the EXPLOIT guard rejected is still graded on paper but never captured, so recovery cannot hear it", async (t) => {
+  const m = await modules(t);
+  const rejected = liveDrift(m, { phase: "EXPLOIT", n: 30, wilson: 0.3 });
+  const frame = m.runBotsWithEvaluatedCandidates(snapshot(), rejected);
+  assert.equal(frame.capture_policy, m.CAPTURE_POLICY);
+  assert.equal(m.CAPTURE_POLICY, "P2_EXPLOIT_GUARD_V1");
+  assert.equal(frame.evaluated.some((item) => item.skill_used === "DRIFT.aligned_3h"), false, "the rejected card is not captured");
+  const drift = frame.votes.find((item) => item.seat === "DRIFT");
+  assert.notEqual(drift.skill_used, "DRIFT.aligned_3h", "the producer did not select it");
+  assert.equal(drift.paper.find((item) => item.id === "DRIFT.aligned_3h")?.lean, "UP", "it is still evaluated and graded on the paper list");
+  assert.equal(m.projectInactiveE1Recovery(frame, rejected).candidates.some((item) => item.card_id === "DRIFT.aligned_3h"), false);
+  // The producer's own output is identical with or without capture.
+  const plain = m.runBots(snapshot(), liveDrift(m, { phase: "EXPLOIT", n: 30, wilson: 0.3 }));
+  assert.deepEqual(plain, frame.votes, "default runBots output is unchanged by the capture path");
+  // Controls: outside EXPLOIT, or with a record above the guard, the same card is captured as before.
+  for (const [label, opts] of [["EXPLORE phase", { phase: "EXPLORE", n: 30, wilson: 0.3 }], ["record above the guard", { phase: "EXPLOIT", n: 30, wilson: 0.6 }], ["too few graded", { phase: "EXPLOIT", n: 10, wilson: 0.3 }]]) {
+    const f = m.runBotsWithEvaluatedCandidates(snapshot(), liveDrift(m, opts));
+    assert.ok(f.evaluated.some((item) => item.skill_used === "DRIFT.aligned_3h" && item.lean === "UP"), `${label}: captured`);
+  }
+});

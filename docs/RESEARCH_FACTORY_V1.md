@@ -88,23 +88,39 @@ Every receipt gets `integrity_status` (CLEAN, SUSPECT, INVALID or
 UNVERIFIABLE) plus machine-readable `reason_codes`. The receipts themselves
 are never updated or deleted.
 
-- **P2 (PR #330, unresolved, still present on main):**
-  - What happens: in `EXPLOIT`, `pickLiveAndPaper` skips a LIVE card with
-    `n ≥ 16`, `wilson < 0.42`, but the paper loop still captures it, so
-    recovery can hear a card the producer rejected. Cards excluded by
-    `CLOSED_DIRECTIONAL_CARDS` or by `voteEligible` reach the paper loop
-    the same way.
-  - What the auditor can see: the stored records do not carry the learner
-    phase or the card's counters. So a recovered LIVE card that the producer
-    did not select is `SUSPECT (P2_LIVE_CARD_NOT_SELECTED)`.
+- **P2 (found in PR #330; fixed by `CAPTURE_POLICY` `P2_EXPLOIT_GUARD_V1`):**
+  - What happened: in `EXPLOIT`, `pickLiveAndPaper` skips a LIVE card with
+    `n ≥ 16`, `wilson < 0.42`, but the paper loop still handed it to research
+    capture, so recovery could hear a card the producer rejected for its record.
+  - The fix (`bots.ts`): an exploit-rejected card is still evaluated and graded
+    on the paper list exactly as before, so the default `runBots` output and the
+    learner are unchanged. It is never passed to the capture hook. Every captured
+    frame carries `capture_policy: "P2_EXPLOIT_GUARD_V1"`.
+  - Out of scope, by design: cards on a research or sample hold (`voteEligible`)
+    still ride the paper list into capture; recovering those is what the
+    experiments measure. None of the `CLOSED_DIRECTIONAL_CARDS` is in the E1
+    roster.
+  - The evidence boundary:
+    - LOCKS receipts copy the stamp into their payload. A stamped receipt is
+      not a P2 suspect.
+    - The frozen `MID_RECOVERY_V1_INACTIVE` recorder is hash-pinned and not
+      changed, so its receipts carry no stamp and stay P2 suspects.
+    - Nothing historical is rewritten.
+  - What the auditor sees on unstamped receipts: the stored records do not
+    carry the learner phase or the card's counters. So a recovered LIVE card
+    that the producer did not select is `SUSPECT (P2_LIVE_CARD_NOT_SELECTED)`.
   - Partial verification: where `skill_score_audit` stores counters (only
     `DRIFT.pullback_in_trend` among the E1 roster), the auditor either
     confirms `P2_EXPLOIT_REJECT_LIKELY` or clears the card.
-- **P1 (PR #333, unresolved):**
-  - What happens: the Chair aggregates with `evidenceOf`, not the E1
+- **P1 (from PR #333; corrected in `MID_RECOVERY_LOCKS_V2_INACTIVE`):**
+  - What happens: the Chair aggregates support per seat, not with the E1
     override, so STREAK and STRIKE count as two supporters.
-  - What the auditor flags: `E1_FAMILY_SUPPORT_DOUBLE_COUNT (SUSPECT)`, only
-    when the double count decided the supporter gate.
+  - What the auditor flags on V1 receipts: `E1_FAMILY_SUPPORT_DOUBLE_COUNT
+    (SUSPECT)`, only when the double count decided the supporter gate.
+  - The correction: LOCKS V2 (`docs/MID_RECOVERY_LOCKS_V2_INACTIVE.md`) counts
+    STREAK once beside another E1 book supporter in every recovered arm, and
+    records the supporters it counted. So its receipts do not trigger the flag.
+    The live Chair is unchanged.
 - **Other checks:**
   - identity, experiment and arm mismatch (cross-window leakage);
   - decisions after the close or after the 180 s cutoff, and future frames;
@@ -123,6 +139,17 @@ safe enough to use as evidence?"* per arm with `ALL_FILLS`,
 `CLEAN_SUBSET_ONLY` or `NONE`.
 
 ## Reports (`GET /research/factory?key=<DESK_ADMIN_KEY>&kind=…`)
+
+**Admin page:** `GET /research/reports?key=<DESK_ADMIN_KEY>` (404 without the
+key) shows everything below on one read-only HTML page, in this order:
+- collector and factory health, jobs and failures;
+- the research summary;
+- experiment lifecycle and evidence safety;
+- the instrument tests' verdicts, research compute and the latest digest;
+- every report as escaped raw JSON.
+
+The page is static: no script, no external resource, a no-script CSP, and the
+key is never written into it.
 
 - `matched_grade`: every arm plus production on **identical window IDs**
   (`MATCHED`, then `MATCHED_CLEAN`). Anything else is labelled `UNMATCHED`.
@@ -191,7 +218,8 @@ a paid API.
 | built with them | counterfactual survival (3) and honesty rail (4) | built; research summary (5) built |
 | **INSTRUMENT NEXT** | Kalshi book depth (C) | collector built (default OFF); collection quality first, pre-registered H0 gated at 300 clean snapshots |
 | **ANALYZE AFTER INTEGRITY** | per-seat debrief (D) | design below; the signal-value report is its first cut |
-| **RESEARCH QUEUE** | spot/perp delta (E), formalized WICK (F) | feasibility and design below; not built |
+| **INSTRUMENT NEXT** | spot/perp signed flow (E) | collector built (default OFF); definition frozen; collection quality first, pre-registered H0 gated at 300 clean windows |
+| **RESEARCH QUEUE** | formalized WICK (F) | shadow recorder built (default OFF); predicate frozen; scored against price, settlement and WICK's own output |
 | **BLOCKED** | parameter or genetic search (G) | prerequisites below |
 
 ## A + B. The production decision tape
@@ -404,42 +432,128 @@ Chair, and a signal-survival matrix: generated → authority → folding →
 contribution → Chair direction → support → confirmation → qualified → booked.
 It asks "when is this seat useful?", and it never alters authority.
 
-## E. Spot/perp delta: not reconstructable from stored data
+## E. Spot/perp signed flow: built (instrument only, no decision use)
 
-- **Stored data:** only per-minute *basis* (`desk_basis_minutes`), Kalshi
-  taker share (`desk_taker`) and legacy model features (`desk_samples`). No
-  spot or perp **signed** trade flow is stored.
-- **Live feeds:** the only WebSocket feed in the app is Kalshi's. No spot or
-  perp trade stream exists live either.
+`RESEARCH_TRADE_FLOW_ENABLED=true` (literal; off by default). Files:
+`trade-flow.ts` (pure), `trade-flow.server.ts` (collector) and migration
+`0063_desk_research_trade_flow.sql`.
 
-**Bounded proposal:**
+**Why a collector.** Nothing stored could reconstruct it: the desk keeps
+per-minute basis (`desk_basis_minutes`), Kalshi taker share (`desk_taker`)
+and model features (`desk_samples`), but no signed spot or perp trade flow,
+and the only live WebSocket is Kalshi's.
 
-1. Add a research-only trade collector per venue (spot and perp, kept
-   separate) that aggregates to fixed 1-minute and final-5-minute buckets:
-   signed volume from the aggressor flag and cumulative delta.
-2. Freeze the signed-flow definition before collecting.
-3. Only after enough clean windows, run the price-only versus price+flow
-   walk-forward test with the scorer above, including real Kalshi fees.
+**Source.** Each venue's free, public, unauthenticated recent-trades endpoint,
+on hosts the desk already polls for prices. The venues are kept separate:
+
+| venue | market | endpoint | aggressor |
+|---|---|---|---|
+| `COINBASE_SPOT` | BTC-USD | `api.exchange.coinbase.com/products/BTC-USD/trades` | the **opposite** of `side` (Coinbase reports the maker order's side) |
+| `OKX_PERP` | BTC-USDT-SWAP | `www.okx.com/api/v5/market/trades` | `side` (OKX reports the taker's side) |
+
+**Frozen definition `FLOW_DEF_V1`**, fixed before any trade is collected:
+- signed volume = aggressor-buy BTC − aggressor-sell BTC;
+- normalized delta = signed volume ÷ total volume over the same minutes;
+- OKX size = contracts × 0.01 BTC. The collector checks the instrument's
+  `ctVal` first and **halts that venue** if it is not 0.01 BTC;
+- bucket = the exchange's trade timestamp, floored to the UTC minute.
+
+Changing any of this means a new definition id, never a silent edit.
+
+**Continuity.** Every 2 s the collector fetches the newest page per venue. If
+that page does not reach the last trade it saw, it pages back (at most five
+pages). If it still cannot reach it, the break is a `GAP` on every minute it
+touches; a break longer than 30 minutes leaves those minutes absent.
+
+A minute is written once, only after a poll lands 10 s past its end. Empty
+minutes are written as zero. Other flags: `CLOCK_SKEW` (a trade stamped
+ahead of our clock) and `OUT_OF_ORDER`. Trades that land in an
+already-written minute are counted, never rewritten. The first, partly seen
+minute is never written.
+
+**Price control.** `desk_research_flow_marks` stores the engine's quote at
+T-600, 300, 180 and 60 s, with its age, so the test does not depend on
+another collector being on.
+
+**Report (`trade_flow`).**
+- **Collection quality first:** per venue, minutes recorded, coverage,
+  complete rate, flag counts and trades per minute. Per clock, windows with
+  a fresh mark and a complete five-minute span.
+- **Pre-registered `TRADE_FLOW_H0_V1`:** spot normalized delta over the five
+  minutes before T-3:00 adds nothing beyond the same-time price. It runs only
+  at 300 clean settled windows: every minute complete and a mark no older
+  than 10 s. It uses walk-forward, price-band-controlled incremental Brier
+  and log loss, plus a hypothetical favourite entry (80–99¢, taker fee)
+  against the price-only control.
+- If flow only restates the price, the verdict is `RETIRE_CANDIDATE`.
+  `INFORMATIVE_CANDIDATE` only earns a frozen prospective shadow test.
+- Perp flow, and spot and perp agreeing, are reported as `EXPLORATORY`
+  secondaries. They cannot rescue or replace the primary verdict.
 
 It never becomes a production seat.
 
-## F. Formalized WICK "no demand / no supply": research queue
+## F. Formalized WICK "no demand / no supply": built in shadow (no decision use)
 
-The design only, not built:
+`RESEARCH_WICK_SHADOW_ENABLED=true` (literal; off by default). Files:
+`wick-effort.ts` (pure), `wick-effort.server.ts` (recorder) and migration
+`0064_desk_research_wick_shadow.sql`.
 
-- **Predicate:** freeze a predicate over ATR-normalised effort (volume)
-  versus result (absolute and directional progress), plus range expansion,
-  wick and body shape, and follow-through.
-- **Evaluation:** once frozen, run it in parallel to the unchanged WICK and
-  score it against settlement, WICK's output and market probability with
-  `marginalValue`.
-- **Retire** it if it adds no incremental information.
+**What it is.** The WICK seat reads candle *shapes*: pins, hammers, engulfs,
+AMD boxes and sweeps. This is a separate, frozen question in the
+volume-spread tradition: did the **effort** (volume) behind the last bar buy
+a matching **result** (range and progress in ATR units), and did the next bar
+follow through? It runs in shadow beside the unchanged WICK seat. It never
+feeds the seat, its learner, the Chair, a gate or booking.
+
+**Frozen predicate `WICK_EFFORT_RESULT_V1`.**
+- **Bars.** Closed 1m spot candles that ended at or before the frame's
+  `as_of`. S is the second-to-last bar; F, the last, is the follow-through bar.
+- **Measures.**
+  - ATR: 14 bars before S.
+  - Effort: S's volume over the median of the 30 bars before S.
+  - Prior run: the 5 bars before S, in ATR units.
+
+| label | condition | stance |
+|---|---|---|
+| `NO_DEMAND` | up bar, effort ≤ 0.7, range ≤ 0.8 ATR, after a run ≥ +1 ATR, and F makes no new high | DOWN |
+| `NO_SUPPLY` | the mirror, after a run ≤ −1 ATR, and F makes no new low | UP |
+| `ABSORPTION_TOP` | effort ≥ 1.8, range ≥ 1.2 ATR, body ≤ 35%, upper wick ≥ 50%, after a run ≥ +1 ATR, and F closes no higher | DOWN |
+| `ABSORPTION_BOTTOM` | the mirror | UP |
+| `NONE` | anything else | silent |
+
+Changing any threshold means a new id.
+
+**Quality flags:**
+- `INSUFFICIENT_BARS` (under 32), `GAPPED_BARS`, `MIXED_SOURCE` and
+  `BARS_STALE` (the last bar ended more than 90 s before `as_of`);
+- `ZERO_ATR`, `ZERO_VOLUME_BASE`, and `ENGINE_QUOTE_OLD`.
+
+Only a flag-free row is clean.
+
+**Rows.** One insert-once row per window at T-600, 300, 180 and 60 s. Each
+holds the predicate's label, stance and every measured input. It also holds
+the live WICK seat's same-instant output, copied from the published Chair,
+and the engine's quote as the price control.
+
+**Report (`wick_shadow`).**
+- **Collection quality first:** coverage, clean rate, flags, fire rate and
+  label mix per clock.
+- **The PRESPECIFIED `WICK_EFFORT_RESULT_H0_V1`:** the predicate adds nothing
+  beyond the same-time price. It runs only at 300 clean settled rows at
+  T-3:00 with at least 30 fires. It uses walk-forward, price-band-controlled
+  incremental Brier and log loss, plus a hypothetical favourite entry at
+  80–99¢ with the taker fee, against the price-only control.
+- **Verdicts:** `RETIRE_CANDIDATE` means it restates price.
+  `INFORMATIVE_CANDIDATE` only earns a frozen prospective shadow test.
+- **Comparison with WICK** (`EXPLORATORY`, descriptive): when both speak,
+  agreement and who was right on disagreements; accuracy when only one
+  speaks. It never changes the verdict.
 
 ## G. Parameter or genetic search: blocked
 
 Prerequisites that are not met yet:
 
-1. P2 resolved or bounded.
+1. P2 resolved or bounded (fixed for LOCKS receipts stamped `P2_EXPLOIT_GUARD_V1`; earlier and V1 receipts stay bounded as SUSPECT).
 2. The EXACT replay path validated.
 3. A train / validation / untouched-holdout workflow.
 4. Multiple-comparison protection beyond per-report BH.
