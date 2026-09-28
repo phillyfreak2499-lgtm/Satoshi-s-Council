@@ -692,6 +692,23 @@ function sampleVel2Now(L: Lab, view: ReturnType<typeof yesView>, t: number): voi
   L.vel2Last = vel2Features(L.vel2, t, Math.max(1, 0.15 * c.sigma));
 }
 
+/**
+ * A read-only depth snapshot of one market's rebuilt book, for research.
+ * Returns copies (the YES-space view and the trust flags); never mutates the
+ * book, never subscribes or requests anything, and is null when this process
+ * holds no book for the ticker. Nothing votes on it.
+ */
+export function labBookDepth(ticker: string): {
+  ticker: string; view: ReturnType<typeof yesView>; ok: boolean; stale: boolean; gaps: number; flips: number; snap_t: number; upd_t: number; level_count: number; trusted: boolean;
+} | null {
+  const b = lab().books.get(ticker);
+  if (!b) return null;
+  return {
+    ticker: b.ticker, view: yesView(b), ok: b.ok, stale: b.stale, gaps: b.gaps, flips: b.flips, snap_t: b.snap_t, upd_t: b.upd_t,
+    level_count: levelCount(b), trusted: bookTrusted(b),
+  };
+}
+
 /** The current expected-response residuals, or null when none measured. Research only. */
 export function vel2Now(ticker: string): Vel2Features | null {
   const L = lab();
