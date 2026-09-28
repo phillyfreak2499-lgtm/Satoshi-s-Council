@@ -39,6 +39,7 @@ import { KNOWN_EXPERIMENTS, netOf, RESEARCH_FACTORY } from "./research-factory.t
 
 const MID_RECOVERY_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_v1;
 const MID_RECOVERY_LOCKS_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_locks_v1;
+const MID_RECOVERY_LOCKS_V2_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_locks_v2;
 
 // ---------------------------------------------------------------------------
 // Inputs, as the server module reads them.
@@ -136,8 +137,8 @@ export function candidatesOf(payload: Obj | null): Candidate[] | null {
 export const isRecoveredRecord = (payload: Obj | null): boolean => !!obj(payload?.recovered);
 
 /** Recovery experiments whose receipts carry candidate provenance. */
-export const RECOVERY_EXPERIMENTS: ReadonlySet<string> = new Set([MID_RECOVERY_EXPERIMENT.id, MID_RECOVERY_LOCKS_EXPERIMENT.id]);
-export const DIAGNOSTIC_ONLY_ARMS: ReadonlySet<string> = new Set([`${MID_RECOVERY_LOCKS_EXPERIMENT.id}|COMBINED_DIAG`]);
+export const RECOVERY_EXPERIMENTS: ReadonlySet<string> = new Set([MID_RECOVERY_EXPERIMENT.id, MID_RECOVERY_LOCKS_EXPERIMENT.id, MID_RECOVERY_LOCKS_V2_EXPERIMENT.id]);
+export const DIAGNOSTIC_ONLY_ARMS: ReadonlySet<string> = new Set([`${MID_RECOVERY_LOCKS_EXPERIMENT.id}|COMBINED_DIAG`, `${MID_RECOVERY_LOCKS_V2_EXPERIMENT.id}|COMBINED_DIAG`]);
 export const isDiagnosticOnly = (experiment: string, arm: string): boolean => DIAGNOSTIC_ONLY_ARMS.has(`${experiment}|${arm}`);
 
 /** The stage funnel, in the order the deployed path applies it. */
@@ -228,7 +229,8 @@ export type WindowFact = {
 /** Terminal precedence: what the arm finally did in the window. */
 const KIND_RANK: Record<string, number> = { fill: 5, intention: 4, veto: 3, no_fill: 2, wait: 1, settle: 0 };
 const experimentVersion = (experiment: string): number | null =>
-  experiment === MID_RECOVERY_EXPERIMENT.id ? MID_RECOVERY_EXPERIMENT.version : experiment === MID_RECOVERY_LOCKS_EXPERIMENT.id ? MID_RECOVERY_LOCKS_EXPERIMENT.version : null;
+  experiment === MID_RECOVERY_EXPERIMENT.id ? MID_RECOVERY_EXPERIMENT.version : experiment === MID_RECOVERY_LOCKS_EXPERIMENT.id ? MID_RECOVERY_LOCKS_EXPERIMENT.version
+    : experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id ? MID_RECOVERY_LOCKS_V2_EXPERIMENT.version : null;
 
 const bucket = (x: number | null, width: number): string | null => (x == null ? null : `${Math.floor(x / width) * width}-${Math.floor(x / width) * width + width}`);
 const chicago = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "2-digit", hour12: false, weekday: "short" });
@@ -485,6 +487,7 @@ export function auditWindow(input: WindowInput): Annotation[] {
     if (str(p.experiment) != null && p.experiment !== r.experiment) codes.push("EXPERIMENT_MISMATCH");
     if (str(p.arm) != null && p.arm !== r.arm) codes.push("ARM_MISMATCH");
     if (r.experiment === MID_RECOVERY_LOCKS_EXPERIMENT.id && str(p.version) != null && p.version !== MID_RECOVERY_LOCKS_EXPERIMENT.id) codes.push("EXPERIMENT_MISMATCH");
+    if (r.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id && str(p.version) != null && p.version !== MID_RECOVERY_LOCKS_V2_EXPERIMENT.id) codes.push("EXPERIMENT_MISMATCH");
     if (r.experiment === MID_RECOVERY_EXPERIMENT.id && isRecoveredRecord(p) && str(p.version) != null && p.version !== MID_RECOVERY_EXPERIMENT.id) codes.push("EXPERIMENT_MISMATCH");
     // Clock.
     if (r.decided_ms >= r.close_ms) codes.push("DECIDED_AFTER_CLOSE");

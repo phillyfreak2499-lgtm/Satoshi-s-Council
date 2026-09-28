@@ -283,7 +283,7 @@ test("the recorder is env-gated default OFF, kicked fire-and-forget by healthz, 
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/shadow-lab-mid-recovery\.server"\)\s*\.then\(\(m\) => m\.ensureMidRecoveryObserver\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   for (const f of walk("src/").concat(walk("server/"))) {
     // The LOCKS experiment's report route reads its own module (shadow-lab-mid-recovery-locks.server), never this recorder.
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f === "server/routes/research/mid-recovery-locks-v2.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery")) continue;
     assert.ok(!read(f).includes("shadow-lab-mid-recovery"), `${f} imports the experiment`);
   }
   const src = codeOf(OBSERVER);

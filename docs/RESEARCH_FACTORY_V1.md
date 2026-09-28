@@ -112,11 +112,15 @@ are never updated or deleted.
   - Partial verification: where `skill_score_audit` stores counters (only
     `DRIFT.pullback_in_trend` among the E1 roster), the auditor either
     confirms `P2_EXPLOIT_REJECT_LIKELY` or clears the card.
-- **P1 (PR #333, unresolved):**
-  - What happens: the Chair aggregates with `evidenceOf`, not the E1
+- **P1 (from PR #333; corrected in `MID_RECOVERY_LOCKS_V2_INACTIVE`):**
+  - What happens: the Chair aggregates support per seat, not with the E1
     override, so STREAK and STRIKE count as two supporters.
-  - What the auditor flags: `E1_FAMILY_SUPPORT_DOUBLE_COUNT (SUSPECT)`, only
-    when the double count decided the supporter gate.
+  - What the auditor flags on V1 receipts: `E1_FAMILY_SUPPORT_DOUBLE_COUNT
+    (SUSPECT)`, only when the double count decided the supporter gate.
+  - The correction: LOCKS V2 (`docs/MID_RECOVERY_LOCKS_V2_INACTIVE.md`) counts
+    STREAK once beside another E1 book supporter in every recovered arm, and
+    records the supporters it counted. So its receipts do not trigger the flag.
+    The live Chair is unchanged.
 - **Other checks:**
   - identity, experiment and arm mismatch (cross-window leakage);
   - decisions after the close or after the 180 s cutoff, and future frames;

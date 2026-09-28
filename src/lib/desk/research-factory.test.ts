@@ -3,12 +3,13 @@ import test from "node:test";
 import { feeCents } from "./fee-engine.ts";
 import { MID_RECOVERY_EXPERIMENT } from "./shadow-lab-mid-recovery.ts";
 import { MID_RECOVERY_LOCKS_EXPERIMENT } from "./shadow-lab-mid-recovery-locks.ts";
+import { MID_RECOVERY_LOCKS_V2_EXPERIMENT } from "./shadow-lab-mid-recovery-locks-v2.ts";
 import {
   DEFAULT_THRESHOLDS, KNOWN_EXPERIMENTS, RESEARCH_FACTORY, benjaminiHochberg, binomialUpperP, computeUtilization, ece, fillStats, governorDecision, thresholdsFromEnv, wilson,
   type ResourceSample,
 } from "./research-factory.ts";
 import {
-  P2_FIXED_POLICY, REASONS, auditWindow, evidenceEligible, stageOfRecord, windowFacts,
+  P2_FIXED_POLICY, REASONS, RECOVERY_EXPERIMENTS, auditWindow, evidenceEligible, isDiagnosticOnly, stageOfRecord, windowFacts,
   type ReceiptRow, type WindowInput,
 } from "./research-factory-analysis.ts";
 import {
@@ -92,6 +93,8 @@ test("the factory's experiment names are the recorders' own frozen identities (h
   assert.equal(KNOWN_EXPERIMENTS.mid_recovery_v1.version, MID_RECOVERY_EXPERIMENT.version);
   assert.equal(KNOWN_EXPERIMENTS.mid_recovery_locks_v1.id, MID_RECOVERY_LOCKS_EXPERIMENT.id);
   assert.equal(KNOWN_EXPERIMENTS.mid_recovery_locks_v1.version, MID_RECOVERY_LOCKS_EXPERIMENT.version);
+  assert.equal(KNOWN_EXPERIMENTS.mid_recovery_locks_v2.id, MID_RECOVERY_LOCKS_V2_EXPERIMENT.id);
+  assert.equal(KNOWN_EXPERIMENTS.mid_recovery_locks_v2.version, MID_RECOVERY_LOCKS_V2_EXPERIMENT.version);
   assert.equal(KNOWN_EXPERIMENTS.decision_cutoff_secs, MID_RECOVERY_EXPERIMENT.band_secs.min);
   assert.equal(KNOWN_EXPERIMENTS.decision_cutoff_secs, MID_RECOVERY_LOCKS_EXPERIMENT.band_secs.min);
 });
@@ -365,4 +368,20 @@ test("P1 (E1 family override): STREAK + STRIKE counted as two supporters is SUSP
   // Two ordinary book seats are production policy, not the E1 override: not flagged.
   const plain = statusOf(auditWindow(windowOf([fillReceipt("A", record({ arm: "A", cands: [{ seat: "STRIKE", card_id: "STRIKE.itm_time" }], supporters: ["STRIKE", "ODDS"], confirmed: true }))])), "A");
   assert.equal(plain.reason_codes.includes("E1_FAMILY_SUPPORT_DOUBLE_COUNT"), false);
+});
+
+test("LOCKS V2 receipts: the P1 correction and the P2 stamp leave nothing for the auditor to flag", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const live = [{ seat: "STREAK", card_id: "STREAK.continue_young", original_status: "LIVE" as const }, { seat: "STRIKE", card_id: "STRIKE.itm_time", original_status: "LIVE" as const }, { seat: "CHAIN", card_id: "CHAIN.oi_with_price" }];
+  const roster = live.map((c) => ({ card_id: c.card_id, seat: c.seat, evaluated_lean: "UP", evaluated_conf: 64, evaluated_health: "LIVE", selected_skill_used: "SIT", selected_forced_sit: false }));
+  // V2 already removed STREAK from the supporters it recorded.
+  const rec = record({ arm: "CONTROL", experiment: V2, cands: live, roster, supporters: ["STRIKE", "CHAIN"], confirmed: true });
+  (rec as Record<string, unknown>).capture_policy = P2_FIXED_POLICY;
+  const n = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec, 85, "UP", { experiment: V2 })])), "CONTROL");
+  assert.equal(n.integrity_status, "CLEAN", String(n.reason_codes));
+  assert.equal(RECOVERY_EXPERIMENTS.has(V2), true, "V2 receipts get the full recovery provenance audit");
+  assert.equal(isDiagnosticOnly(V2, "COMBINED_DIAG"), true, "COMBINED_DIAG stays diagnostic-only in V2");
+  // The same record under V1's identity would be a version mismatch, not silently accepted.
+  const crossed = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec)])), "CONTROL");
+  assert.ok(crossed.reason_codes.includes("EXPERIMENT_MISMATCH"), String(crossed.reason_codes));
 });

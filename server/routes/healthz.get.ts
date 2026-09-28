@@ -67,6 +67,11 @@ export default function healthz() {
   void import("../../src/lib/desk/shadow-lab-mid-recovery-locks.server")
     .then((m) => m.ensureMidRecoveryLocksObserver())
     .catch(() => {});
+  // MID_RECOVERY_LOCKS_V2_INACTIVE: LOCKS with the P1 and P2 corrections. Env-gated, default OFF
+  // (MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED=true); writes only its own desk_shadow_receipts rows.
+  void import("../../src/lib/desk/shadow-lab-mid-recovery-locks-v2.server")
+    .then((m) => m.ensureMidRecoveryLocksV2Observer())
+    .catch(() => {});
   // Research factory: env-gated, default OFF (RESEARCH_FACTORY_ENABLED=true).
   // A resource-governed background queue that re-grades settled windows and
   // audits research integrity. Writes only its own desk_research_* tables;
