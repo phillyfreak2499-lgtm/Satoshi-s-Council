@@ -358,7 +358,7 @@ export type WhyFacts = {
    * calling. Four distinct answers, because they have four different remedies:
    *
    *   "feed-condition"  the DATA cannot be trusted — a data-trust gate is failing
-   *                     (warden on a frozen tape, chalk/phantom, quote age). Listed
+   *                     (warden on a frozen tape or a failed quote check). Listed
    *                     first because if the inputs are bad nothing downstream means
    *                     anything, whatever the vote said.
    *   "hard-gate"       some other hard gate blocks: timing, economics, the law.
@@ -381,11 +381,12 @@ export type WhyFacts = {
 /**
  * The gates that say the DATA is untrustworthy, as opposed to the ones that say the
  * trade is not worth taking. Taken from chair.ts's own gate ids: `warden` silences
- * seats on a frozen tape, `chalk` is a phantom/bad-print condition, `quote` is quote
- * age. Everything else hard — bar, edge, leftover, law, early, late — is about the
- * trade, not about whether the inputs can be believed.
+ * seats on a frozen tape; `quote` is the quote check. A chalked book (a side
+ * priced at 99¢ or more) blocks an entry even when feeds are live. Everything
+ * else hard — chalk, bar, edge, leftover, law, early, late — is about the
+ * entry, not about whether the inputs can be believed.
  */
-export const FEED_GATE_IDS: readonly string[] = Object.freeze(["warden", "chalk", "quote"]);
+export const FEED_GATE_IDS: readonly string[] = Object.freeze(["warden", "quote"]);
 
 export function whyFacts(chair: ChairResult, plain: string): WhyFacts {
   const failed_hard = chair.gates.filter((g) => g.hard && !g.pass);

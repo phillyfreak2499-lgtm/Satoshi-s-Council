@@ -147,7 +147,9 @@ export function WhyBlock({ why, chair }: { why: WhyFacts; chair: ChairResult }) 
     why.wait_reason === "feed-condition"
       ? `The data cannot be trusted right now: ${why.feed_gates.map((g) => `${g.label} (${g.value})`).join(", ")}. Until the inputs are believable the vote does not mean anything, so the desk does not call. This is a feed condition, not a read on the market.`
       : why.wait_reason === "hard-gate"
-      ? why.failed_hard.length === 1 && !why.more_than_one_thing_missing
+      ? why.failed_hard.some((g) => g.id === "chalk") && why.failed_hard.length === 1
+        ? `The book is chalk: ${why.failed_hard[0]!.value}. There is no qualifying entry at this price; the feeds may still be healthy. Clearing chalk alone does not guarantee a call${Math.abs(chair.score) < chair.bar ? " — the vote is also under the bar" : ""}.`
+      : why.failed_hard.length === 1 && !why.more_than_one_thing_missing
         ? `A hard gate is failing: ${why.failed_hard[0]!.label} (${why.failed_hard[0]!.value}). Clearing it is necessary, not sufficient — the score still has to beat the bar.`
         : `More than one thing is missing: ${why.failed_hard.map((g) => `${g.label} (${g.value})`).join(", ")}${why.failed_hard.length && Math.abs(chair.score) < chair.bar ? ", and the score is under the bar" : ""}.`
       : why.wait_reason === "under-bar"
