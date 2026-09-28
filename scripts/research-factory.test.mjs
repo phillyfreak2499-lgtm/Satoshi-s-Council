@@ -40,6 +40,8 @@ async function factory(t) {
   return vite.ssrLoadModule("/src/lib/desk/research-factory.server.ts");
 }
 
+/** Jobs in the fixed-clock tests are due from the epoch, so they never depend on the machine's real clock. */
+const EPOCH = 0;
 const calm = async () => ({ rss_mb: 200, load_per_cpu: 0.1, event_loop_p99_ms: 5, db_waiting: null, db_in_use: null, db_ping_ms: null });
 const pressure = async () => ({ rss_mb: 99_999, load_per_cpu: 0.1, event_loop_p99_ms: 5, db_waiting: null, db_in_use: null, db_ping_ms: null });
 const jobsOf = (sql) => sql`select job_kind, job_key, status, attempts, checkpoint, guard_reason, error, lease_owner, rows_written, db_queries, cpu_ms, wall_ms from desk_research_jobs order by job_kind, job_key`;
@@ -62,8 +64,8 @@ test("duplicate jobs are impossible: the same (kind, key) enqueues once, however
 test("one job at a time: nothing is claimed while a live lease exists; a lapsed lease is reclaimed and resumes from its checkpoint; a completed job never runs again", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "A|1");
-  await m.enqueue(sql, "window", "B|2");
+  await m.enqueue(sql, "window", "A|1", {}, EPOCH);
+  await m.enqueue(sql, "window", "B|2", {}, EPOCH);
   const t0 = Date.parse("2026-09-28T16:00:00Z");
   const first = await m.claim(sql, "proc-1", t0);
   assert.equal(first.job_key, "A|1");
@@ -93,7 +95,7 @@ test("one job at a time: nothing is claimed while a live lease exists; a lapsed 
 test("the resource governor pauses a job under pressure, keeps its checkpoint and retry budget, and it resumes when pressure clears", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "P|1");
+  await m.enqueue(sql, "window", "P|1", {}, EPOCH);
   const t0 = Date.parse("2026-09-28T16:00:00Z");
   let sampler = calm;
   const seen = [];
@@ -126,7 +128,7 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
 test("a failing job is retried with back-off and stops at the attempt limit; the error is recorded", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  await m.enqueue(sql, "window", "F|1");
+  await m.enqueue(sql, "window", "F|1", {}, EPOCH);
   let now = Date.parse("2026-09-28T16:00:00Z");
   const boom = { window: async () => { throw new Error("boom"); } };
   for (let i = 1; i <= 3; i += 1) {
