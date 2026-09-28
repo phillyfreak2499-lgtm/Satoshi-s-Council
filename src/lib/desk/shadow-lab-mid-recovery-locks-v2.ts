@@ -31,7 +31,7 @@
  */
 import type { EvaluatedCandidateFrame } from "./bots";
 import type { RecoveryProjection } from "./call-recovery-candidate";
-import { e1FamilyOf } from "./shadow-arms.ts";
+import { e1FamilyOf, unmuteRoster } from "./shadow-arms.ts";
 import { evaluateMidRecovery, type MidRecoveryDeps, type MidRecoveryInput, type MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
 import {
   LOCKS_ARMS, LOCKS_INTERVENTIONS, LOCKS_PROMOTION_ELIGIBLE, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_EXPERIMENT, chairWithoutSitMass, summarizeLocks,
@@ -110,7 +110,20 @@ export function locksV2ArmDeps(base: MidRecoveryDeps, arm: LocksRecoveredArm, fr
     projectInactiveE1Recovery: (f, learner) => {
       const projection: RecoveryProjection = base.projectInactiveE1Recovery(f, learner);
       candidateSeats = projection.candidates.map((c) => c.seat);
-      return projection;
+      const candidateIds = projection.candidates.map((c) => c.card_id);
+      // Preserve the existing V1-equivalent path whenever its release set is
+      // already candidate-only. This also keeps the experiment's other arm
+      // behavior byte-identical on unaffected frames.
+      if (projection.simulated.released.every((id) => candidateIds.includes(id))) return projection;
+      // The shared V1 projection can also unmute a selected roster vote that
+      // was forced to SIT and never captured as a candidate. Rebuild only V2's
+      // simulated votes from the source frame and its recorded candidates.
+      const bySeat = new Map(projection.candidates.map((c) => [c.seat, c.vote]));
+      const projectedVotes = f.votes.map((vote) => bySeat.get(vote.seat) ?? vote);
+      return {
+        ...projection,
+        simulated: unmuteRoster(projectedVotes, learner, candidateIds),
+      };
     },
     runChair: (...args) => {
       let chair = iv.bar_no_sitmass ? chairWithoutSitMass(base.runChair, args, trace.bar_no_sitmass) : base.runChair(...args);

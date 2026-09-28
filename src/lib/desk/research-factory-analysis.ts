@@ -434,6 +434,7 @@ export const REASONS = Object.freeze({
   // SUSPECT: consistent with a known defect or a boundary problem, not proven.
   /** The producer selected this card for the seat but forced it to SIT; recovery heard it directional. Benign causes exist, so not proven. */
   SELECTED_SIT_REUSED: "SUSPECT",
+  RELEASED_WITHOUT_CANDIDATE: "SUSPECT",
   P2_LIVE_CARD_NOT_SELECTED: "SUSPECT",
   P2_EXPLOIT_REJECT_LIKELY: "SUSPECT",
   /** Unresolved P1 (PR #333): the Chair counts STREAK and STRIKE as two supporters although E1 treats both as one book read, and without the double count the supporter gate would have failed. */
@@ -559,6 +560,13 @@ export function auditWindow(input: WindowInput): Annotation[] {
           }
           if (mine.some((m) => REASONS[m] === "INVALID") && (c.counted_as_support || c.survived_fold)) invalidCards.push(c.card_id);
           codes.push(...mine);
+        }
+        if (r.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id && released) {
+          const unrecorded = released.filter((card) => !cards.has(card));
+          if (unrecorded.length) {
+            codes.push("RELEASED_WITHOUT_CANDIDATE");
+            details.released_without_candidate = [...new Set(unrecorded)];
+          }
         }
         if (p2.length) details.p2_cards = p2;
         if (invalidCards.length) details.invalid_cards = invalidCards;

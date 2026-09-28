@@ -385,3 +385,16 @@ test("LOCKS V2 receipts: the P1 correction and the P2 stamp leave nothing for th
   const crossed = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec)])), "CONTROL");
   assert.ok(crossed.reason_codes.includes("EXPERIMENT_MISMATCH"), String(crossed.reason_codes));
 });
+
+test("V2 auditor flags a released roster card that was never a candidate, preserving the original receipt", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const rec = record({ arm: "CONTROL", experiment: V2, released: ["STREAK.continue_young", "CHAIN.oi_with_price", "DRIFT.aligned_3h"], confirmed: true });
+  (rec as Record<string, unknown>).capture_policy = P2_FIXED_POLICY;
+  const before = JSON.stringify(rec);
+  const note = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec, 85, "UP", { experiment: V2 })])), "CONTROL");
+  assert.equal(note.integrity_status, "SUSPECT");
+  assert.ok(note.reason_codes.includes("RELEASED_WITHOUT_CANDIDATE"));
+  assert.equal(JSON.stringify(rec), before);
+  const old = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", { ...rec, experiment: LOCKS, version: LOCKS })])), "CONTROL");
+  assert.equal(old.reason_codes.includes("RELEASED_WITHOUT_CANDIDATE"), false, "V1 history is not reclassified by this V2 rule");
+});

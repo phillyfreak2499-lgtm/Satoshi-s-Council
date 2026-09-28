@@ -73,6 +73,7 @@ test("real Chair: the V2 path is LOCKS V1 plus only the P1 correction, on P2-gua
   assert.equal(m.REQUIRED_CAPTURE_POLICY, m.CAPTURE_POLICY, "V2 requires exactly the producer's P2 policy");
   for (const arm of ["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG"]) {
     const a = v2.arms[arm];
+    assert.ok(a.evaluation.recovery.released.every((id) => a.evaluation.candidates.some((c) => c.card_id === id)), `${arm}: released cards must be candidates`);
     assert.equal(a.capture_policy, "P2_EXPLOIT_GUARD_V1");
     assert.equal(a.experiment, "MID_RECOVERY_LOCKS_V2_INACTIVE");
     const p1 = a.intervention.e1_book_dedupe;
@@ -95,6 +96,35 @@ test("real Chair: the V2 path is LOCKS V1 plus only the P1 correction, on P2-gua
   assert.deepEqual(m.eligibleSupportRows(two, "UP").map((r) => r.seat), ["STREAK", "STRIKE", "CHAIN"], "input untouched");
   assert.deepEqual(m.eligibleSupportRows(out, "UP").map((r) => r.seat), ["STRIKE", "CHAIN"]);
   assert.deepEqual(trace, { streak_side: "UP", book_supporters: ["STRIKE"], applied: true });
+});
+
+test("real producer: V2 does not revive a selected roster vote forced to SIT outside candidate capture", async (t) => {
+  const m = await modules(t);
+  const learner = m.freshLearner();
+  let snap, frame, original;
+  for (const spot of [79_600, 79_900, 80_100, 80_400]) {
+    for (const ret15 of [-0.004, -0.001, 0.001, 0.004]) {
+      const probe = snapshot({ spot, strike: 80_000, ret15, secs_left: 300, mins_left: 5 });
+      const captured = m.runBotsWithEvaluatedCandidates(probe, learner);
+      const projected = m.projectInactiveE1Recovery(captured, learner);
+      if (projected.simulated.released.some((id) => !projected.candidates.some((c) => c.card_id === id))) {
+        snap = probe; frame = captured; original = projected; break;
+      }
+    }
+    if (snap) break;
+  }
+  assert.ok(snap && frame && original, "a producer-generated frame reproduces the V1 provenance defect");
+  const votes = m.runBots(snap, learner);
+  const chair = m.runChair(votes, snap, learner, m.DEFAULT_SETTINGS, "WAIT", []);
+  const before = JSON.stringify({ votes, chair, learner, snap });
+  const input = { snap, chair, learner, settings: m.DEFAULT_SETTINGS, call_log: [], audit: null, ready: true, start: now - 3_600_000, arms: blankArms() };
+  const v2 = m.evaluateLocksV2(input, realDeps(m));
+  for (const arm of ["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG"]) {
+    const recovery = v2.arms[arm].evaluation;
+    assert.ok(recovery.recovery.released.every((id) => recovery.candidates.some((c) => c.card_id === id)), arm);
+    assert.equal(recovery.recovery.released.includes("DRIFT.aligned_3h"), false, arm);
+  }
+  assert.equal(JSON.stringify({ votes, chair, learner, snap }), before, "production inputs remain identical");
 });
 
 // ---------------------------------------------------------------------------
