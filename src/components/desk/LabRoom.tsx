@@ -558,7 +558,7 @@ function DisagreementEdgeStudy({ data }: { data: PublicLabSnapshot["disagreement
           </h2>
         </div>
         <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro uppercase tracking-widest text-muted">
-          {data.windows} graded replays
+          {data.windows} graded windows
         </span>
       </div>
 
@@ -597,7 +597,7 @@ function DisagreementEdgeStudy({ data }: { data: PublicLabSnapshot["disagreement
         </div>
       ) : (
         <div className="mt-4 rounded-sm border border-border bg-canvas p-4 font-mono text-micro text-subtle">
-          No fixed-horizon specialist disagreements are available in the retained replay sample yet.
+          No fixed-horizon specialist disagreements are available in the frozen checkpoint sample yet.
         </div>
       )}
 

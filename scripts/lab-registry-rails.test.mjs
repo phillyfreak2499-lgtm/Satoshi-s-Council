@@ -78,6 +78,8 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   for (const key of ["imb", "resid", "fair"]) {
     assert.match(src, new RegExp(`jsonb_path_exists\\(cols, '\\$\\.${key}\\[\\*\\] \\? \\(\\@ != null\\)'\\)`));
   }
+  assert.equal((src.match(/jsonb_path_exists/g) ?? []).length, 3, "each replay JSON path is evaluated once");
+  assert.match(src, /from replay_rows/);
   assert.doesNotMatch(src, /insert\s+into|update\s+desk_|delete\s+from/i);
   for (const forbidden of [
     "noteCall(", "applyDeskOp", "decideChair(", "runChair(", "selectiveBlock",
@@ -85,6 +87,19 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   ]) {
     assert.ok(!src.includes(forbidden), `registry reaches ${forbidden}`);
   }
+});
+
+test("disagreement edge reads frozen scalar checkpoints instead of replay arrays", () => {
+  const src = codeOf("src/lib/desk/disagreement-edge.server.ts");
+  const room = codeOf("src/components/desk/LabRoom.tsx");
+  assert.match(src, /from desk_call_quality q/);
+  assert.match(src, /q\.study = \$\{STUDY\}/);
+  assert.match(src, /q\.capture_valid = true/);
+  assert.doesNotMatch(src, /from desk_replay/);
+  assert.doesNotMatch(src, /jsonb_build_object/);
+  assert.doesNotMatch(src, /insert\s+into|update\s+desk_|delete\s+from/i);
+  assert.match(room, /frozen checkpoint sample/);
+  assert.doesNotMatch(room, /retained replay sample/);
 });
 
 test("public Lab exposes the registry but production decision modules never import it", () => {
