@@ -73,7 +73,8 @@ import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.ser
 import { noteSeatTelemetry } from "./telemetry.server";
 import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
 import { observeChairWaitMilestone } from "./chamber-wait.server";
-import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
+import { notifyCall, notifySettle, notifyWatchdog, pushDeliverySummary, pushRecipientCounts } from "./push.server";
+import { pushDeliveryNote, type PushDeliverySummary } from "./push-receipts";
 import { weeklyRecap } from "./recap.server";
 import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
 import {
@@ -213,6 +214,8 @@ type Eng = {
    *  are readiness facts only; they never gate or create a call. */
   alertCallSubs: number;
   alertSettleSubs: number;
+  /** Durable provider-attempt evidence, refreshed with recipient readiness. */
+  alertDelivery: PushDeliverySummary | null;
   /** Recent failures with scope + text, bounded — which window/feed/write, and why. */
   errors: ErrLog[];
   /** When this process booted (for the health boot-grace). */
@@ -362,6 +365,7 @@ function freshEng(): Eng {
     alertOwnerSubs: 0,
     alertCallSubs: 0,
     alertSettleSubs: 0,
+    alertDelivery: null,
     errors: [],
     startedAt: Date.now(),
     reconAt: 0,
@@ -1949,11 +1953,11 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
     noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
   }
   try {
-    const { pushRecipientCounts } = await import("./push.server");
-    const counts = await pushRecipientCounts();
+    const [counts, delivery] = await Promise.all([pushRecipientCounts(), pushDeliverySummary()]);
     e.alertOwnerSubs = counts.owner;
     e.alertCallSubs = counts.call;
     e.alertSettleSubs = counts.settle;
+    e.alertDelivery = delivery;
   } catch {
     /* alert-channel probe is best-effort */
   }
@@ -2108,6 +2112,17 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
         settlement_notifications: {
           configured: e.alertSettleSubs > 0,
           subscribers: e.alertSettleSubs,
+        },
+        delivery_evidence: {
+          observed: e.alertDelivery?.last_attempted_at != null,
+          accepted_24h: e.alertDelivery?.accepted_24h ?? 0,
+          failed_24h: e.alertDelivery?.failed_24h ?? 0,
+          gone_24h: e.alertDelivery?.gone_24h ?? 0,
+          last_event_kind: e.alertDelivery?.last_event_kind ?? null,
+          last_event_key: e.alertDelivery?.last_event_key ?? null,
+          last_outcome: e.alertDelivery?.last_outcome ?? null,
+          last_attempted_at: e.alertDelivery?.last_attempted_at ?? null,
+          note: pushDeliveryNote(e.alertDelivery),
         },
       },
       // The grading race, both halves: windows decided but not yet settled, and

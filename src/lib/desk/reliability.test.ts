@@ -29,6 +29,7 @@ import {
   TICK_STALL_MS,
   WINDOW_MS,
 } from "./reliability.ts";
+import { pushDeliveryNote, pushReceipt } from "./push-receipts.ts";
 
 const row = (ticker: string, closeTime: number): LedgerRow => ({ ticker, close_time: closeTime, values: [ticker, closeTime] });
 const job = (r: LedgerRow, now = 0): LedgerJob => ({ key: jobKey(r.ticker, r.close_time), row: r, attempts: 0, firstAt: now, nextAt: now, lastErr: null });
@@ -359,6 +360,39 @@ test("a push-send failure is visible in the alert note without failing data heal
   assert.equal(a.deliverable, true);
   assert.match(a.note, /2 failed/);
   assert.equal(healthVerdict(healthy).ok, true);
+});
+
+test("push receipts are bounded, omit secrets and distinguish provider acceptance from human receipt", () => {
+  const receipt = pushReceipt({
+    eventKind: "call",
+    eventKey: ` KX${"X".repeat(400)} `,
+    subscriptionId: 7.9,
+    outcome: "accepted",
+    providerStatus: 201.8,
+    errorCode: "e".repeat(200),
+    buildSha: "a".repeat(100),
+    attemptedAtMs: NOW,
+  });
+  assert.equal(receipt.event_key.length, 300);
+  assert.equal(receipt.subscription_id, 7);
+  assert.equal(receipt.provider_status, 201);
+  assert.equal(receipt.error_code?.length, 120);
+  assert.equal(receipt.build_sha.length, 80);
+  assert.equal("endpoint" in receipt, false);
+  assert.match(pushDeliveryNote({
+    accepted_24h: 1, failed_24h: 0, gone_24h: 0,
+    last_event_kind: "call", last_event_key: "KX", last_outcome: "accepted",
+    last_attempted_at: receipt.attempted_at,
+  }), /human receipt are not guaranteed/);
+});
+
+test("push delivery status is explicit before evidence and after failure", () => {
+  assert.match(pushDeliveryNote(null), /no durable push attempt receipt/);
+  assert.match(pushDeliveryNote({
+    accepted_24h: 0, failed_24h: 1, gone_24h: 0,
+    last_event_kind: "watchdog", last_event_key: "grade-stale", last_outcome: "failed",
+    last_attempted_at: new Date(NOW).toISOString(),
+  }), /failed before provider acceptance/);
 });
 
 // --- error ring: keep scope + text, bounded ---
