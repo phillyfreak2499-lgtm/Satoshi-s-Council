@@ -24,7 +24,7 @@ function FillRow({ w, tz }: { w: BooksWindow; tz: string }) {
         {datedClose(w.close_time, tz)}
       </td>
       <td role="cell" data-label="Side" className="py-2 pr-3">
-        {w.call?.lean ? <LeanChip lean={w.call.lean} /> : "—"}
+        {w.call?.lean ? <><LeanChip lean={w.call.lean} />{w.call.source === "RECOVERY_FAV85_V1" ? <span className="ml-1 font-mono text-micro text-muted">pilot</span> : null}</> : "—"}
       </td>
       <td role="cell" data-label="Result" className="py-2 pr-3">
         <LeanChip lean={w.winner} />

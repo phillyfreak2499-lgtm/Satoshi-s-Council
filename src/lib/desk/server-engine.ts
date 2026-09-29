@@ -34,6 +34,15 @@ import {
   settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, type EntryWatch,
 } from "./selective-entry";
 import {
+  RECOVERY_PILOT_SOURCE,
+  recoveryPilotBookOk,
+  recoveryPilotDecision,
+  recoveryPilotEnabled,
+  withRecoveryPilotSourceColumn,
+  type RecoveryPilotDecision,
+  type RecoveryPilotWatch,
+} from "./recovery-pilot";
+import {
   bookedDecisionAtGrade,
   sanitizeBookedDecisionState,
   type BookedDecisionState,
@@ -151,6 +160,8 @@ type Eng = {
   riskCalls: CallLogRow[];
   riskReady: boolean;
   entryWatch: EntryWatch | null;
+  recoveryPilotWatch: RecoveryPilotWatch | null;
+  recoveryPilotStart: number;
   lastAdmissionAudit: AdmissionAudit | null;
   selectiveStart: number;
   baselineCalls: CallLogRow[];
@@ -320,6 +331,8 @@ function freshEng(): Eng {
     riskCalls: [],
     riskReady: false,
     entryWatch: null,
+    recoveryPilotWatch: null,
+    recoveryPilotStart: Math.ceil(Date.now() / 900_000) * 900_000,
     lastAdmissionAudit: null,
     selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
     baselineCalls: [],
@@ -432,6 +445,7 @@ async function loadState(e: Eng) {
           selective_start?: number;
           selective_policy?: string;
           baseline_calls?: unknown;
+          recovery_pilot_start?: number;
         }
       | undefined;
     if (!raw) {
@@ -446,6 +460,7 @@ async function loadState(e: Eng) {
     e.riskCalls = risk.calls;
     e.riskReady = risk.valid && raw.risk_history_valid !== false;
     e.baselineCalls = restoreRiskCalls(raw.baseline_calls, []).calls;
+    if (Number.isFinite(raw.recovery_pilot_start) && raw.recovery_pilot_start! > 0) e.recoveryPilotStart = raw.recovery_pilot_start!;
     if (raw.selective_policy === SELECTIVE_ENTRY_ID && Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
@@ -493,6 +508,7 @@ async function persistState(e: Eng, force = false) {
       selective_start: e.selectiveStart,
       selective_policy: SELECTIVE_ENTRY_ID,
       baseline_calls: e.baselineCalls,
+      recovery_pilot_start: e.recoveryPilotStart,
       settings: {
         bar_override: e.settings.bar_override,
         adaptive_bar: e.settings.adaptive_bar,
@@ -716,6 +732,41 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
   notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
 }
 
+/**
+ * Publish the bounded recovery pilot only when the canonical Chair book did
+ * not take the window. The source marker is intentional and mandatory: the
+ * real-money follower rejects any row that names a source, so this position is
+ * visible on the research site without becoming a follower instruction.
+ */
+async function noteRecoveryPilotCall(e: Eng, snap: Snapshot, decision: RecoveryPilotDecision) {
+  if (!recoveryPilotEnabled()) return;
+  if (hasPaperPosition(e.riskCalls, snap)) return;
+  const ctx = { calls: e.riskCalls, ready: e.riskReady, start: e.recoveryPilotStart, watch: e.recoveryPilotWatch };
+  if (!recoveryPilotBookOk(snap, ctx, decision) || !decision.candidate) return;
+  const { side, ask } = decision.candidate;
+  const row: CallLogRow = {
+    id: `${snap.close_time}-${side}-${snap.as_of}`,
+    t: snap.as_of,
+    ticker: snap.ticker,
+    close_time: snap.close_time,
+    lean: side,
+    cents: Math.round(ask * 10) / 10,
+    settle: null,
+    flipped: false,
+    source: RECOVERY_PILOT_SOURCE,
+  };
+  e.callLog = [row, ...e.callLog].slice(0, 80);
+  e.riskCalls = restoreRiskCalls(e.riskCalls, [row]).calls;
+  e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: side };
+  e.recoveryPilotWatch = null;
+  // Reserve the daily slot durably before making the pilot public.
+  if (!(await persistState(e, true))) {
+    e.riskReady = false;
+    return;
+  }
+  notifyCall(side, Math.round(ask), snap.mins_left, snap.ticker, RECOVERY_PILOT_SOURCE);
+}
+
 function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
   e.riskCalls = settleRiskCalls(e.riskCalls, ticker, close_time, winner);
   e.baselineCalls = settleRiskCalls(e.baselineCalls, ticker, close_time, winner);
@@ -797,11 +848,11 @@ const LEDGER_COLUMNS =
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
   "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
-  "entry_lean, entry_build_sha, skill_score_audit, entry_skill_roster, entry_skill_quality)";
+  "entry_lean, entry_source, entry_build_sha, skill_score_audit, entry_skill_roster, entry_skill_quality)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb,$43::jsonb,$44::jsonb) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43::jsonb,$44::jsonb,$45::jsonb) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -891,6 +942,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     entry?.touch_size ?? null,
     entry?.fee_cents ?? null,
     booked?.lean ?? null,
+    booked?.source ?? null,
     booked?.build_sha ?? null,
     scoreAudit == null ? null : JSON.stringify(scoreAudit),
     booked && entry?.entry_roster && entry.entry_roster.ticker === snap.ticker &&
@@ -909,7 +961,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
 function ledgerIO(db: Sql): PersistIO {
   return {
     write: async (r) => {
-      await db.query(LEDGER_INSERT, withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(r.values))));
+      await db.query(LEDGER_INSERT, withRecoveryPilotSourceColumn(withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(r.values)))));
     },
     verify: async (r) => {
       const rows = await db.query<{ n: number }>(
@@ -1434,7 +1486,21 @@ async function tick(e: Eng) {
     // the decision and cannot change what the Chair said or whether the book fills.
     noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
+    // The canonical Council book always gets first refusal. Only a window it
+    // leaves unbooked can advance or fill the separately labelled recovery pilot.
     await noteCall(e, snap, chair, votes);
+    if (recoveryPilotEnabled() && !hasPaperPosition(e.riskCalls, snap)) {
+      const pilot = recoveryPilotDecision(snap, {
+        calls: e.riskCalls,
+        ready: e.riskReady,
+        start: e.recoveryPilotStart,
+        watch: e.recoveryPilotWatch,
+      });
+      e.recoveryPilotWatch = pilot.watch;
+      await noteRecoveryPilotCall(e, snap, pilot);
+    } else {
+      e.recoveryPilotWatch = null;
+    }
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // MEASUREMENT ONLY (authority: none). Buffers per-seat + Chair-gating telemetry
     // for research. OFF unless SEAT_TELEMETRY_ENABLED; buffers in memory and flushes

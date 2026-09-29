@@ -299,10 +299,10 @@ function fmtLeft(mins: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function callPayload(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string): PushPayload {
+export function callPayload(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string, source?: "RECOVERY_FAV85_V1"): PushPayload {
   return {
-    title: `SATOSHI called ${lean}`,
-    body: `${cents.toFixed(0)}¢ ask · ${fmtLeft(minsLeft)} left in the window`,
+    title: source ? `Recovery pilot booked ${lean}` : `SATOSHI called ${lean}`,
+    body: `${cents.toFixed(0)}¢ ask · ${fmtLeft(minsLeft)} left in the window${source ? " · paper-only pilot" : ""}`,
     tag: `call-${ticker}`,
     url: "/",
   };
@@ -325,12 +325,12 @@ export function pushLastLog(): string {
 }
 
 /** The chair just booked a call. Fire and forget. */
-export function notifyCall(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string): void {
+export function notifyCall(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string, source?: "RECOVERY_FAV85_V1"): void {
   void (async () => {
     try {
       const subs = await subsFor("call");
       if (!subs.length) return;
-      const payload = callPayload(lean, cents, minsLeft, ticker);
+      const payload = callPayload(lean, cents, minsLeft, ticker, source);
       const r = await fanout(subs, () => payload, { kind: "call", key: ticker });
       lastLog = `call ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {

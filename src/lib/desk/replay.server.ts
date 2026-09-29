@@ -253,7 +253,7 @@ export type Replay = {
   /** Measurement-only spot-path summary computed after grade. */
   path: WindowPathStats | null;
   official: number | null;
-  call: { entry: number; settle: number | null; ev: number | null } | null;
+  call: { entry: number; settle: number | null; ev: number | null; source: "RECOVERY_FAV85_V1" | null } | null;
 };
 
 const TICKER_RE = /^[A-Z0-9-]{6,40}$/;
@@ -331,9 +331,10 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         entry_cents: number | null;
         settle_cents: number | null;
         ev_cents: number | null;
+        entry_source: string | null;
       }>`
         select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols, r.path_stats,
-               l.official_value, l.entry_cents, l.settle_cents, l.ev_cents
+               l.official_value, l.entry_cents, l.settle_cents, l.ev_cents, l.entry_source
         from desk_replay r
         left join desk_ledger l on l.ticker = r.ticker and l.close_time = r.close_time
         where r.ticker = ${t} and r.close_time = ${closeIso}
@@ -352,7 +353,8 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         cols: r.cols,
         path: r.path_stats,
         official: r.official_value,
-        call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents } : null,
+        call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents,
+          source: r.entry_source === "RECOVERY_FAV85_V1" ? "RECOVERY_FAV85_V1" : null } : null,
       } satisfies Replay;
     },
   );
@@ -360,4 +362,3 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
 
 const isoOf = (v: Date | string): string =>
   v instanceof Date ? v.toISOString() : new Date(v).toISOString();
-

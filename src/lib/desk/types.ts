@@ -48,6 +48,8 @@ export type CallLogRow = {
   cents: number;
   settle: number | null;
   flipped: boolean;
+  /** Present only for a non-Chair paper pilot. Canonical Chair calls omit it. */
+  source?: "RECOVERY_FAV85_V1";
 };
 export type TabId =
   | "satoshi"

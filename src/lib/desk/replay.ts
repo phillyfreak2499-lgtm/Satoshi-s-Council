@@ -42,7 +42,7 @@ export type Replay = {
   /** Measurement-only; never consumed by seats or either Chair. */
   path: WindowPathStats | null;
   official: number | null;
-  call: { entry: number; settle: number | null; ev: number | null } | null;
+  call: { entry: number; settle: number | null; ev: number | null; source?: "RECOVERY_FAV85_V1" | null } | null;
 };
 
 export const loadReplay = createServerFn({ method: "GET" })

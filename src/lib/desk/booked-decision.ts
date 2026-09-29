@@ -30,6 +30,7 @@ type BookedCallLike = {
   close_time: number;
   lean: "UP" | "DOWN";
   cents: number;
+  source?: "RECOVERY_FAV85_V1";
 };
 
 export type BookedDecisionAtGrade = {
@@ -39,6 +40,7 @@ export type BookedDecisionAtGrade = {
   score: number | null;
   bar: number | null;
   build_sha: string | null;
+  source: "RECOVERY_FAV85_V1" | null;
 };
 
 function finite(v: unknown): number | null {
@@ -115,5 +117,6 @@ export function bookedDecisionAtGrade(
     score: entry?.score ?? null,
     bar: entry?.bar ?? null,
     build_sha: entry?.build_sha || null,
+    source: call.source ?? null,
   };
 }

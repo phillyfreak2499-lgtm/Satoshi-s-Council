@@ -26,6 +26,7 @@ export type BooksCall = {
   entry: number;
   settle: number | null;
   ev: number | null;
+  source: "RECOVERY_FAV85_V1" | null;
 };
 
 export type BooksWindow = {
@@ -179,6 +180,7 @@ type LedgerRow = {
   entry_cents: number | null;
   settle_cents: number | null;
   ev_cents: number | null;
+  entry_source: string | null;
   seats: Record<string, { lean?: string; hit?: boolean | null; raw_lean?: string }> | null;
   replay?: boolean;
 };
@@ -191,7 +193,8 @@ function toWindow(r: LedgerRow, arena: Map<string, { n: number; net: number }>):
   const winner: "UP" | "DOWN" = r.winner === "UP" ? "UP" : "DOWN";
   let call: BooksCall | null = null;
   if (r.entry_cents != null) {
-    call = { lean: bookedSideOf(r.settle_cents, winner), entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents };
+    call = { lean: bookedSideOf(r.settle_cents, winner), entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents,
+      source: r.entry_source === "RECOVERY_FAV85_V1" ? "RECOVERY_FAV85_V1" : null };
   }
   const evidence = booksSeatEvidence(r.ticker, Date.parse(iso(r.close_time)), winner, r.seats);
   return {
@@ -353,7 +356,7 @@ async function build(): Promise<Books> {
 
   const rows = await db<LedgerRow>`
     select l.ticker, l.close_time, l.winner, l.official_value, l.settle_avg, l.brti_prints,
-      l.entry_cents, l.settle_cents, l.ev_cents, l.seats,
+      l.entry_cents, l.settle_cents, l.ev_cents, l.entry_source, l.seats,
       -- BOTH halves: a ticker is not a window, so a replay for one close must not
       -- light the flag on another ledger row that happens to share the ticker.
       exists (select 1 from desk_replay r
