@@ -28,7 +28,10 @@ export function parseKalshiResult(row: KalshiMarketRow): "UP" | "DOWN" | null {
   const r = String(row.result ?? "").toLowerCase();
   if (r === "yes") return "UP";
   if (r === "no") return "DOWN";
-  const v = Number(row.settlement_value);
+  // Number(null) and Number("") are 0: an absent value must stay unknown, not become DOWN.
+  const raw = row.settlement_value;
+  if (raw == null || (typeof raw === "string" && raw.trim() === "")) return null;
+  const v = Number(raw);
   if (v === 1) return "UP";
   if (v === 0) return "DOWN";
   return null;
