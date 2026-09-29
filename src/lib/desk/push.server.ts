@@ -8,6 +8,12 @@
  */
 import webpush from "web-push";
 import { settleWanted, type WatchdogPayload } from "./push-rules";
+import {
+  pushReceipt,
+  type PushDeliveryOutcome,
+  type PushDeliverySummary,
+  type PushEventKind,
+} from "./push-receipts";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -19,6 +25,7 @@ const TOKEN_RE = /^[A-Za-z0-9\-_]{16,64}$/;
 const ICON = "/__grok/icon-180.png";
 const MAX_FAILS = 8;
 const CONCURRENCY = 6;
+const BUILD_SHA = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT_SHA || "";
 
 type Keys = { publicKey: string; privateKey: string };
 let keys: Keys | null = null;
@@ -135,23 +142,62 @@ export type PushPayload = { title: string; body: string; tag: string; url?: stri
 
 type SubRow = { id: number; endpoint: string; p256dh: string; auth: string; token: string | null };
 
-async function sendOne(sub: SubRow, payload: PushPayload): Promise<"sent" | "gone" | "failed"> {
+type SendResult = { outcome: PushDeliveryOutcome; statusCode: number | null; errorCode: string | null };
+
+async function sendOne(sub: SubRow, payload: PushPayload): Promise<SendResult> {
   const k = await pushKeys();
   try {
-    await webpush.sendNotification(
+    const response = await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify({ icon: ICON, url: "/", ...payload }),
       { vapidDetails: { subject: SUBJECT, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: 900, urgency: "high" },
     );
-    return "sent";
+    return { outcome: "accepted", statusCode: response.statusCode ?? null, errorCode: null };
   } catch (err) {
     const status = (err as { statusCode?: number }).statusCode ?? 0;
-    return status === 404 || status === 410 ? "gone" : "failed";
+    const code = (err as { code?: unknown }).code;
+    return {
+      outcome: status === 404 || status === 410 ? "gone" : "failed",
+      statusCode: status || null,
+      errorCode: typeof code === "string" ? code : err instanceof Error ? err.name : "unknown",
+    };
   }
 }
 
+type PushEvent = { kind: PushEventKind; key: string };
+
+async function recordReceipt(
+  db: Awaited<ReturnType<typeof sql>>,
+  event: PushEvent,
+  sub: SubRow,
+  result: SendResult,
+  attemptedAtMs: number,
+): Promise<void> {
+  const r = pushReceipt({
+    eventKind: event.kind,
+    eventKey: event.key,
+    subscriptionId: sub.id,
+    outcome: result.outcome,
+    providerStatus: result.statusCode,
+    errorCode: result.errorCode,
+    buildSha: BUILD_SHA,
+    attemptedAtMs,
+  });
+  await db`
+    insert into desk_push_delivery_receipts
+      (event_kind, event_key, subscription_id, outcome, provider_status, error_code, build_sha, attempted_at)
+    values
+      (${r.event_kind}, ${r.event_key}, ${r.subscription_id}, ${r.outcome}, ${r.provider_status},
+       ${r.error_code}, ${r.build_sha}, ${r.attempted_at}::timestamptz)
+  `;
+}
+
 /** Send to every subscriber the picker returns a payload for. Never throws. */
-async function fanout(subs: SubRow[], pick: (sub: SubRow) => PushPayload | null): Promise<{ sent: number; gone: number; failed: number }> {
+async function fanout(
+  subs: SubRow[],
+  pick: (sub: SubRow) => PushPayload | null,
+  event: PushEvent,
+): Promise<{ sent: number; gone: number; failed: number }> {
   const out = { sent: 0, gone: 0, failed: 0 };
   const db = await sql();
   const queue = subs.slice();
@@ -161,14 +207,21 @@ async function fanout(subs: SubRow[], pick: (sub: SubRow) => PushPayload | null)
       if (!sub) return;
       const payload = pick(sub);
       if (!payload) continue;
-      const r = await sendOne(sub, payload);
-      out[r]++;
+      const attemptedAtMs = Date.now();
+      const result = await sendOne(sub, payload);
+      const bucket = result.outcome === "accepted" ? "sent" : result.outcome;
+      out[bucket]++;
       try {
-        if (r === "gone") await db`delete from desk_push_subs where id = ${sub.id}`;
-        else if (r === "sent") await db`update desk_push_subs set last_sent = now(), fails = 0 where id = ${sub.id}`;
+        if (result.outcome === "gone") await db`delete from desk_push_subs where id = ${sub.id}`;
+        else if (result.outcome === "accepted") await db`update desk_push_subs set last_sent = now(), fails = 0 where id = ${sub.id}`;
         else await db`update desk_push_subs set fails = fails + 1 where id = ${sub.id}`;
       } catch {
         /* bookkeeping only */
+      }
+      try {
+        await recordReceipt(db, event, sub, result, attemptedAtMs);
+      } catch {
+        /* evidence only; a receipt write can never change delivery */
       }
     }
   };
@@ -199,6 +252,33 @@ export async function pushRecipientCounts(): Promise<PushRecipientCounts> {
     from desk_push_subs
   `;
   return rows[0] ?? { call: 0, settle: 0, owner: 0 };
+}
+
+/** Durable provider-attempt evidence. This intentionally says "accepted",
+ * never "delivered": browser display and human receipt are outside our proof. */
+export async function pushDeliverySummary(): Promise<PushDeliverySummary> {
+  const db = await sql();
+  const rows = await db<PushDeliverySummary>`
+    with latest as (
+      select event_kind, event_key, outcome, attempted_at
+      from desk_push_delivery_receipts
+      order by attempted_at desc, id desc
+      limit 1
+    )
+    select
+      count(*) filter (where outcome = 'accepted' and attempted_at >= now() - interval '24 hours')::int as accepted_24h,
+      count(*) filter (where outcome = 'failed' and attempted_at >= now() - interval '24 hours')::int as failed_24h,
+      count(*) filter (where outcome = 'gone' and attempted_at >= now() - interval '24 hours')::int as gone_24h,
+      (select event_kind from latest) as last_event_kind,
+      (select event_key from latest) as last_event_key,
+      (select outcome from latest) as last_outcome,
+      (select attempted_at::text from latest) as last_attempted_at
+    from desk_push_delivery_receipts
+  `;
+  return rows[0] ?? {
+    accepted_24h: 0, failed_24h: 0, gone_24h: 0,
+    last_event_kind: null, last_event_key: null, last_outcome: null, last_attempted_at: null,
+  };
 }
 
 async function subsFor(kind: "call" | "settle" | "owner"): Promise<SubRow[]> {
@@ -251,7 +331,7 @@ export function notifyCall(lean: "UP" | "DOWN", cents: number, minsLeft: number,
       const subs = await subsFor("call");
       if (!subs.length) return;
       const payload = callPayload(lean, cents, minsLeft, ticker);
-      const r = await fanout(subs, () => payload);
+      const r = await fanout(subs, () => payload, { kind: "call", key: ticker });
       lastLog = `call ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {
       lastLog = `call push failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -271,7 +351,11 @@ export function notifySettle(
       const subs = await subsFor("settle");
       if (!subs.length) return;
       // Only windows that mattered to this browser: its own lock, or a chair call. Quiet windows stay quiet.
-      const r = await fanout(subs, (sub) => (settleWanted(sub, chair != null, humans) ? settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker) : null));
+      const r = await fanout(
+        subs,
+        (sub) => (settleWanted(sub, chair != null, humans) ? settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker) : null),
+        { kind: "settle", key: ticker },
+      );
       lastLog = `settle ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {
       lastLog = `settle push failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -285,7 +369,7 @@ export function notifyWatchdog(payload: WatchdogPayload): void {
     try {
       const subs = await subsFor("owner");
       if (!subs.length) return;
-      const r = await fanout(subs, () => payload);
+      const r = await fanout(subs, () => payload, { kind: "watchdog", key: payload.tag });
       lastLog = `watchdog: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {
       lastLog = `watchdog push failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -303,12 +387,18 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
   `;
   const sub = rows[0];
   if (!sub) return { ok: false, error: "this browser is not subscribed", status: 404 };
+  const attemptedAtMs = Date.now();
   const r = await sendOne(sub, { title: "Satoshi's Council", body: "Alerts are on. This is what a call looks like.", tag: "test", url: "/" });
-  if (r === "gone") {
+  try {
+    await recordReceipt(db, { kind: "test", key: `test-${sub.id}` }, sub, r, attemptedAtMs);
+  } catch {
+    /* evidence only */
+  }
+  if (r.outcome === "gone") {
     await db`delete from desk_push_subs where id = ${sub.id}`;
     return { ok: false, error: "the push service says this subscription is gone — turn alerts off and on again", status: 410 };
   }
-  if (r === "failed") return { ok: false, error: "the push service refused the test", status: 502 };
+  if (r.outcome === "failed") return { ok: false, error: "the push service refused the test", status: 502 };
   return { ok: true, prefs: { on_call: sub.on_call, on_settle: sub.on_settle, owner: sub.owner } };
 }
 
