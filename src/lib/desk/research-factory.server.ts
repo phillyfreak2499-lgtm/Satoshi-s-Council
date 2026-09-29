@@ -713,7 +713,13 @@ export const HANDLERS: Record<JobKind, Handler> = { window: windowHandler, rollu
 // Runner.
 // ---------------------------------------------------------------------------
 
-export type RunOptions = { sampler?: Sampler; handlers?: Partial<Record<JobKind, Handler>>; now?: () => number; env?: Record<string, string | undefined> };
+export type RunOptions = {
+  sampler?: Sampler;
+  handlers?: Partial<Record<JobKind, Handler>>;
+  now?: () => number;
+  env?: Record<string, string | undefined>;
+  onResourcePause?: (reasons: string[]) => void;
+};
 
 /**
  * Run one claimed job to an outcome. Returns the status it ended in. A
@@ -760,6 +766,7 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
     return "complete";
   } catch (error) {
     if (error instanceof ResourceGuardPause) {
+      opts.onResourcePause?.(error.reasons);
       await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), { guard: error.reasons.join(","), checkpoint, not_before_ms: now() + 60_000 }, now());
       return "skipped_resource_guard";
     }
@@ -782,6 +789,7 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
   st.lastTickAt = now();
   let ran = 0;
   let enqueued = 0;
+  let midJobPause: string[] | null = null;
   try {
     const sql = await getSql();
     const sampler = opts.sampler ?? (() => defaultSample(sql));
@@ -803,14 +811,23 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
     while (performance.now() - started < TICK_BUDGET_MS) {
       const job = await claim(sql, st.owner, now());
       if (!job) break;
-      const status = await runJob(sql, job, st.owner, opts);
+      const status = await runJob(sql, job, st.owner, {
+        ...opts,
+        onResourcePause: (reasons) => {
+          midJobPause = reasons;
+          opts.onResourcePause?.(reasons);
+        },
+      });
       ran += 1;
       if (status === "complete") st.completed += 1;
       if (status === "skipped_resource_guard") { st.paused += 1; break; }
       await yieldToLoop();
     }
     st.lastError = null;
-    if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
+    if (midJobPause) {
+      st.lastGuard = { run: false, reasons: midJobPause };
+      reportRuntime("paused", { reasons: midJobPause, phase: "job" });
+    } else if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
     else reportRuntime("running", { enqueued: 0, ran: 0 });
     return { ran, guard };
   } catch (error) {

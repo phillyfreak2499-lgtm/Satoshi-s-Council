@@ -135,7 +135,9 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   };
   const opts = () => ({ sampler: () => sampler(), handlers: { window: handler }, now: () => t0 });
   const job = await m.claim(sql, "p", t0);
-  assert.equal(await m.runJob(sql, job, "p", opts()), "skipped_resource_guard");
+  let pausedFor = [];
+  assert.equal(await m.runJob(sql, job, "p", { ...opts(), onResourcePause: (reasons) => { pausedFor = reasons; } }), "skipped_resource_guard");
+  assert.deepEqual(pausedFor, ["MEMORY"], "a mid-job governor pause is available to the runtime reporter");
   let row = (await jobsOf(sql))[0];
   assert.equal(row.status, "skipped_resource_guard");
   assert.equal(row.guard_reason, "MEMORY");
