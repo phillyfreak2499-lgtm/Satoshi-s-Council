@@ -79,7 +79,7 @@ export default function healthz() {
   // CPU, memory, event loop or DB pool.
   void import("../../src/lib/desk/research-factory.server")
     .then((m) => m.ensureResearchFactory())
-    .catch((error) => console.error("[research-factory] startup import failed", error));
+    .catch(() => console.error('[research-factory] {"status":"error","code":"STARTUP_IMPORT_FAILED"}'));
   // Production decision tape: env-gated, default OFF (RESEARCH_DECISION_TAPE_ENABLED=true).
   // Reads the frame the engine already published; writes only desk_research_decision_tape.
   void import("../../src/lib/desk/research-factory-tape.server")

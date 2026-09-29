@@ -193,7 +193,8 @@ test("a tick with a failed job reports error rather than healthy progress", asyn
   assert.equal(result.ran, 1);
   assert.equal((await jobsOf(sql))[0].status, "failed");
   assert.equal(m.researchFactoryHealth().error, "bounded boom");
-  assert.ok(lines.includes(m.researchFactoryLogLine("error", { message: "bounded boom", failed: 1 })));
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", { code: "JOB_FAILED", failed: 1 })));
+  assert.equal(lines.some((line) => line.includes("bounded boom")), false, "runtime logs do not expose the stored job error");
   assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
 });
 
@@ -228,11 +229,12 @@ test("a later resource pause cannot hide an earlier failure in the same tick", a
   assert.equal(m.researchFactoryHealth().error, "first job failed");
   assert.deepEqual(m.researchFactoryHealth().last_guard, { run: false, reasons: ["MEMORY"] });
   assert.ok(lines.includes(m.researchFactoryLogLine("error", {
-    message: "first job failed",
+    code: "JOB_FAILED",
     failed: 1,
     paused_reasons: ["MEMORY"],
     phase: "job",
   })));
+  assert.equal(lines.some((line) => line.includes("first job failed")), false, "combined failure/pause logs remain research-data free");
   assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
 });
 
@@ -401,9 +403,9 @@ function walk(dir, out = []) {
 test("rails: default OFF on a literal flag, kicked by healthz, writes only its own tables, no paid API, and production imports none of it", async (t) => {
   const m = await factory(t);
   assert.equal(m.researchFactoryLogLine("paused", { reasons: ["MEMORY"] }), '[research-factory] {"status":"paused","reasons":["MEMORY"]}');
-  assert.doesNotMatch(m.researchFactoryLogLine("error", { message: "database unavailable" }), /key|secret|token|payload/i, "runtime status has no credential or research payload fields");
+  assert.equal(m.researchFactoryLogLine("error", { code: "TICK_FAILED" }), '[research-factory] {"status":"error","code":"TICK_FAILED"}');
   for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(m.ensureResearchFactory({ RESEARCH_FACTORY_ENABLED: v }), "disabled", String(v));
-  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(error\) => console\.error\("\[research-factory\] startup import failed", error\)\);/);
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => console\.error\('\[research-factory\] \{"status":"error","code":"STARTUP_IMPORT_FAILED"\}'\)\);/);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",

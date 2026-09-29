@@ -838,7 +838,7 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
       st.lastError = lastJobError ?? `${failed} research job(s) failed`;
       if (midJobPause) st.lastGuard = { run: false, reasons: midJobPause };
       reportRuntime("error", {
-        message: st.lastError,
+        code: "JOB_FAILED",
         failed,
         ...(midJobPause ? { paused_reasons: midJobPause, phase: "job" } : {}),
       });
@@ -854,7 +854,7 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
     return { ran, guard };
   } catch (error) {
     st.lastError = error instanceof Error ? error.message : String(error);
-    reportRuntime("error", { message: st.lastError });
+    reportRuntime("error", { code: "TICK_FAILED" });
     return { ran, guard: st.lastGuard };
   } finally {
     st.busy = false;
