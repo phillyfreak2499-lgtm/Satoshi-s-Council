@@ -27,7 +27,7 @@
 import { takerFeeCents } from "./clock.ts";
 import { EVIDENCE_OF } from "./seats.ts";
 import type { SeatId } from "./types";
-import { FUNNEL, isDiagnosticOnly, type WindowFact } from "./research-factory-analysis.ts";
+import { FUNNEL, currentEvidenceScope, isDiagnosticOnly, type WindowFact } from "./research-factory-analysis.ts";
 import { brier, logLoss, mean, round, wilson } from "./research-factory.ts";
 import { TAPE_STAGES, type TapeEvent, type WindowTimeline } from "./research-factory-tape.ts";
 
@@ -271,7 +271,7 @@ export function survivalReport(windows: readonly TapeWindow[]): HonestyLabel & {
 const factStage = (f: Pick<WindowFact, "funnel_stage">) => (f.funnel_stage ? FUNNEL.indexOf(f.funnel_stage) : -1);
 
 export function stageUnlocks(facts: readonly WindowFact[], experiment: string, control = "CONTROL") {
-  const own = facts.filter((f) => f.experiment === experiment && f.observed && f.funnel_stage != null);
+  const own = currentEvidenceScope(facts).filter((f) => f.experiment === experiment && f.observed && f.funnel_stage != null);
   const ctl = new Map(own.filter((f) => f.arm === control).map((f) => [`${f.ticker}|${f.close_ms}`, f]));
   const arms = [...new Set(own.map((f) => f.arm))].filter((a) => a !== control).sort();
   return {

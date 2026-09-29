@@ -61,6 +61,34 @@ test("duplicate jobs are impossible: the same (kind, key) enqueues once, however
   assert.equal(rows.filter((r) => r.job_kind === "digest").length, 1);
 });
 
+test("derived-version replay gets new bounded jobs beside completed old jobs and never rewrites receipts", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const closeMs = Date.parse("2026-09-28T15:15:00Z");
+  const now = Date.parse("2026-09-28T16:00:00Z");
+  await seedWindow(sql, "KXBTC15M-A", closeMs);
+  const oldKey = `KXBTC15M-A|${closeMs}`;
+  await m.enqueue(sql, "window", oldKey, {}, EPOCH);
+  await sql`update desk_research_jobs set status = 'complete', checkpoint = '{"facts":true,"integrity":true}'::jsonb where job_key = ${oldKey}`;
+  const before = JSON.stringify(await sql`select * from desk_shadow_receipts order by arm, kind`);
+  await m.enqueueDue(sql, now);
+  await m.enqueueDue(sql, now);
+  const windows = (await jobsOf(sql)).filter((r) => r.job_kind === "window");
+  assert.equal(windows.length, 2, "the old completed job and one versioned replay job");
+  assert.equal(windows.find((r) => r.job_key === oldKey).status, "complete");
+  const next = windows.find((r) => r.job_key !== oldKey);
+  assert.match(next.job_key, /\|f2a2$/);
+  assert.deepEqual(next.checkpoint, {});
+  const claimed = await m.claim(sql, "version-replay", now);
+  assert.equal(claimed.job_key, next.job_key);
+  assert.equal(await m.runJob(sql, claimed, "version-replay", { sampler: calm, now: () => now }), "complete");
+  const facts = await sql`select distinct fact_version from desk_research_window_facts`;
+  const audits = await sql`select distinct auditor_version from desk_research_integrity`;
+  assert.deepEqual(facts.map((r) => r.fact_version), [2]);
+  assert.deepEqual(audits.map((r) => r.auditor_version), [2]);
+  assert.equal(JSON.stringify(await sql`select * from desk_shadow_receipts order by arm, kind`), before);
+});
+
 test("one job at a time: nothing is claimed while a live lease exists; a lapsed lease is reclaimed and resumes from its checkpoint; a completed job never runs again", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
@@ -250,13 +278,13 @@ test("the public HTTP path stays responsive: a rollup over thousands of windows 
   for (let i = 0; i < N; i += 1) for (const arm of arms) facts.push({ i, arm });
   // Bulk-insert synthetic facts and annotations directly (the rollup reads only these tables).
   await sql.query(`insert into desk_research_window_facts (ticker, close_time, experiment, arm, fact_version, replay_quality, observed, side, ask_cents, fee_cents, official_winner, funnel_stage, first_blocker, facts)
-    select 'T' || g, to_timestamp(${base / 1000} + g * 900), '${LOCKS}', a, 1, 'EXACT', true,
+    select 'T' || g, to_timestamp(${base / 1000} + g * 900), '${LOCKS}', a, 2, 'EXACT', true,
       case when g % 3 = 0 then 'UP' end, case when g % 3 = 0 then 85 end, case when g % 3 = 0 then 2 end, case when g % 2 = 0 then 'UP' else 'DOWN' end,
       case when g % 3 = 0 then 'SIMULATED_BOOKED' else 'SUPPORTERS' end, case when g % 3 = 0 then null else 'FAMILIES' end,
       jsonb_build_object('candidate_count', 1, 'recorded_side', 'UP', 'checks', '[]'::jsonb, 'candidate_seats', jsonb_build_array('STREAK'), 'context', jsonb_build_object('regime', 'r' || (g % 4)))
     from generate_series(0, ${N - 1}) g, unnest(array['${arms.join("','")}']) a`);
   await sql.query(`insert into desk_research_integrity (experiment, arm, ticker, close_time, kind, auditor_version, integrity_status)
-    select experiment, arm, ticker, close_time, 'fill', 1, 'CLEAN' from desk_research_window_facts`);
+    select experiment, arm, ticker, close_time, 'fill', 2, 'CLEAN' from desk_research_window_facts`);
   await m.enqueue(sql, "rollup", "load-test");
   // The assertion: MAIN-THREAD CPU time spent between two consecutive yields (governor checks).
   // That is exactly what holds the event loop, and unlike a wall-clock probe it is inflated neither
@@ -718,7 +746,7 @@ test("wick_shadow report: the rollup reports collection quality and the WICK com
 test("reports page: renders the stored reports from real SQL, read only", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
-  const put = (kind, key, payload) => sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values (${kind}, ${key}, 1, ${JSON.stringify(payload)}::jsonb)`;
+  const put = (kind, key, payload) => sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values (${kind}, ${key}, 2, ${JSON.stringify(payload)}::jsonb)`;
   await put("lifecycle", "latest", { rows: [{ experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE", arm: "CONTROL", status: "INSUFFICIENT_SAMPLE", promotion_eligible: false, current_sample: { observed_windows: 3, fills: 0, clean_settled_fills: 0, suspect_fills: 0, invalid_fills: 0 }, current_result: {}, matched_null_fav: {} }] });
   await put("wick_shadow", "latest", { h0: { verdict: "INSUFFICIENT_SAMPLE", clean_observations: 2, fires: 1, h0: { id: "WICK_EFFORT_RESULT_H0_V1", min_clean_observations: 300 } } });
   await put("daily_digest", "2026-09-26", { day: "2026-09-26" });
@@ -734,4 +762,19 @@ test("reports page: renders the stored reports from real SQL, read only", async 
   assert.ok(html.includes("Latest daily digest (2026-09-27)"), "the newest digest");
   assert.ok(html.includes("window") && html.includes("queued"), "job counts come from the queue");
   assert.equal(/<script/i.test(html), false);
+});
+
+test("current factory API/page never fall back to archived pooled reports before rebuild", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const payload = JSON.stringify({ marker: "LEGACY_POOLED_ECONOMICS_MUST_NOT_RENDER", rows: [] });
+  await sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values ('lifecycle', 'latest', 1, ${payload}::jsonb)`;
+  await sql`insert into desk_research_reports (report_kind, report_key, report_version, payload) values ('daily_digest', '2026-09-28', 1, ${payload}::jsonb)`;
+  const current = await m.researchFactoryReport("lifecycle", "latest", sql);
+  assert.deepEqual(current.reports, []);
+  assert.equal(current.report_state, "PENDING_CURRENT_VERSION_REBUILD");
+  const html = await m.researchReportsPage(sql, Date.parse("2026-09-29T01:30:00Z"));
+  assert.doesNotMatch(html, /LEGACY_POOLED_ECONOMICS_MUST_NOT_RENDER/);
+  assert.match(html, /pending rebuild/);
+  assert.equal((await sql`select count(*)::int as n from desk_research_reports where report_version = 1`)[0].n, 2, "archived reports are preserved");
 });

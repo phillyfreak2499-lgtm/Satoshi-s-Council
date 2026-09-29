@@ -4,6 +4,8 @@ import { feeCents } from "./fee-engine.ts";
 import { MID_RECOVERY_EXPERIMENT } from "./shadow-lab-mid-recovery.ts";
 import { MID_RECOVERY_LOCKS_EXPERIMENT } from "./shadow-lab-mid-recovery-locks.ts";
 import { MID_RECOVERY_LOCKS_V2_EXPERIMENT } from "./shadow-lab-mid-recovery-locks-v2.ts";
+import { V2_COHORT_ARMS, V2_EVALUATOR_REVISION } from "./mid-recovery-locks-v2-cohort.ts";
+import { stageUnlocks } from "./research-factory-insight.ts";
 import {
   DEFAULT_THRESHOLDS, KNOWN_EXPERIMENTS, RESEARCH_FACTORY, benjaminiHochberg, binomialUpperP, computeUtilization, ece, fillStats, governorDecision, thresholdsFromEnv, wilson,
   type ResourceSample,
@@ -13,7 +15,7 @@ import {
   type ReceiptRow, type WindowInput,
 } from "./research-factory-analysis.ts";
 import {
-  chokeAttribution, clean, counterfactualGates, lifecycle, matchedGrade, pocketScan,
+  chokeAttribution, clean, cohortCoverage, counterfactualGates, evidenceSafety, lifecycle, matchedGrade, pocketScan,
   type GradedFact,
 } from "./research-factory-reports.ts";
 
@@ -370,7 +372,7 @@ test("P1 (E1 family override): STREAK + STRIKE counted as two supporters is SUSP
   assert.equal(plain.reason_codes.includes("E1_FAMILY_SUPPORT_DOUBLE_COUNT"), false);
 });
 
-test("LOCKS V2 receipts: the P1 correction and the P2 stamp leave nothing for the auditor to flag", () => {
+test("LOCKS V2 receipts: P1/P2 corrections alone do not establish the corrected cohort", () => {
   const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
   const live = [{ seat: "STREAK", card_id: "STREAK.continue_young", original_status: "LIVE" as const }, { seat: "STRIKE", card_id: "STRIKE.itm_time", original_status: "LIVE" as const }, { seat: "CHAIN", card_id: "CHAIN.oi_with_price" }];
   const roster = live.map((c) => ({ card_id: c.card_id, seat: c.seat, evaluated_lean: "UP", evaluated_conf: 64, evaluated_health: "LIVE", selected_skill_used: "SIT", selected_forced_sit: false }));
@@ -378,10 +380,115 @@ test("LOCKS V2 receipts: the P1 correction and the P2 stamp leave nothing for th
   const rec = record({ arm: "CONTROL", experiment: V2, cands: live, roster, supporters: ["STRIKE", "CHAIN"], confirmed: true });
   (rec as Record<string, unknown>).capture_policy = P2_FIXED_POLICY;
   const n = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec, 85, "UP", { experiment: V2 })])), "CONTROL");
-  assert.equal(n.integrity_status, "CLEAN", String(n.reason_codes));
+  assert.equal(n.integrity_status, "UNVERIFIABLE", String(n.reason_codes));
+  assert.deepEqual(n.reason_codes, ["V2_COHORT_UNVERIFIABLE"]);
   assert.equal(RECOVERY_EXPERIMENTS.has(V2), true, "V2 receipts get the full recovery provenance audit");
   assert.equal(isDiagnosticOnly(V2, "COMBINED_DIAG"), true, "COMBINED_DIAG stays diagnostic-only in V2");
   // The same record under V1's identity would be a version mismatch, not silently accepted.
   const crossed = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec)])), "CONTROL");
   assert.ok(crossed.reason_codes.includes("EXPERIMENT_MISMATCH"), String(crossed.reason_codes));
+});
+
+function v2Receipts(revision: string | null = V2_EVALUATOR_REVISION): ReceiptRow[] {
+  const experiment = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const stamp = { ...(revision == null ? {} : { evaluator_revision: revision }), observer_session_start_ms: close - 1_800_000, capture_policy: P2_FIXED_POLICY };
+  return V2_COHORT_ARMS.map((arm) => fillReceipt(arm,
+    arm === "NULL_FAV_80" ? { ...stamp, experiment, checkpoint: 450 } : { ...record({ arm, experiment, confirmed: true }), ...stamp },
+    85, "UP", { experiment }));
+}
+
+test("factory V2 economics never pool old winning receipts with corrected losing receipts", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const graded = gradedWindows(3, (i) => v2Receipts(i === 0 ? null : V2_EVALUATOR_REVISION), (i) => i === 0 ? "UP" : "DOWN");
+  const before = JSON.stringify(graded);
+  const grade = matchedGrade(graded, V2);
+  assert.equal(grade.matched_windows, 2);
+  assert.equal(grade.matched_clean_windows, 2);
+  const bar = grade.matched_clean.find((a) => a.arm === "BAR_NO_SITMASS")!;
+  assert.equal(bar.stats.settled, 2);
+  assert.equal(bar.stats.wins, 0);
+  assert.equal(bar.stats.net_cents, -2 * (85 + feeCents(85)));
+  assert.ok(grade.unmatched.every((a) => a.observed_windows === 2), "unmatched cannot blend revisions either");
+  const row = lifecycle(graded).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!;
+  assert.equal(row.current_result.net_cents, bar.stats.net_cents);
+  assert.equal(row.current_sample.observed_windows, 2);
+  assert.equal(row.excluded_cohort_windows, 1);
+  assert.equal(row.evaluator_revision, V2_EVALUATOR_REVISION);
+  assert.ok(pocketScan(graded, V2, "BAR_NO_SITMASS").pockets.every((p) => p.stats.wins === 0));
+  assert.ok(counterfactualGates(graded, V2, "BAR_NO_SITMASS").every((c) => c.baseline.wins === 0 && c.windows_considered === 2));
+  assert.ok(stageUnlocks(graded, V2).arms.every((a) => a.matched_windows === 2));
+  assert.equal(chokeAttribution(graded, V2, "BAR_NO_SITMASS").rolling[0]!.n, 2);
+  const coverage = cohortCoverage(graded);
+  assert.equal(coverage.observed_windows, 3);
+  assert.equal(coverage.excluded_windows.length, 1);
+  assert.deepEqual(coverage.excluded_windows[0]!.reasons, ["LEGACY_UNSTAMPED"]);
+  const safety = evidenceSafety(graded, []).rows.find((r) => r.experiment === V2 && r.arm === "BAR_NO_SITMASS")!;
+  assert.equal(safety.fills, 3, "all observed fills remain visible for safety review");
+  assert.equal(safety.evidence_grade_fills, 2);
+  assert.equal(JSON.stringify(graded), before);
+  assert.equal(lifecycle(graded).find((l) => l.experiment === V2 && l.arm === "COMBINED_DIAG")!.status, "DIAGNOSTIC_ONLY");
+});
+
+test("factory V2 excludes incomplete, mixed, unknown, and restart-boundary windows but retains their reasons", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const cases = [
+    { reason: "INCOMPLETE_ARMS", rows: v2Receipts().slice(0, -1) },
+    { reason: "MIXED_REVISIONS", rows: v2Receipts().map((r, i) => i === 0 ? { ...r, payload: { ...r.payload, evaluator_revision: undefined } } : r) },
+    { reason: "MIXED_BUILDS", rows: v2Receipts().map((r, i) => i === 0 ? { ...r, build_sha: "another-build" } : r) },
+    { reason: "UNKNOWN_REVISION", rows: v2Receipts("FUTURE_UNKNOWN") },
+    { reason: "MISSING_SESSION_BOUNDARY", rows: v2Receipts().map((r) => ({ ...r, payload: { ...r.payload, observer_session_start_ms: undefined } })) },
+    { reason: "WINDOW_CROSSES_SESSION_BOUNDARY", rows: v2Receipts().map((r) => ({ ...r, payload: { ...r.payload, observer_session_start_ms: close - 899_999 } })) },
+  ];
+  for (const c of cases) {
+    const graded = gradedWindows(1, () => c.rows);
+    assert.equal(matchedGrade(graded, V2).matched_windows, 0, c.reason);
+    assert.equal(lifecycle(graded).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!.current_result.fills, 0, c.reason);
+    assert.ok(cohortCoverage(graded).excluded_windows[0]!.reasons instanceof Array);
+    assert.ok((cohortCoverage(graded).excluded_windows[0]!.reasons as string[]).includes(c.reason), c.reason);
+    assert.ok(graded.filter((f) => f.experiment === V2).every((f) => !clean(f)), c.reason);
+  }
+  const complete = gradedWindows(1, () => v2Receipts());
+  const staleFacts = complete.map((f) => ({ ...f, facts: {} }));
+  assert.equal(matchedGrade(staleFacts, V2).matched_windows, 0, "stale derived facts cannot bypass cohort metadata");
+});
+
+test("current V2 cohort membership never certifies candidate integrity", () => {
+  const rows = v2Receipts();
+  rows[1]!.payload = { ...rows[1]!.payload, recovery: { ...(rows[1]!.payload!.recovery as object), released: ["STREAK.continue_young", "CHAIN.oi_with_price", "DRIFT.aligned_3h"] } };
+  const graded = gradedWindows(1, () => rows);
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  assert.equal(cohortCoverage(graded).current_comparable_windows, 1);
+  assert.equal(matchedGrade(graded, V2).matched_clean_windows, 0);
+  assert.equal(lifecycle(graded).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!.current_result.fills, 0);
+});
+
+test("partly written V2 derived facts cannot enter economic comparisons despite complete raw metadata", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const complete = gradedWindows(1, () => v2Receipts());
+  const partial = complete.filter((f) => f.arm !== "NULL_FAV_80");
+  const before = JSON.stringify(partial);
+  assert.equal(matchedGrade(partial, V2).matched_windows, 0);
+  assert.equal(lifecycle(partial).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!.current_result.fills, 0);
+  assert.equal(lifecycle(partial).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!.excluded_cohort_windows, 1);
+  assert.equal(pocketScan(partial, V2, "BAR_NO_SITMASS").pockets.length, 0);
+  assert.ok(counterfactualGates(partial, V2, "BAR_NO_SITMASS").every((c) => c.baseline.fills === 0));
+  assert.equal(stageUnlocks(partial, V2).arms.length, 0);
+  const coverage = cohortCoverage(partial);
+  assert.equal(coverage.observed_windows, 1);
+  assert.equal(coverage.current_comparable_windows, 0);
+  assert.deepEqual(coverage.excluded_windows[0]!.reasons, ["INCOMPLETE_DERIVED_ARMS"]);
+  assert.equal(JSON.stringify(partial), before);
+});
+
+test("V2 auditor flags a released roster card that was never a candidate, preserving the original receipt", () => {
+  const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
+  const rec = record({ arm: "CONTROL", experiment: V2, released: ["STREAK.continue_young", "CHAIN.oi_with_price", "DRIFT.aligned_3h"], confirmed: true });
+  (rec as Record<string, unknown>).capture_policy = P2_FIXED_POLICY;
+  const before = JSON.stringify(rec);
+  const note = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", rec, 85, "UP", { experiment: V2 })])), "CONTROL");
+  assert.equal(note.integrity_status, "SUSPECT");
+  assert.ok(note.reason_codes.includes("RELEASED_WITHOUT_CANDIDATE"));
+  assert.equal(JSON.stringify(rec), before);
+  const old = statusOf(auditWindow(windowOf([fillReceipt("CONTROL", { ...rec, experiment: LOCKS, version: LOCKS })])), "CONTROL");
+  assert.equal(old.reason_codes.includes("RELEASED_WITHOUT_CANDIDATE"), false, "V1 history is not reclassified by this V2 rule");
 });

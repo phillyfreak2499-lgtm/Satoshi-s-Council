@@ -7,8 +7,9 @@ import {
 } from "./shadow-lab-mid-recovery-locks.ts";
 import {
   CapturePolicyMissing, E1_BOOK_DUPLICATE, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, REQUIRED_CAPTURE_POLICY, dedupeE1BookSupport, evaluateLocksV2,
-  type P1Trace,
+  summarizeLocksV2, type P1Trace,
 } from "./shadow-lab-mid-recovery-locks-v2.ts";
+import { V2_COHORT_ARMS, V2_EVALUATOR_REVISION, V2_EXPERIMENT_ID, V2_LEGACY_REVISION, partitionLocksV2Rows, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
 import { DEPLOYED_POLICY, reachableQuorum } from "./gate-vector.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
 import type { ChairResult, Learner, SeatId, SeatRow, Settings, Snapshot, Vote } from "./types";
@@ -94,6 +95,8 @@ test("identity: a new experiment and flag beside LOCKS V1, the same five arms, b
   assert.equal(X.id, "MID_RECOVERY_LOCKS_V2_INACTIVE");
   assert.notEqual(X.id, MID_RECOVERY_LOCKS_EXPERIMENT.id);
   assert.equal(X.version, 1);
+  assert.equal(X.evaluator_revision, V2_EVALUATOR_REVISION);
+  assert.deepEqual([...V2_COHORT_ARMS].sort(), Object.values(X.arms).sort());
   assert.equal(X.supersedes, MID_RECOVERY_LOCKS_EXPERIMENT.id);
   assert.equal(X.active_by_default, false);
   assert.equal(X.production_authority, "NONE");
@@ -211,4 +214,97 @@ test("isolation: no arm sees another arm's objects, and nothing handed in is mut
   assert.equal(JSON.stringify(i), before);
   assert.deepEqual(spy.project, [2, 2, 2, 2], "each arm's projection sees its own clean frame");
   assert.ok(spy.chair.every((c) => c.touched === undefined), "each arm's Chair sees its own learner");
+});
+
+const receiptWindow = (ticker: string, revision: string | null = V2_EVALUATOR_REVISION, build = "build-a"): LocksV2Row[] => V2_COHORT_ARMS.map((arm) => ({
+  experiment: V2_EXPERIMENT_ID, build_sha: build, arm, ticker, close_ms: now + 420_000,
+  kind: "no_fill", decided_ms: now, side: null, ask_cents: null, fee_cents: null, official_winner: "UP", net_cents: null,
+  payload: { experiment: V2_EXPERIMENT_ID, ...(revision == null ? {} : { evaluator_revision: revision, observer_session_start_ms: now - 900_000 }) },
+}));
+
+test("legacy-only V2 stays visible with its original timestamps but never enters corrected matched statistics", () => {
+  const rows = receiptWindow("legacy", null);
+  rows[0] = { ...rows[0]!, kind: "fill", side: "UP", ask_cents: 85, fee_cents: 1, net_cents: 14 };
+  const before = JSON.stringify(rows);
+  const summary = summarizeLocksV2(rows);
+  assert.equal(summary.windows, 1);
+  assert.equal(summary.cohorts.length, 1);
+  const old = summary.cohorts[0]!;
+  assert.equal(old.revision, V2_LEGACY_REVISION);
+  assert.equal(old.classification, "legacy_unstamped");
+  assert.equal(old.first_receipt_at, new Date(now).toISOString());
+  assert.equal(old.observed.arms.CONTROL.quality.fills, 1);
+  assert.equal(old.matched.windows, 0);
+  assert.equal(old.integrity_status, "NOT_EVALUATED");
+  assert.ok(summary.excluded_windows[0]!.reasons.includes("LEGACY_UNSTAMPED"));
+  assert.equal("arms" in summary, false, "no pooled headline across revisions");
+  assert.equal(JSON.stringify(rows), before, "original receipts are unchanged");
+});
+
+test("corrected complete five-arm windows share a semantic cohort across ordinary builds", () => {
+  const rows = [...receiptWindow("first"), ...receiptWindow("next", V2_EVALUATOR_REVISION, "build-b")];
+  const summary = summarizeLocksV2(rows);
+  assert.equal(summary.windows, 2);
+  assert.equal(summary.cohorts.length, 1, "routine builds do not reset the strategy");
+  const current = summary.cohorts[0]!;
+  assert.equal(current.classification, "current");
+  assert.deepEqual(current.build_shas, ["build-a", "build-b"]);
+  assert.equal(current.observed.windows, 2);
+  assert.equal(current.matched.windows, 2);
+  assert.equal(current.matched.arms.CONTROL.observed_windows, 2);
+  assert.equal(current.integrity_status, "NOT_EVALUATED", "a revision stamp cannot certify candidate integrity");
+  assert.deepEqual(summary.excluded_windows, []);
+});
+
+test("legacy and corrected economics never pool; mixed-revision windows cannot enter either matched comparison", () => {
+  const legacy = receiptWindow("old", null);
+  legacy[0] = { ...legacy[0]!, kind: "fill", side: "UP", ask_cents: 85, fee_cents: 1, net_cents: 14 };
+  const corrected = receiptWindow("new");
+  corrected[0] = { ...corrected[0]!, kind: "fill", side: "DOWN", ask_cents: 85, fee_cents: 1, net_cents: -86 };
+  const mixed = [...receiptWindow("crossed", null).slice(0, 2), ...receiptWindow("crossed").slice(2)];
+  const rows = [...legacy, ...corrected, ...mixed];
+  const partition = partitionLocksV2Rows(rows);
+  assert.equal(partition.cohorts.reduce((n, c) => n + c.rows.length, 0), rows.length, "every source row remains visible");
+  assert.ok(partition.excluded_windows.find((w) => w.ticker === "crossed")!.reasons.includes("MIXED_REVISIONS"));
+  const summary = summarizeLocksV2(rows);
+  const old = summary.cohorts.find((c) => c.classification === "legacy_unstamped")!;
+  const current = summary.cohorts.find((c) => c.classification === "current")!;
+  assert.equal(old.observed.arms.CONTROL.quality.net_cents, 14);
+  assert.equal(current.matched.arms.CONTROL.quality.net_cents, -86);
+  assert.equal(current.matched.windows, 1);
+  assert.equal(summary.windows, 3);
+});
+
+test("incomplete, unknown, mixed-build, and session-boundary windows remain explicit exclusions", () => {
+  const partial = receiptWindow("incomplete").slice(0, 4);
+  const intentions = receiptWindow("intention-only").map((r, i) => i === 0 ? { ...r, kind: "intention" as const } : r);
+  const mixedBuild = receiptWindow("mixed-build").map((r, i) => i === 0 ? { ...r, build_sha: "build-b" } : r);
+  const noBuild = receiptWindow("missing-build", V2_EVALUATOR_REVISION, "");
+  const unknownBuild = receiptWindow("unknown-build", V2_EVALUATOR_REVISION, "unknown");
+  const crosses = receiptWindow("crosses").map((r, i) => i === 0 ? { ...r, payload: { ...r.payload, observer_session_start_ms: now } } : r);
+  const missingSession = receiptWindow("missing-session").map((r) => ({ ...r, payload: { experiment: V2_EXPERIMENT_ID, evaluator_revision: V2_EVALUATOR_REVISION } }));
+  const unknown = receiptWindow("unknown", "A_FUTURE_REVISION");
+  const rows = [...partial, ...intentions, ...mixedBuild, ...noBuild, ...unknownBuild, ...crosses, ...missingSession, ...unknown];
+  const p = partitionLocksV2Rows(rows);
+  assert.equal(p.cohorts.reduce((n, c) => n + c.matched_rows.length, 0), 0);
+  assert.equal(p.cohorts.reduce((n, c) => n + c.rows.length, 0), rows.length);
+  for (const [ticker, reason] of [["incomplete", "INCOMPLETE_ARMS"], ["intention-only", "INCOMPLETE_TERMINAL_ARMS"], ["mixed-build", "MIXED_BUILDS"], ["missing-build", "MISSING_BUILD"], ["unknown-build", "MISSING_BUILD"], ["crosses", "WINDOW_CROSSES_SESSION_BOUNDARY"], ["missing-session", "MISSING_SESSION_BOUNDARY"], ["unknown", "UNKNOWN_REVISION"]] as const) {
+    assert.ok(p.excluded_windows.find((w) => w.ticker === ticker)!.reasons.includes(reason), `${ticker}: ${reason}`);
+  }
+});
+
+test("the V2 foreign-row guard rejects explicit foreign identities and unknown arms", () => {
+  const own = receiptWindow("own");
+  const bad: LocksV2Row[] = [
+    { ...own[0]!, experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id },
+    { ...own[0]!, payload: { ...own[0]!.payload, experiment: MID_RECOVERY_LOCKS_EXPERIMENT.id } },
+    { ...own[0]!, arm: "NOT_AN_ARM" },
+  ];
+  const summary = summarizeLocksV2([...own, ...bad]);
+  assert.equal(summary.foreign_rows, 3);
+  assert.equal(summary.windows, 1);
+  assert.equal(summary.cohorts[0]!.matched.windows, 0, "contradictory extra V2 receipts cannot be silently dropped to create a complete match");
+  assert.ok(summary.excluded_windows[0]!.reasons.includes("CONFLICTING_RECEIPT_IDENTITY"));
+  const onlyForeignExperiment = summarizeLocksV2([...own, bad[0]!]);
+  assert.equal(onlyForeignExperiment.cohorts[0]!.matched.windows, 1, "a genuinely foreign experiment cannot contaminate an otherwise complete V2 window");
 });

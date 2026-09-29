@@ -73,6 +73,7 @@ test("real Chair: the V2 path is LOCKS V1 plus only the P1 correction, on P2-gua
   assert.equal(m.REQUIRED_CAPTURE_POLICY, m.CAPTURE_POLICY, "V2 requires exactly the producer's P2 policy");
   for (const arm of ["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG"]) {
     const a = v2.arms[arm];
+    assert.ok(a.evaluation.recovery.released.every((id) => a.evaluation.candidates.some((c) => c.card_id === id)), `${arm}: released cards must be candidates`);
     assert.equal(a.capture_policy, "P2_EXPLOIT_GUARD_V1");
     assert.equal(a.experiment, "MID_RECOVERY_LOCKS_V2_INACTIVE");
     const p1 = a.intervention.e1_book_dedupe;
@@ -95,6 +96,35 @@ test("real Chair: the V2 path is LOCKS V1 plus only the P1 correction, on P2-gua
   assert.deepEqual(m.eligibleSupportRows(two, "UP").map((r) => r.seat), ["STREAK", "STRIKE", "CHAIN"], "input untouched");
   assert.deepEqual(m.eligibleSupportRows(out, "UP").map((r) => r.seat), ["STRIKE", "CHAIN"]);
   assert.deepEqual(trace, { streak_side: "UP", book_supporters: ["STRIKE"], applied: true });
+});
+
+test("real producer: V2 does not revive a selected roster vote forced to SIT outside candidate capture", async (t) => {
+  const m = await modules(t);
+  const learner = m.freshLearner();
+  let snap, frame, original;
+  for (const spot of [79_600, 79_900, 80_100, 80_400]) {
+    for (const ret15 of [-0.004, -0.001, 0.001, 0.004]) {
+      const probe = snapshot({ spot, strike: 80_000, ret15, secs_left: 300, mins_left: 5 });
+      const captured = m.runBotsWithEvaluatedCandidates(probe, learner);
+      const projected = m.projectInactiveE1Recovery(captured, learner);
+      if (projected.simulated.released.some((id) => !projected.candidates.some((c) => c.card_id === id))) {
+        snap = probe; frame = captured; original = projected; break;
+      }
+    }
+    if (snap) break;
+  }
+  assert.ok(snap && frame && original, "a producer-generated frame reproduces the V1 provenance defect");
+  const votes = m.runBots(snap, learner);
+  const chair = m.runChair(votes, snap, learner, m.DEFAULT_SETTINGS, "WAIT", []);
+  const before = JSON.stringify({ votes, chair, learner, snap });
+  const input = { snap, chair, learner, settings: m.DEFAULT_SETTINGS, call_log: [], audit: null, ready: true, start: now - 3_600_000, arms: blankArms() };
+  const v2 = m.evaluateLocksV2(input, realDeps(m));
+  for (const arm of ["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG"]) {
+    const recovery = v2.arms[arm].evaluation;
+    assert.ok(recovery.recovery.released.every((id) => recovery.candidates.some((c) => c.card_id === id)), arm);
+    assert.equal(recovery.recovery.released.includes("DRIFT.aligned_3h"), false, arm);
+  }
+  assert.equal(JSON.stringify({ votes, chair, learner, snap }), before, "production inputs remain identical");
 });
 
 // ---------------------------------------------------------------------------
@@ -141,7 +171,7 @@ function fakeSql() {
   };
   return { sql, calls };
 }
-const inserts = (calls) => calls.filter((c) => /^\s*insert into desk_shadow_receipts/.test(c.text)).map((c) => ({ experiment: c.values[0], arm: c.values[1], ticker: c.values[2], close: c.values[3], kind: c.values[4], payload: JSON.parse(c.values[18]) }));
+const inserts = (calls) => calls.filter((c) => /^\s*insert into desk_shadow_receipts/.test(c.text)).map((c) => ({ experiment: c.values[0], arm: c.values[1], ticker: c.values[2], close: c.values[3], kind: c.values[4], payload: JSON.parse(c.values[18]), build_sha: c.values[19] }));
 const engineFrame = (m, snap, learner) => {
   const votes = m.runBots(snap, learner);
   const chair = m.runChair(votes, snap, learner, m.DEFAULT_SETTINGS, "WAIT", []);
@@ -167,8 +197,10 @@ test("wiring and isolation: healthz kicks it fire-and-forget; no production modu
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/shadow-lab-mid-recovery\.server"\)\s*\.then\(\(m\) => m\.ensureMidRecoveryObserver\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   for (const f of walk("src/").concat(walk("server/"))) {
     if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f === "server/routes/research/mid-recovery-locks-v2.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery-locks")) continue;
-    assert.ok(!read(f).includes("mid-recovery-locks"), `${f} imports a LOCKS experiment`);
+    assert.ok(!read(f).replaceAll("mid-recovery-locks-v2-cohort", "provenance-leaf").includes("mid-recovery-locks"), `${f} imports a LOCKS experiment`);
   }
+  const cohortLeaf = codeOf("src/lib/desk/mid-recovery-locks-v2-cohort.ts").replace(/^import type .*$/gm, "");
+  assert.doesNotMatch(cohortLeaf, /^\s*import\b|process\.env|Date\.now\(|noteCall\(/m, "factory imports only the pure provenance classifier, never a runtime evaluator");
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "support-eligibility.ts", "floor-policy.ts", "fee-engine.ts", "call-recovery-candidate.ts", "persist.ts"]) {
     assert.doesNotMatch(read(`src/lib/desk/${prod}`), /MID_RECOVERY_LOCKS|mid-recovery-locks|shadow-lab-mid-recovery/, `${prod} knows nothing of the experiment`);
   }
@@ -210,6 +242,8 @@ test("in band, all five arms record under their own experiment on the same windo
     ["NULL_FAV_80", "no_fill"], ["CONTROL", "no_fill"], ["BAR_NO_SITMASS", "no_fill"], ["SUPPORT_UNCAL_E1", "no_fill"], ["COMBINED_DIAG", "no_fill"],
   ]);
   assert.ok(rows.every((r) => r.experiment === "MID_RECOVERY_LOCKS_V2_INACTIVE"), "never a V1 row");
+  assert.ok(rows.every((r) => r.payload.evaluator_revision === "V2_CANDIDATE_PROVENANCE_V1"), "one revision stamp covers NULL no-fill and every grace finalization");
+  assert.ok(rows.every((r) => typeof r.payload.observer_session_start_ms === "number"), "the observer boundary is carried by every arm");
   for (const r of rows.slice(1)) {
     assert.equal(r.payload.capture_policy, "P2_EXPLOIT_GUARD_V1", "every record carries the producer's P2 guard");
     assert.equal(typeof r.payload.intervention.e1_book_dedupe.applied, "boolean", "and the P1 trace");
@@ -269,4 +303,84 @@ test("clean session/window boundary: the window open at boot is skipped, the nex
   assert.ok(rows.length >= 5, `the fresh window records: ${rows.map((r) => r.arm).join(",")}`);
   assert.ok(rows.every((r) => r.ticker === nextTicker), "only the fresh window");
   assert.deepEqual([...new Set(rows.map((r) => r.arm))].sort(), ["BAR_NO_SITMASS", "COMBINED_DIAG", "CONTROL", "NULL_FAV_80", "SUPPORT_UNCAL_E1"]);
+  assert.ok(rows.every((r) => r.payload.observer_session_start_ms === now), "all five arms preserve the original session boundary");
+  assert.ok(rows.every((r) => r.payload.evaluator_revision === "V2_CANDIDATE_PROVENANCE_V1"));
+});
+
+test("actual receipt writer stamps NULL fill, recovered intentions/fills and in-band finalization", async (t) => {
+  const m = await modules(t);
+  const { sql, calls } = fakeSql();
+  let snap = snapshot({ as_of: now, close_time: now + 450_000, mins_left: 7.5, secs_left: 450,
+    yes_ask: 85, yes_bid: 84, no_ask: 16, no_bid: 15 });
+  let fill = true;
+  const evaluation = () => ({
+    experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE",
+    null_fav: { eligible: true, side: "UP", ask_cents: 85 },
+    arms: Object.fromEntries(["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG"].map((arm) => [arm, {
+      arm, experiment_version: 1, evaluator_revision: "V2_CANDIDATE_PROVENANCE_V1", promotion_eligible: false,
+      intervention: {}, capture_policy: "P2_EXPLOIT_GUARD_V1",
+      evaluation: { confirmation: { watch: null }, flags: { funnel_stage: fill ? "simulated_booked" : "observed", funnel_stage_index: fill ? 9 : 0 },
+        recovered: { eligible: fill, side: fill ? "UP" : null, lean: fill ? "UP" : "WAIT" }, simulated: { booked: fill } },
+    }])),
+  });
+  const mod = loader({
+    "@/lib/db": { getSql: async () => sql },
+    "./server-engine": { getServerFrame: async () => ({ snap, chair: {}, learner: {}, settings: {}, call_log: [], selective: { ready: true, start: now - 3_600_000 } }) },
+    "./shadow-lab-mid-recovery-locks-v2.ts": { ...m, evaluateLocksV2: evaluation },
+  }, { env: { RENDER_GIT_COMMIT: "candidate-build" } })(OBSERVER);
+  await mod.midRecoveryLocksV2Tick(now + 1);
+  assert.equal(mod.midRecoveryLocksV2Health().error, null);
+  const filled = inserts(calls);
+  assert.equal(filled.filter((r) => r.kind === "fill").length, 5);
+  assert.equal(filled.filter((r) => r.kind === "intention").length, 4);
+  fill = false;
+  snap = { ...snap, ticker: "NEXT-NOFILL", close_time: now + 900_000, as_of: now + 720_000, secs_left: 180, mins_left: 3 };
+  await mod.midRecoveryLocksV2Tick(snap.as_of);
+  assert.equal(mod.midRecoveryLocksV2Health().error, null);
+  const nofills = inserts(calls).filter((r) => r.ticker === "NEXT-NOFILL");
+  assert.equal(nofills.length, 4, "each recovered arm finalizes in-band at T-3");
+  assert.ok(nofills.every((r) => r.kind === "no_fill" && r.payload.receipt_only !== true));
+  assert.ok(inserts(calls).every((r) => r.payload.evaluator_revision === "V2_CANDIDATE_PROVENANCE_V1" && r.build_sha === "candidate-build"));
+});
+
+test("revision-scoped risk history excludes legacy fills and keeps the same revision across routine builds", async () => {
+  const calls = [];
+  const base = { ticker: "current", close_ms: now - 60_000, decided_ms: now - 300_000, side: "UP", ask_cents: 85, official_winner: "UP" };
+  const sql = async (strings, ...values) => {
+    calls.push({ text: strings.join("?"), values });
+    return [{ ...base, evaluator_revision: "V2_CANDIDATE_PROVENANCE_V1" }, { ...base, ticker: "legacy", evaluator_revision: null }, { ...base, ticker: "future", evaluator_revision: "FUTURE" }];
+  };
+  const mod = loader({ "@/lib/db": { getSql: async () => sql } })(OBSERVER);
+  const rows = await mod.locksV2ArmCalls(sql, "CONTROL", now);
+  assert.deepEqual(Array.from(rows, (r) => r.ticker), ["current"]);
+  assert.equal(rows[0].settle, 100);
+  assert.match(calls[0].text, /payload->>'evaluator_revision' = \?/);
+  assert.equal(calls[0].values[2], "V2_CANDIDATE_PROVENANCE_V1");
+  assert.doesNotMatch(calls[0].text, /build_sha/, "a routine deployment does not reset same-revision risk");
+});
+
+test("protected report preserves the original first receipt and returns separate revision summaries with real foreign-row defense", async () => {
+  const armIds = ["CONTROL", "BAR_NO_SITMASS", "SUPPORT_UNCAL_E1", "COMBINED_DIAG", "NULL_FAV_80"];
+  const source = (ticker, at, revision, build) => armIds.map((arm) => ({
+    experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE", build_sha: build, arm, ticker, close_ms: String(at + 420_000), kind: "no_fill", decided_ms: String(at),
+    side: null, ask_cents: null, fee_cents: null, official_winner: "UP", net_cents: null,
+    payload: { experiment: "MID_RECOVERY_LOCKS_V2_INACTIVE", ...(revision ? { evaluator_revision: revision, observer_session_start_ms: at - 900_000 } : {}) },
+  }));
+  const rows = [...source("legacy", now - 900_000, null, "old-build"), ...source("corrected", now, "V2_CANDIDATE_PROVENANCE_V1", "new-build")];
+  rows.push({ ...rows[0], experiment: "MID_RECOVERY_LOCKS_V1_INACTIVE" });
+  const queries = [];
+  const sql = async (strings, ...values) => { queries.push({ text: strings.join("?"), values }); return rows; };
+  const mod = loader({ "@/lib/db": { getSql: async () => sql } })(OBSERVER);
+  const before = JSON.stringify(rows);
+  const report = await mod.midRecoveryLocksV2Report();
+  assert.equal(report.first_receipt_at, new Date(now - 900_000).toISOString());
+  assert.equal(report.summary.windows, 2);
+  assert.equal(report.summary.foreign_rows, 1);
+  assert.equal(report.summary.cohorts.length, 2);
+  assert.equal(report.summary.cohorts.find((c) => c.classification === "legacy_unstamped").matched.windows, 0);
+  assert.equal(report.summary.cohorts.find((c) => c.classification === "current").matched.windows, 1);
+  assert.equal("arms" in report.summary, false);
+  assert.match(queries[0].text, /select experiment, build_sha, arm/);
+  assert.equal(queries[0].values[0], "MID_RECOVERY_LOCKS_V2_INACTIVE");
+  assert.equal(JSON.stringify(rows), before, "the report cannot rewrite evidence");
 });

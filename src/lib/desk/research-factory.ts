@@ -22,9 +22,9 @@ export const RESEARCH_FACTORY = Object.freeze({
   /** At most one job runs at a time, in this process and (by lease) across processes. */
   max_concurrent_jobs: 1,
   /** Versions of the derived rows; a new version writes new rows beside the old ones. */
-  fact_version: 1,
-  auditor_version: 1,
-  report_version: 1,
+  fact_version: 2,
+  auditor_version: 2,
+  report_version: 2,
 } as const);
 
 /**

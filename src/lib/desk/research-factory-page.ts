@@ -80,6 +80,8 @@ function healthSection(o: Obj): string {
   const jobs = arr(o.jobs).map((j) => { const x = obj(j) ?? {}; return [cell(x.job_kind), badge(x.status, x.status === "failed" ? "bad" : x.status === "complete" ? "good" : "plain"), fmt(x.n)]; });
   const failures = arr(o.recent_failures).map((j) => { const x = obj(j) ?? {}; return [cell(x.job_kind), cell(x.job_key), fmt(x.attempts), cell(x.error), cell(x.updated_at)]; });
   return `<section><h2>Collectors and factory</h2>
+${o.report_state === "PENDING_CURRENT_VERSION_REBUILD" ? `<p class="muted">Current report version ${esc(o.report_version)} is pending rebuild. Earlier stored reports are archived and are not current evidence.</p>` : ""}
+${obj(o.rebuild_scope) ? `<p class="muted">${cell(obj(o.rebuild_scope)?.note)}</p>` : ""}
 ${table(["component", "switch", "state", "written", "last error"], rows, "no health reported")}
 ${guard ? `<p class="muted">last resource guard: ${cell(guard)}</p>` : ""}
 <h3>Jobs</h3>${table(["kind", "status", "count"], jobs, "no jobs yet")}
@@ -106,7 +108,7 @@ function lifecycleSection(p: Obj | null): string {
     const ci = obj(res.win_rate_ci95);
     const nf = obj(x.matched_null_fav) ?? {};
     return [
-      cell(x.experiment), `<b>${cell(x.arm)}</b>`, badge(x.status, toneOf(x.status)), badge(x.promotion_eligible ? "eligible" : "no", x.promotion_eligible ? "good" : "plain"),
+      `${cell(x.experiment)}${x.evaluator_revision ? `<br><span class="muted">${cell(x.evaluator_revision)} · ${fmt(x.excluded_cohort_windows)} earlier/boundary windows excluded</span>` : ""}`, `<b>${cell(x.arm)}</b>`, badge(x.status, toneOf(x.status)), badge(x.promotion_eligible ? "eligible" : "no", x.promotion_eligible ? "good" : "plain"),
       fmt(s.observed_windows), fmt(s.fills), fmt(s.clean_settled_fills), fmt(s.suspect_fills), fmt(s.invalid_fills),
       res.win_rate_pct == null ? "—" : `${fmt(res.win_rate_pct)}%${ci ? ` <span class="muted">[${fmt(ci.lo)}–${fmt(ci.hi)}]</span>` : ""}`,
       res.breakeven_win_rate_pct == null ? "—" : `${fmt(res.breakeven_win_rate_pct)}%`, fmt(res.net_cents), fmt(nf.net_cents),

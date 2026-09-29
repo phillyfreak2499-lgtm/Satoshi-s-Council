@@ -12,13 +12,14 @@ import { DEPLOYED_POLICY } from "./gate-vector.ts";
 import { e1FamilyOf } from "./shadow-arms.ts";
 import type { SeatId } from "./types";
 import {
-  FUNNEL, evidenceEligible, isDiagnosticOnly,
+  FUNNEL, currentEvidenceCohort, currentEvidenceScope, evidenceEligible, isDiagnosticOnly,
   type FunnelStage, type IntegrityStatus, type WindowFact,
 } from "./research-factory-analysis.ts";
 import {
   KNOWN_EXPERIMENTS, benjaminiHochberg, binomialUpperP, computeUtilization, fillStats, round, sum,
   type Fill, type FillStats,
 } from "./research-factory.ts";
+import { V2_EVALUATOR_REVISION, V2_LEGACY_REVISION } from "./mid-recovery-locks-v2-cohort.ts";
 
 const MID_RECOVERY_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_v1;
 const MID_RECOVERY_LOCKS_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_locks_v1;
@@ -39,6 +40,28 @@ export const clean = (f: GradedFact): boolean => (isProduction(f) ? f.replay_qua
 const fillOf = (f: GradedFact): Fill | null =>
   f.side && f.ask_cents != null ? { side: f.side, ask_cents: f.ask_cents, fee_cents: f.fee_cents ?? 0, winner: f.official_winner, close_ms: f.close_ms } : null;
 const stageIndex = (s: FunnelStage | null) => (s ? FUNNEL.indexOf(s) : -1);
+
+export function cohortCoverage(all: readonly GradedFact[]) {
+  const own = all.filter((f) => f.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id && f.observed);
+  const windows = new Map<string, GradedFact[]>();
+  const comparable = new Set(currentEvidenceScope(own).map(winKey));
+  for (const f of own) { const k = winKey(f); windows.set(k, [...(windows.get(k) ?? []), f]); }
+  const details = [...windows.entries()].map(([window, fs]) => {
+    const c = facts(fs[0]!).v2_cohort as Obj | undefined;
+    return {
+      window, ticker: fs[0]!.ticker, close_ms: fs[0]!.close_ms,
+      revisions: c?.revisions ?? [V2_LEGACY_REVISION], build_shas: c?.build_shas ?? [],
+      arms: fs.map((f) => f.arm).sort(), comparable: comparable.has(window),
+      reasons: [...(Array.isArray(c?.reasons) ? c.reasons : ["MISSING_DERIVED_COHORT_METADATA"]), ...(fs.every(currentEvidenceCohort) && !comparable.has(window) ? ["INCOMPLETE_DERIVED_ARMS"] : [])],
+    };
+  }).sort((a, b) => a.close_ms - b.close_ms || a.ticker.localeCompare(b.ticker));
+  return {
+    experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, current_revision: V2_EVALUATOR_REVISION,
+    observed_windows: details.length, current_comparable_windows: details.filter((w) => w.comparable).length,
+    excluded_windows: details.filter((w) => !w.comparable),
+    rule: "Factory V2 economics use only complete current-revision windows with one known build and a complete observer session. Legacy, unknown, mixed, and incomplete windows remain visible here. Cohort membership does not certify CLEAN integrity, settlement, execution, or promotion. Original receipts remain unchanged.",
+  };
+}
 
 export const CONTROL_ARMS: ReadonlySet<string> = new Set(["NULL_FAV_80", "CONTROL", "BASELINE", "FLOOR"]);
 export const MIN_SETTLED_FOR_CLAIM = 30;
@@ -70,6 +93,7 @@ export type ExperimentGrade = {
   /** Each arm over its own observed windows: NOT a like-for-like comparison. */
   unmatched: ArmGrade[];
   note: string;
+  cohort_coverage?: ReturnType<typeof cohortCoverage>;
 };
 
 function roleOf(experiment: string, arm: string): ArmGrade["role"] {
@@ -92,9 +116,11 @@ function gradeArm(experiment: string, arm: string, rows: readonly GradedFact[], 
 }
 
 /** The window sets a matched comparison is built on: computed once, then graded one arm at a time. */
-export type MatchedSets = { experiment: string; keys: string[]; byArm: Map<string, Map<string, GradedFact>>; matched: string[]; matchedClean: string[] };
+export type MatchedSets = { experiment: string; keys: string[]; byArm: Map<string, Map<string, GradedFact>>; matched: string[]; matchedClean: string[]; cohort_coverage?: ReturnType<typeof cohortCoverage> };
 
 export function matchedSets(all: readonly GradedFact[], experiment: string): MatchedSets {
+  const coverage = experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id ? cohortCoverage(all) : undefined;
+  all = currentEvidenceScope(all);
   const own = all.filter((f) => f.experiment === experiment && f.observed);
   const windows = new Set(own.map(winKey));
   const prod = all.filter((f) => isProduction(f) && windows.has(winKey(f)));
@@ -108,7 +134,7 @@ export function matchedSets(all: readonly GradedFact[], experiment: string): Mat
   const keys = [...byArm.keys()].sort();
   const matched = [...windows].filter((w) => keys.every((k) => byArm.get(k)!.has(w))).sort();
   const matchedClean = matched.filter((w) => keys.every((k) => { const f = byArm.get(k)!.get(w)!; return isDiagnosticOnly(f.experiment, f.arm) || clean(f); }));
-  return { experiment, keys, byArm, matched, matchedClean };
+  return { experiment, keys, byArm, matched, matchedClean, ...(coverage ? { cohort_coverage: coverage } : {}) };
 }
 
 export const MATCHED_LABEL = "MATCHED: identical window IDs, all integrity statuses";
@@ -132,6 +158,7 @@ export function assembleGrade(sets: MatchedSets, parts: ReadonlyArray<ReturnType
   return {
     experiment: sets.experiment, arms: sets.keys, matched_windows: sets.matched.length, matched_clean_windows: sets.matchedClean.length,
     matched: parts.map((p) => p.matched), matched_clean: parts.map((p) => p.matched_clean), unmatched: parts.map((p) => p.unmatched), note: MATCHED_NOTE,
+    ...(sets.cohort_coverage ? { cohort_coverage: sets.cohort_coverage } : {}),
   };
 }
 
@@ -190,6 +217,7 @@ export function breakdownKeys(f: GradedFact): Record<string, string[]> {
 }
 
 export function chokeAttribution(all: readonly GradedFact[], experiment: string, arm: string): ChokeReport {
+  all = currentEvidenceScope(all);
   const rows = all.filter((f) => f.experiment === experiment && f.arm === arm && f.observed && f.funnel_stage != null).sort((a, b) => b.close_ms - a.close_ms);
   const blockerOf = (f: GradedFact) => (f.funnel_stage === "SIMULATED_BOOKED" ? "BOOKED" : f.first_blocker ?? "UNKNOWN");
   const dist = (xs: readonly GradedFact[]) => tally(xs.map(blockerOf)).map(([stage, n]) => ({ stage, n, pct: pct(n, xs.length) }));
@@ -263,6 +291,7 @@ export type Pocket = {
 export type PocketReport = { experiment: string; arm: string; tests: number; fdr_q: number; pockets: Pocket[]; caution: string; hypothesis_kind: "EXPLORATORY"; variants_tested: number };
 
 export function pocketScan(all: readonly GradedFact[], experiment: string, arm: string, q = 0.1): PocketReport {
+  all = currentEvidenceScope(all);
   const mine = all.filter((f) => f.experiment === experiment && f.arm === arm && f.observed);
   const nullByWin = new Map(all.filter((f) => f.experiment === experiment && f.arm === "NULL_FAV_80").map((f) => [winKey(f), f]));
   const pockets: Pocket[] = [];
@@ -341,6 +370,7 @@ function required(f: GradedFact) {
 }
 
 export function counterfactualGates(all: readonly GradedFact[], experiment: string, arm: string): Counterfactual[] {
+  all = currentEvidenceScope(all);
   const rows = all.filter((f) => f.experiment === experiment && f.arm === arm && f.observed && f.replay_quality !== "UNAVAILABLE" && facts(f).checks != null);
   const population = `${experiment}/${arm}: windows with a stored evaluation record and an official settlement (${rows.length})`;
   const nullByWin = new Map(all.filter((f) => f.experiment === experiment && f.arm === "NULL_FAV_80").map((f) => [winKey(f), f]));
@@ -445,6 +475,8 @@ export const LIFECYCLE_REGISTRY: readonly LifecycleSpec[] = Object.freeze([
 ]);
 
 export type LifecycleRow = LifecycleSpec & {
+  evaluator_revision: string | null;
+  excluded_cohort_windows: number;
   status: LifecycleStatus;
   promotion_eligible: boolean;
   flag_for_human_review: boolean;
@@ -462,6 +494,10 @@ export function lifecycle(all: readonly GradedFact[]): LifecycleRow[] {
 
 /** One registry row's lifecycle; the rollup builds these one per governed unit. */
 export function lifecycleRow(all: readonly GradedFact[], spec: LifecycleSpec): LifecycleRow {
+  const scoped = currentEvidenceScope(all);
+  const excluded = all.filter((f) => f.experiment === spec.experiment && f.arm === spec.arm && f.observed).length
+    - scoped.filter((f) => f.experiment === spec.experiment && f.arm === spec.arm && f.observed).length;
+  all = scoped;
   {
     const mine = all.filter((f) => f.experiment === spec.experiment && f.arm === spec.arm && f.observed);
     const counts: Record<IntegrityStatus, number> = { CLEAN: 0, SUSPECT: 0, INVALID: 0, UNVERIFIABLE: 0 };
@@ -491,6 +527,8 @@ export function lifecycleRow(all: readonly GradedFact[], spec: LifecycleSpec): L
     const first = mine.length ? Math.min(...mine.map((f) => f.decided_ms ?? f.close_ms)) : null;
     return {
       ...spec, status, promotion_eligible: eligible, flag_for_human_review: eligible && status === "PROMISING",
+      evaluator_revision: spec.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id ? V2_EVALUATOR_REVISION : null,
+      excluded_cohort_windows: excluded,
       start_boundary: first == null ? null : new Date(first).toISOString(), integrity: counts,
       current_sample: { observed_windows: mine.length, fills: fills.length, clean_settled_fills: stats.settled, suspect_fills: suspect, invalid_fills: invalid },
       current_result: stats, matched_null_fav: matchedNull, reasons,
@@ -562,6 +600,8 @@ export function utilization(jobs: readonly JobTelemetry[], sinceMs: number, nowM
 const MILESTONES = [25, 50, 100, 250, 500] as const;
 
 export function dailyDigest(all: readonly GradedFact[], dayStartMs: number, dayEndMs: number, integrityToday: ReadonlyArray<{ status: IntegrityStatus; codes: readonly string[] }>, extras: { lifecycle: LifecycleRow[]; choke: ChokeReport[]; utilization: ReturnType<typeof utilization> }) {
+  const coverage = cohortCoverage(all);
+  all = currentEvidenceScope(all);
   const today = all.filter((f) => f.close_ms >= dayStartMs && f.close_ms < dayEndMs);
   const before = all.filter((f) => f.close_ms < dayStartMs);
   const windows = new Set(today.filter((f) => !isProductionAny(f) || isProduction(f)).map(winKey));
@@ -579,6 +619,7 @@ export function dailyDigest(all: readonly GradedFact[], dayStartMs: number, dayE
   });
   return {
     day: { from: new Date(dayStartMs).toISOString(), to: new Date(dayEndMs).toISOString() },
+    v2_cohort_coverage: coverage,
     windows_observed: { n: windows.size, population: "distinct settled windows with any fact" },
     clean_matched_windows: { by_experiment: matched, population: "identical window IDs across every arm of the experiment and production" },
     production_calls: { n: prodFills.length, stats: fillStats(prodFills.map(fillOf).filter((x): x is Fill => x != null)), population: "official ledger (research-valid view)" },

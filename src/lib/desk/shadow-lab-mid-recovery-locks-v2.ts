@@ -1,11 +1,11 @@
 /**
  * MID_RECOVERY_LOCKS_V2_INACTIVE — LOCKS V1 with both evidence-integrity
- * defects corrected from day one (pure).
+ * corrections and an explicit candidate-provenance revision (pure).
  *
  * WHY A NEW VERSION. LOCKS V1 keeps running unchanged; its receipts stay
  * exactly as recorded and are annotated by the research auditor. V2 asks the
- * same question with the same five arms, but on a path where neither known
- * defect can produce a result, so its receipts can be clean evidence:
+ * same question with the same five arms. The original V2 receipts are retained
+ * as a legacy cohort; the candidate-only correction starts a distinct revision.
  *
  *   P1  The Chair's supporter count is per seat. Under E1, STREAK
  *       (continue_young reads the YES book) is a book read, so STREAK beside
@@ -19,8 +19,9 @@
  *       untouched, the family gate is unchanged (STREAK was already a book
  *       read there), and nothing happens when there is no overlap.
  *   P2  The producer's captured frame must carry capture_policy
- *       P2_EXPLOIT_GUARD_V1 (bots.ts): an exploit-rejected card never reaches
- *       recovery. A frame without it is not evaluated.
+ *       P2_EXPLOIT_GUARD_V1 (bots.ts). A frame without it is not evaluated.
+ *       The stamp identifies the capture path; it is not standalone proof of
+ *       LIVE-candidate eligibility or an independent integrity verdict.
  *
  * ARMS, INTERVENTIONS, FLOOR, GATES, CONFIRMATION, FEES: exactly LOCKS V1's.
  * CONTROL is V1's CONTROL plus the P1 correction; the single-lock arms and
@@ -31,8 +32,9 @@
  */
 import type { EvaluatedCandidateFrame } from "./bots";
 import type { RecoveryProjection } from "./call-recovery-candidate";
-import { e1FamilyOf } from "./shadow-arms.ts";
-import { evaluateMidRecovery, type MidRecoveryDeps, type MidRecoveryInput, type MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
+import { e1FamilyOf, unmuteRoster } from "./shadow-arms.ts";
+import { evaluateMidRecovery, type MidRecoveryDeps, type MidRecoveryInput } from "./shadow-lab-mid-recovery.ts";
+import { V2_EVALUATOR_REVISION, V2_EXPERIMENT_ID, partitionLocksV2Rows, type LocksV2Row, type V2CohortClass, type V2ExcludedWindow } from "./mid-recovery-locks-v2-cohort.ts";
 import {
   LOCKS_ARMS, LOCKS_INTERVENTIONS, LOCKS_PROMOTION_ELIGIBLE, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_EXPERIMENT, chairWithoutSitMass, summarizeLocks,
   waiveUncalibratedE1Support,
@@ -48,8 +50,9 @@ export const E1_BOOK_DUPLICATE = "E1_BOOK_DUPLICATE";
 
 export const MID_RECOVERY_LOCKS_V2_EXPERIMENT = Object.freeze({
   ...MID_RECOVERY_LOCKS_EXPERIMENT,
-  id: "MID_RECOVERY_LOCKS_V2_INACTIVE",
+  id: V2_EXPERIMENT_ID,
   version: 1,
+  evaluator_revision: V2_EVALUATOR_REVISION,
   supersedes: MID_RECOVERY_LOCKS_EXPERIMENT.id,
   corrections: Object.freeze({
     p1_e1_book_supporter_dedupe: "STREAK beside another E1 book-family supporter of the same side counts once",
@@ -110,7 +113,20 @@ export function locksV2ArmDeps(base: MidRecoveryDeps, arm: LocksRecoveredArm, fr
     projectInactiveE1Recovery: (f, learner) => {
       const projection: RecoveryProjection = base.projectInactiveE1Recovery(f, learner);
       candidateSeats = projection.candidates.map((c) => c.seat);
-      return projection;
+      const candidateIds = projection.candidates.map((c) => c.card_id);
+      // Preserve the existing V1-equivalent path whenever its release set is
+      // already candidate-only. This also keeps the experiment's other arm
+      // behavior byte-identical on unaffected frames.
+      if (projection.simulated.released.every((id) => candidateIds.includes(id))) return projection;
+      // The shared V1 projection can also unmute a selected roster vote that
+      // was forced to SIT and never captured as a candidate. Rebuild only V2's
+      // simulated votes from the source frame and its recorded candidates.
+      const bySeat = new Map(projection.candidates.map((c) => [c.seat, c.vote]));
+      const projectedVotes = f.votes.map((vote) => bySeat.get(vote.seat) ?? vote);
+      return {
+        ...projection,
+        simulated: unmuteRoster(projectedVotes, learner, candidateIds),
+      };
     },
     runChair: (...args) => {
       let chair = iv.bar_no_sitmass ? chairWithoutSitMass(base.runChair, args, trace.bar_no_sitmass) : base.runChair(...args);
@@ -127,6 +143,7 @@ export function locksV2ArmDeps(base: MidRecoveryDeps, arm: LocksRecoveredArm, fr
 export type LocksV2ArmEvaluation = {
   experiment: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
   experiment_version: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT.version;
+  evaluator_revision: typeof V2_EVALUATOR_REVISION;
   arm: LocksRecoveredArm;
   promotion_eligible: boolean;
   intervention: LocksV2Intervention;
@@ -155,6 +172,7 @@ export function evaluateLocksV2Arm(arm: LocksRecoveredArm, input: LocksInput, fr
   const evaluation = evaluateMidRecovery(armInput, locksV2ArmDeps(deps, arm, frame, trace));
   return {
     experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, experiment_version: MID_RECOVERY_LOCKS_V2_EXPERIMENT.version, arm,
+    evaluator_revision: V2_EVALUATOR_REVISION,
     promotion_eligible: LOCKS_PROMOTION_ELIGIBLE[arm], intervention: trace, capture_policy: REQUIRED_CAPTURE_POLICY, evaluation,
   };
 }
@@ -167,14 +185,56 @@ export function evaluateLocksV2(input: LocksInput, deps: MidRecoveryDeps): Locks
   return { experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, arms, null_fav: structuredClone(arms.CONTROL.evaluation.null_fav) };
 }
 
-export type LocksV2Summary = Omit<LocksSummary, "experiment" | "experiment_version"> & {
+type V2ArmStatistics = Omit<LocksSummary, "experiment" | "experiment_version" | "foreign_rows">;
+export type LocksV2Summary = {
   experiment: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
   experiment_version: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT.version;
+  evaluator_revision: typeof V2_EVALUATOR_REVISION;
+  windows: number;
+  foreign_rows: number;
+  cohorts: Array<{
+    revision: string;
+    classification: V2CohortClass;
+    build_shas: string[];
+    first_receipt_at: string | null;
+    last_receipt_at: string | null;
+    /** Every row in this revision, including incomplete and boundary windows. Diagnostic only. */
+    observed: V2ArmStatistics;
+    /** Only complete five-arm terminal windows with a verified revision/session boundary. */
+    matched: V2ArmStatistics;
+    integrity_status: "NOT_EVALUATED";
+  }>;
+  excluded_windows: V2ExcludedWindow[];
+  note: string;
 };
 
-/** V1's summary over V2's own rows (the recorder reads only V2 receipts). */
-export function summarizeLocksV2(rows: readonly MidRecoveryRow[]): LocksV2Summary {
-  return { ...summarizeLocks(rows), experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, experiment_version: MID_RECOVERY_LOCKS_V2_EXPERIMENT.version };
+/** No pooled economics: each semantic revision has observed and matched populations. */
+export function summarizeLocksV2(rows: readonly LocksV2Row[]): LocksV2Summary {
+  const partition = partitionLocksV2Rows(rows);
+  const statistics = (own: readonly LocksV2Row[]): V2ArmStatistics => {
+    // The shared arithmetic belongs to LOCKS V1 and checks that identity. Strip
+    // only this query's already-validated experiment tag from a copy; never
+    // change a receipt or pass foreign rows through the V1 filter.
+    const bare = own.map(({ experiment: _experiment, ...row }) => row);
+    const { experiment: _id, experiment_version: _version, foreign_rows: _foreign, ...summary } = summarizeLocks(bare);
+    return summary;
+  };
+  const stamp = (xs: readonly LocksV2Row[], last: boolean) => {
+    const times = xs.map((r) => r.decided_ms).filter(Number.isFinite);
+    return times.length ? new Date(last ? Math.max(...times) : Math.min(...times)).toISOString() : null;
+  };
+  return {
+    experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, experiment_version: MID_RECOVERY_LOCKS_V2_EXPERIMENT.version,
+    evaluator_revision: V2_EVALUATOR_REVISION, windows: partition.windows, foreign_rows: partition.foreign_rows,
+    cohorts: partition.cohorts.map((c) => ({
+      revision: c.revision, classification: c.classification, build_shas: c.build_shas,
+      first_receipt_at: stamp(c.rows, false), last_receipt_at: stamp(c.rows, true),
+      observed: statistics(c.rows), matched: statistics(c.matched_rows), integrity_status: "NOT_EVALUATED",
+    })),
+    excluded_windows: partition.excluded_windows,
+    note: "Revisions are never pooled. Observed includes historical, incomplete and boundary receipts. Matched is current-revision, complete terminal five-arm coverage only; it is not an integrity CLEAN verdict, settlement guarantee or promotion evidence by itself. Original receipts and first_receipt_at are preserved.",
+  };
 }
 
 export { LOCKS_ARMS, LOCKS_RECOVERED_ARMS };
+export { V2_EVALUATOR_REVISION, V2_EXPERIMENT_ID, V2_LEGACY_REVISION, partitionLocksV2Rows } from "./mid-recovery-locks-v2-cohort.ts";
