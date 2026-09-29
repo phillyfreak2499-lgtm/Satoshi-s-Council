@@ -15,6 +15,12 @@ test("recovery pilot is explicit, bounded, source-labelled and outside the Chair
   assert.match(pilot, /RECOVERY_PILOT_MAX_ASK = 94\.9/);
   assert.match(pilot, /pilot\.losses >= 1/);
   assert.match(engine, /source: RECOVERY_PILOT_SOURCE/);
+  assert.match(engine, /observeChairWaitMilestone\(snap, chair, chairOnlyCalls\(e\.callLog\)\)/,
+    "pilot positions cannot emit Chair milestones");
+  assert.match(engine, /const booked = chairOnlyCalls\(e\.callLog\)\.find/,
+    "pilot positions cannot become Chair settlement copy or exit-policy observations");
+  assert.match(engine, /recovery_pilot_enabled: recoveryPilotEnabled\(\)/,
+    "activation state is persisted with the boundary");
   assert.match(engine, /await noteCall[\s\S]*recoveryPilotDecision[\s\S]*noteRecoveryPilotCall/,
     "the canonical Chair book gets first refusal");
   assert.match(migration, /and entry_source is null[\s\S]*and entry_lean in/,

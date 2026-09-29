@@ -28,7 +28,7 @@ test("server observer records the directional event without changing the engine 
   const engine = read("src/lib/desk/server-engine.ts");
   assert.match(observer, /maybeChairDirectionalEvent\(snap, callLog\)/);
   assert.match(observer, /safeRecord\(maybeChairDirectionalEvent/);
-  assert.match(engine, /void observeChairWaitMilestone\(snap, chair, e\.callLog\)\.catch\(/);
+  assert.match(engine, /void observeChairWaitMilestone\(snap, chair, chairOnlyCalls\(e\.callLog\)\)\.catch\(/);
   assert.doesNotMatch(engine, /chamber-directional/);
   assert.doesNotMatch(engine, /recordSystemEvent/);
 });

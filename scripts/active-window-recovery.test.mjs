@@ -82,6 +82,11 @@ function harness(options = {}) {
   };
   const context = vm.createContext({
     ...reliability, ...active, Date, JSON, Promise, SELECTIVE_ENTRY_ID: 'ENTRY_SELECTIVE_V2',
+    recoveryPilotEnabled: () => false,
+    recoveryPilotStartAtBoot: (now, enabled, previousEnabled, previousStart) =>
+      enabled && previousEnabled && Number.isFinite(previousStart) && previousStart > 0
+        ? previousStart
+        : Math.ceil(now / 900000) * 900000,
     sql: async () => db,
     freshLearner: () => ({ window_memory: {}, settle_tape: [] }),
     freshWatchdog: () => ({}),
