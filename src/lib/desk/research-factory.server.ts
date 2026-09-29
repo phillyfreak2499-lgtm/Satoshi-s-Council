@@ -834,13 +834,18 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
       if (status === "skipped_resource_guard") { st.paused += 1; break; }
       await yieldToLoop();
     }
-    if (midJobPause) {
+    if (failed > 0) {
+      st.lastError = lastJobError ?? `${failed} research job(s) failed`;
+      if (midJobPause) st.lastGuard = { run: false, reasons: midJobPause };
+      reportRuntime("error", {
+        message: st.lastError,
+        failed,
+        ...(midJobPause ? { paused_reasons: midJobPause, phase: "job" } : {}),
+      });
+    } else if (midJobPause) {
       st.lastError = null;
       st.lastGuard = { run: false, reasons: midJobPause };
       reportRuntime("paused", { reasons: midJobPause, phase: "job" });
-    } else if (failed > 0) {
-      st.lastError = lastJobError ?? `${failed} research job(s) failed`;
-      reportRuntime("error", { message: st.lastError, failed });
     } else {
       st.lastError = null;
       if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);

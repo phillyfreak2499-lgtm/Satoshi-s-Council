@@ -197,6 +197,45 @@ test("a tick with a failed job reports error rather than healthy progress", asyn
   assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
 });
 
+test("a later resource pause cannot hide an earlier failure in the same tick", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "A-FAIL|1", {}, EPOCH);
+  await m.enqueue(sql, "window", "B-PAUSE|2", {}, EPOCH);
+  let samples = 0;
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: async () => {
+      samples += 1;
+      return samples === 1 ? calm() : pressure();
+    },
+    handlers: {
+      window: async (ctx) => {
+        if (ctx.job.job_key === "A-FAIL|1") throw new Error("first job failed");
+        await ctx.unit();
+      },
+    },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 2);
+  assert.deepEqual((await jobsOf(sql)).map((row) => row.status), ["failed", "skipped_resource_guard"]);
+  assert.equal(m.researchFactoryHealth().error, "first job failed");
+  assert.deepEqual(m.researchFactoryHealth().last_guard, { run: false, reasons: ["MEMORY"] });
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", {
+    message: "first job failed",
+    failed: 1,
+    paused_reasons: ["MEMORY"],
+    phase: "job",
+  })));
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
+});
+
 // ---------------------------------------------------------------------------
 // End to end on seeded research data.
 // ---------------------------------------------------------------------------
