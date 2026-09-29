@@ -44,7 +44,7 @@ import {
   type TapeWindow,
 } from "./research-factory-insight.ts";
 import {
-  LIFECYCLE_REGISTRY, assembleGrade, isProductionAny, chokeAttribution, counterfactualGates, dailyDigest, evidenceSafety, gradeArmOn, lifecycle, lifecycleRow, matchedSets, pocketScan, utilization,
+  LIFECYCLE_REGISTRY, assembleGrade, cohortCoverage, isProductionAny, chokeAttribution, counterfactualGates, dailyDigest, evidenceSafety, gradeArmOn, lifecycle, lifecycleRow, matchedSets, pocketScan, utilization,
   type GradedFact, type JobTelemetry,
 } from "./research-factory-reports.ts";
 
@@ -147,10 +147,11 @@ export async function enqueue(sql: Sql, kind: JobKind, key: string, params: Reco
 
 /** Enqueue every settled window with research receipts, plus this hour's rollup and yesterday's digest, all due from `nowMs`. Idempotent. */
 export async function enqueueDue(sql: Sql, nowMs: number): Promise<number> {
+  const revision = `f${RESEARCH_FACTORY.fact_version}a${RESEARCH_FACTORY.auditor_version}`;
   const rows = await sql<{ n: number }>`
     with due as (
       insert into desk_research_jobs (job_kind, job_key, priority, params, not_before)
-      select 'window', l.ticker || '|' || ((extract(epoch from l.close_time) * 1000)::bigint)::text, ${PRIORITY.window},
+      select 'window', l.ticker || '|' || ((extract(epoch from l.close_time) * 1000)::bigint)::text || '|' || ${revision}, ${PRIORITY.window},
         jsonb_build_object('ticker', l.ticker, 'close_ms', (extract(epoch from l.close_time) * 1000)::bigint), ${new Date(nowMs).toISOString()}::timestamptz
       from desk_ledger_research l
       where l.close_time > ${new Date(nowMs - LOOKBACK_DAYS * 86_400_000).toISOString()}::timestamptz
@@ -161,8 +162,9 @@ export async function enqueueDue(sql: Sql, nowMs: number): Promise<number> {
       returning 1)
     select count(*)::int as n from due`;
   let n = Number(rows[0]?.n ?? 0);
-  if (await enqueue(sql, "rollup", new Date(nowMs).toISOString().slice(0, 13), {}, nowMs)) n += 1;
-  if (await enqueue(sql, "digest", chicagoDay(nowMs - 86_400_000), {}, nowMs)) n += 1;
+  if (await enqueue(sql, "rollup", `${new Date(nowMs).toISOString().slice(0, 13)}|r${RESEARCH_FACTORY.report_version}`, {}, nowMs)) n += 1;
+  const day = chicagoDay(nowMs - 86_400_000);
+  if (await enqueue(sql, "digest", `${day}|r${RESEARCH_FACTORY.report_version}`, { day }, nowMs)) n += 1;
   return n;
 }
 
@@ -602,6 +604,7 @@ export const rollupHandler: Handler = async (ctx) => {
   };
   const experiments = [...new Set(graded.filter((f) => !isProductionAny(f)).map((f) => f.experiment))].sort();
   const tested = RECOVERED_ARMS.filter(([e, a]) => !isDiagnosticOnly(e, a));
+  await step("v2_cohort_coverage", async () => cohortCoverage(graded));
   // One arm per governed unit: the matched sets are built once per experiment, then each arm is graded on them.
   await step("matched_grade", async () => {
     const out = [];
@@ -662,7 +665,7 @@ export const rollupHandler: Handler = async (ctx) => {
 
 /** Phase 9: the day's digest (America/Chicago day). */
 export const digestHandler: Handler = async (ctx) => {
-  const day = ctx.job.job_key;
+  const day = String(ctx.job.params.day ?? ctx.job.job_key);
   const start = chicagoMidnight(day);
   if (!Number.isFinite(start)) throw new Error(`bad digest key ${day}`);
   const next = new Date(start + 26 * 3_600_000);
@@ -811,13 +814,16 @@ export async function researchFactoryReport(kind?: string, key = "latest", sqlIn
   const jobs = await sql<{ job_kind: string; status: string; n: number }>`select job_kind, status, count(*)::int as n from desk_research_jobs group by 1, 2 order by 1, 2`;
   const failures = await sql<Record<string, unknown>>`select job_kind, job_key, attempts, error, updated_at from desk_research_jobs where status = 'failed' order by updated_at desc limit 10`;
   const reports = kind
-    ? await sql<Record<string, unknown>>`select report_kind, report_key, report_version, payload, build_sha, created_at from desk_research_reports where report_kind = ${kind} and report_key = ${key} order by report_version desc limit 1`
-    : await sql<Record<string, unknown>>`select report_kind, report_key, report_version, created_at from desk_research_reports order by created_at desc limit 50`;
+    ? await sql<Record<string, unknown>>`select report_kind, report_key, report_version, payload, build_sha, created_at from desk_research_reports where report_kind = ${kind} and report_key = ${key} and report_version = ${RESEARCH_FACTORY.report_version} limit 1`
+    : await sql<Record<string, unknown>>`select report_kind, report_key, report_version, created_at from desk_research_reports where report_version = ${RESEARCH_FACTORY.report_version} order by created_at desc limit 50`;
   const { decisionTapeHealth } = await import("./research-factory-tape.server.ts");
   const { bookDepthHealth } = await import("./book-depth.server.ts");
   const { tradeFlowHealth } = await import("./trade-flow.server.ts");
   const { wickShadowHealth } = await import("./wick-effort.server.ts");
-  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), wick_shadow: wickShadowHealth(), jobs, recent_failures: failures, reports, authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
+  return { health: researchFactoryHealth(), decision_tape: decisionTapeHealth(), book_depth: bookDepthHealth(), trade_flow: tradeFlowHealth(), wick_shadow: wickShadowHealth(), jobs, recent_failures: failures, reports, report_version: RESEARCH_FACTORY.report_version, report_state: reports.length ? "CURRENT_VERSION_AVAILABLE" : "PENDING_CURRENT_VERSION_REBUILD",
+    rebuild_scope: { fact_version: RESEARCH_FACTORY.fact_version, auditor_version: RESEARCH_FACTORY.auditor_version, report_version: RESEARCH_FACTORY.report_version, lookback_days: LOOKBACK_DAYS,
+      note: "Current reports cover the current derived versions and may be partial while governed replay jobs remain pending. Automatic replay covers the last 45 days; earlier derived versions and older history remain archived, not included as current all-time evidence." },
+    authority: { production_authority: "NONE", auto_promotion: false, paid_apis: "none" } };
 }
 
 /** The admin reports page: the overview plus the latest version of every report and the newest daily digest, rendered as static HTML. */
@@ -826,10 +832,10 @@ export async function researchReportsPage(sqlIn?: Sql, nowMs: number = Date.now(
   const overview = await researchFactoryReport(undefined, "latest", sql);
   const latest = await sql<StoredReport>`
     select distinct on (report_kind) report_kind, report_key, report_version, payload, build_sha, created_at::text as created_at
-    from desk_research_reports where report_key = 'latest' order by report_kind, report_version desc`;
+    from desk_research_reports where report_key = 'latest' and report_version = ${RESEARCH_FACTORY.report_version} order by report_kind, report_version desc`;
   const digest = await sql<StoredReport>`
     select report_kind, report_key, report_version, payload, build_sha, created_at::text as created_at
-    from desk_research_reports where report_kind = 'daily_digest' order by report_key desc, report_version desc limit 1`;
+    from desk_research_reports where report_kind = 'daily_digest' and report_version = ${RESEARCH_FACTORY.report_version} order by report_key desc, report_version desc limit 1`;
   const { reports: _list, ...rest } = overview;
   void _list;
   return renderResearchPage({ generated_at: new Date(nowMs).toISOString(), overview: rest, latest, digest: digest[0] ?? null });

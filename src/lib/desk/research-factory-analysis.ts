@@ -36,6 +36,7 @@ import { DEPLOYED_POLICY } from "./gate-vector.ts";
 import { E1_ROSTER_CARDS, e1FamilyOf } from "./shadow-arms.ts";
 import type { SeatId } from "./types";
 import { KNOWN_EXPERIMENTS, netOf, RESEARCH_FACTORY } from "./research-factory.ts";
+import { partitionLocksV2Rows, V2_COHORT_ARMS, V2_EVALUATOR_REVISION } from "./mid-recovery-locks-v2-cohort.ts";
 
 const MID_RECOVERY_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_v1;
 const MID_RECOVERY_LOCKS_EXPERIMENT = KNOWN_EXPERIMENTS.mid_recovery_locks_v1;
@@ -288,13 +289,24 @@ export function windowFacts(input: WindowInput): WindowFact[] {
   const out: WindowFact[] = [];
   const ctx = contextOf(input);
   const winner = input.ledger?.winner ?? null;
+  const v2Rows = input.receipts.filter((r) => r.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id && r.ticker === input.ticker && r.close_ms === input.close_ms);
+  const v2 = partitionLocksV2Rows(v2Rows);
+  const v2Excluded = v2.excluded_windows.find((w) => w.ticker === input.ticker && w.close_ms === input.close_ms);
+  const revisions = v2.cohorts.map((c) => c.revision).sort();
+  const current = v2.cohorts.find((c) => c.revision === V2_EVALUATOR_REVISION);
+  const v2Cohort = {
+    revisions, revision: revisions.length === 1 ? revisions[0] : null,
+    matched_eligible: !v2Excluded && (current?.matched_rows.length ?? 0) > 0,
+    reasons: v2Excluded?.reasons ?? [],
+    build_shas: [...new Set(v2Rows.map((r) => r.build_sha))].sort(),
+  };
   const groups = new Map<string, ReceiptRow[]>();
   for (const r of input.receipts) { if (r.ticker !== input.ticker || r.close_ms !== input.close_ms) continue; const k = `${r.experiment}|${r.arm}`; groups.set(k, [...(groups.get(k) ?? []), r]); }
   const base = (experiment: string, arm: string): WindowFact => ({
     ticker: input.ticker, close_ms: input.close_ms, experiment, arm, fact_version: RESEARCH_FACTORY.fact_version, replay_quality: "UNAVAILABLE", quality_reasons: [],
     experiment_version: experimentVersion(experiment), source_build_sha: null, decided_ms: null, observed: false, terminal_kind: null, side: null, ask_cents: null, fee_cents: null,
     official_winner: winner, net_cents: null, production_lean: input.ledger?.chair_lean ?? null, production_booked: input.ledger ? input.ledger.entry_cents != null : null,
-    funnel_stage: null, first_blocker: null, blockers: [], facts: { context: ctx, candidate_replay: "UNAVAILABLE: producer inputs (candles, OI/funding series, learner state) are not stored" },
+    funnel_stage: null, first_blocker: null, blockers: [], facts: { context: ctx, candidate_replay: "UNAVAILABLE: producer inputs (candles, OI/funding series, learner state) are not stored", ...(experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id ? { v2_cohort: v2Cohort } : {}) },
   });
 
   for (const [key, rows] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -442,10 +454,12 @@ export const REASONS = Object.freeze({
   BUILD_CROSSED_WINDOW: "SUSPECT",
   LATE_WRITE: "SUSPECT",
   REDERIVATION_MISMATCH: "SUSPECT",
+  V2_COHORT_BOUNDARY: "SUSPECT",
   // UNVERIFIABLE: the record lacks what the check needs.
   NO_EVALUATION_RECORD: "UNVERIFIABLE",
   MISSING_PROVENANCE: "UNVERIFIABLE",
   NOT_SETTLED: "UNVERIFIABLE",
+  V2_COHORT_UNVERIFIABLE: "UNVERIFIABLE",
 } as const);
 export type ReasonCode = keyof typeof REASONS;
 const RANK: Record<IntegrityStatus, number> = { CLEAN: 0, UNVERIFIABLE: 1, SUSPECT: 2, INVALID: 3 };
@@ -468,6 +482,7 @@ export function auditWindow(input: WindowInput): Annotation[] {
   const out: Annotation[] = [];
   const winner = input.ledger?.winner ?? null;
   const counters = new Map(input.counters.map((c) => [c.id, c]));
+  const v2 = partitionLocksV2Rows(input.receipts.filter((r) => r.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id));
   // Window-level context per experiment: builds seen and directional sides committed.
   const builds = new Map<string, Set<string>>();
   const sides = new Map<string, Set<string>>();
@@ -481,6 +496,13 @@ export function auditWindow(input: WindowInput): Annotation[] {
     const codes: ReasonCode[] = [];
     const details: Obj = {};
     const p = r.payload ?? {};
+    if (r.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id) {
+      const excluded = v2.excluded_windows.find((w) => w.ticker === r.ticker && w.close_ms === r.close_ms);
+      if (excluded) {
+        codes.push(excluded.revisions.length > 1 || excluded.build_shas.length > 1 ? "V2_COHORT_BOUNDARY" : "V2_COHORT_UNVERIFIABLE");
+        details.v2_cohort_exclusion = excluded;
+      }
+    }
     // Identity: the record must be about the row it sits in.
     if (r.ticker !== input.ticker || r.close_ms !== input.close_ms) codes.push("IDENTITY_MISMATCH");
     const pt = str(p.ticker), pc = num(p.close_time);
@@ -602,6 +624,28 @@ export function auditWindow(input: WindowInput): Annotation[] {
  * arm wrote in the window is CLEAN, the replay is EXACT, and the arm is not
  * diagnostic-only. Everything else may be reported, labelled, never promoted.
  */
-export function evidenceEligible(fact: Pick<WindowFact, "experiment" | "arm" | "replay_quality">, statuses: readonly IntegrityStatus[]): boolean {
-  return fact.replay_quality === "EXACT" && statuses.length > 0 && statuses.every((s) => s === "CLEAN") && !isDiagnosticOnly(fact.experiment, fact.arm);
+export function currentEvidenceCohort(fact: Pick<WindowFact, "experiment" | "facts">): boolean {
+  if (fact.experiment !== MID_RECOVERY_LOCKS_V2_EXPERIMENT.id) return true;
+  const cohort = obj(fact.facts.v2_cohort);
+  return cohort?.revision === V2_EVALUATOR_REVISION && cohort.matched_eligible === true;
+}
+
+/** A failed append can leave only some derived facts: raw completeness alone does not establish report completeness. */
+export function currentEvidenceScope<T extends WindowFact>(all: readonly T[]): T[] {
+  const armsByWindow = new Map<string, Set<string>>();
+  for (const f of all) {
+    if (f.experiment !== MID_RECOVERY_LOCKS_V2_EXPERIMENT.id || !f.observed || !currentEvidenceCohort(f)) continue;
+    const key = `${f.ticker}|${f.close_ms}`;
+    const arms = armsByWindow.get(key) ?? new Set<string>();
+    arms.add(f.arm); armsByWindow.set(key, arms);
+  }
+  return all.filter((f) => {
+    if (f.experiment !== MID_RECOVERY_LOCKS_V2_EXPERIMENT.id) return true;
+    const arms = armsByWindow.get(`${f.ticker}|${f.close_ms}`);
+    return currentEvidenceCohort(f) && arms?.size === V2_COHORT_ARMS.length && V2_COHORT_ARMS.every((arm) => arms.has(arm));
+  });
+}
+
+export function evidenceEligible(fact: Pick<WindowFact, "experiment" | "arm" | "replay_quality" | "facts">, statuses: readonly IntegrityStatus[]): boolean {
+  return currentEvidenceCohort(fact) && fact.replay_quality === "EXACT" && statuses.length > 0 && statuses.every((s) => s === "CLEAN") && !isDiagnosticOnly(fact.experiment, fact.arm);
 }

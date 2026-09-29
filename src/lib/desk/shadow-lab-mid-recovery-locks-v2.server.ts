@@ -31,10 +31,12 @@ import { runBotsWithEvaluatedCandidates } from "./bots";
 import { projectInactiveE1Recovery } from "./call-recovery-candidate";
 import { runChair } from "./chair";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
+import { chicagoDayOf } from "./economics-book.ts";
 import { NULL_FAV_GRACE_SECS, scheduledCheckpoint } from "./shadow-arms.ts";
 import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
-import { armCalls, exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
+import { exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
 import type { MidRecoveryDeps, MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
+import { V2_EVALUATOR_REVISION, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
 import {
   LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2, summarizeLocksV2,
   type LocksV2ArmEvaluation, type LocksV2Summary,
@@ -95,9 +97,24 @@ function record(a: LocksV2ArmEvaluation, extra: Record<string, unknown> = {}): R
   void watch;
   return {
     ...rest, version: EXPERIMENT, experiment: EXPERIMENT, experiment_version: a.experiment_version, evaluator: MID_RECOVERY_LOCKS_V2_EXPERIMENT.evaluator,
+    evaluator_revision: a.evaluator_revision,
     arm: a.arm, promotion_eligible: a.promotion_eligible, production_authority: MID_RECOVERY_LOCKS_V2_EXPERIMENT.production_authority, intervention: a.intervention, capture_policy: a.capture_policy,
     confirmation: confirmationRest, funnel_stage: a.evaluation.flags.funnel_stage, funnel_stage_index: a.evaluation.flags.funnel_stage_index, ...extra,
   };
+}
+
+/** Same daily-risk accounting as V1, scoped to this semantic revision's own fills. */
+export async function locksV2ArmCalls(sql: Sql, arm: LocksRecoveredArm, asOf: number): Promise<CallLogRow[]> {
+  const day = chicagoDayOf(asOf);
+  const rows = await sql<{ ticker: string; close_ms: number | string; decided_ms: number | string; side: "UP" | "DOWN"; ask_cents: number; official_winner: "UP" | "DOWN" | null; evaluator_revision: string }>`
+    select ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, (extract(epoch from decided_at) * 1000)::bigint as decided_ms,
+      side, ask_cents, official_winner, payload->>'evaluator_revision' as evaluator_revision
+    from desk_shadow_receipts where experiment = ${EXPERIMENT} and arm = ${arm} and kind = 'fill'
+      and payload->>'evaluator_revision' = ${V2_EVALUATOR_REVISION}
+      and close_time > ${new Date(asOf - 48 * 3_600_000).toISOString()}::timestamptz`;
+  return rows.filter((r) => r.evaluator_revision === V2_EVALUATOR_REVISION && (chicagoDayOf(Number(r.decided_ms)) === day || r.official_winner == null))
+    .map((r) => ({ id: `${EXPERIMENT}|${V2_EVALUATOR_REVISION}|${arm}|${r.ticker}`, ticker: r.ticker, t: Number(r.decided_ms), close_time: Number(r.close_ms),
+      lean: r.side, cents: Number(r.ask_cents), settle: r.official_winner == null ? null : r.official_winner === r.side ? 100 : 0, flipped: false }));
 }
 
 /** One tick. Exported for the harness; the timer calls it. */
@@ -152,8 +169,12 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
       const k = receiptKey(r);
       if (st.decided.has(k) || pending.has(k)) return;
       pending.add(k);
+      // One stamping point covers NULL, recovered intentions/fills, and both
+      // in-band and grace no-fill finalization. Never rewrite prior receipts.
+      const stampedPayload = { ...payload, experiment: EXPERIMENT, arm: r.arm,
+        evaluator_revision: V2_EVALUATOR_REVISION, observer_session_start_ms: st.sessionStartedAt };
       writes.push(
-        recordShadowReceipt(sql, r, payload, onlyIfUndecided)
+        recordShadowReceipt(sql, r, stampedPayload, onlyIfUndecided)
           .then((inserted) => {
             if (inserted || !onlyIfUndecided) st.decided.add(k);
             if (inserted) st.written += 1;
@@ -193,7 +214,7 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
 
     // Each arm's own risk history comes from its own simulated fills, never the production book or another arm.
     const calls = {} as Record<LocksRecoveredArm, CallLogRow[]>;
-    for (const arm of LOCKS_RECOVERED_ARMS) calls[arm] = await armCalls(sql, EXPERIMENT, arm, snap.as_of);
+    for (const arm of LOCKS_RECOVERED_ARMS) calls[arm] = await locksV2ArmCalls(sql, arm, snap.as_of);
     if (!entryOpen()) { await Promise.all(writes); return; }
     const arms = {} as Record<LocksRecoveredArm, LocksArmState>;
     for (const arm of LOCKS_RECOVERED_ARMS) {
@@ -264,6 +285,7 @@ export function ensureMidRecoveryLocksV2Observer(env: Record<string, string | un
 
 export function midRecoveryLocksV2Health(): {
   experiment: typeof EXPERIMENT;
+  evaluator_revision: typeof V2_EVALUATOR_REVISION;
   env_flag: typeof MID_RECOVERY_LOCKS_V2_ENV_FLAG;
   enabled: boolean;
   running: boolean;
@@ -276,17 +298,19 @@ export function midRecoveryLocksV2Health(): {
   const st = globalRef.__midRecoveryLocksV2__;
   return {
     experiment: EXPERIMENT, env_flag: MID_RECOVERY_LOCKS_V2_ENV_FLAG, enabled: midRecoveryLocksV2Enabled(), running: !!st?.timer, session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
+    evaluator_revision: V2_EVALUATOR_REVISION,
     last_capture: st?.lastCapture ?? null, written: st?.written ?? 0, rejected: st?.rejected ?? 0, error: st?.error ?? null,
   };
 }
 
 /** This experiment's receipts only, oldest window first. Read only. */
-export async function midRecoveryLocksV2Rows(sql: Sql): Promise<MidRecoveryRow[]> {
-  const rows = await sql<{ arm: string; ticker: string; close_ms: number | string; kind: MidRecoveryRow["kind"]; decided_ms: number | string; side: MidRecoveryRow["side"]; ask_cents: number | null; fee_cents: number | null; official_winner: MidRecoveryRow["official_winner"]; net_cents: number | string | null; payload: Record<string, unknown> | null }>`
-    select arm, ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, kind, (extract(epoch from decided_at) * 1000)::bigint as decided_ms,
+export async function midRecoveryLocksV2Rows(sql: Sql): Promise<LocksV2Row[]> {
+  const rows = await sql<{ experiment: string; build_sha: string; arm: string; ticker: string; close_ms: number | string; kind: MidRecoveryRow["kind"]; decided_ms: number | string; side: MidRecoveryRow["side"]; ask_cents: number | null; fee_cents: number | null; official_winner: MidRecoveryRow["official_winner"]; net_cents: number | string | null; payload: Record<string, unknown> | null }>`
+    select experiment, build_sha, arm, ticker, (extract(epoch from close_time) * 1000)::bigint as close_ms, kind, (extract(epoch from decided_at) * 1000)::bigint as decided_ms,
       side, ask_cents, fee_cents, official_winner, net_cents, payload
     from desk_shadow_receipts where experiment = ${EXPERIMENT} order by close_time asc, decided_at asc`;
   return rows.map((r) => ({
+    experiment: r.experiment, build_sha: r.build_sha,
     arm: r.arm, ticker: r.ticker, close_ms: Number(r.close_ms), kind: r.kind, decided_ms: Number(r.decided_ms), side: r.side,
     ask_cents: r.ask_cents == null ? null : Number(r.ask_cents), fee_cents: r.fee_cents == null ? null : Number(r.fee_cents),
     official_winner: r.official_winner, net_cents: r.net_cents == null ? null : Number(r.net_cents), payload: r.payload,
