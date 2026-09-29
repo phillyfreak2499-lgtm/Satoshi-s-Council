@@ -372,6 +372,12 @@ function freshEng(): Eng {
  * Tests use the normal PGlite fallback, never an injected persistence stub. */
 export const __entryIntegration = { freshEng, applyEntryMode, noteCall };
 
+/** REACHABILITY-A harness access to the remaining decision steps `tick` runs, in
+ * the same order (a rail test pins the order in `tick`). Read-only exposure: no
+ * behaviour changes, and the harness refuses DATABASE_URL so persistence stays
+ * on the disposable in-memory PGlite. */
+export const __tickIntegration = { freshEng, loadState, stickyVotes, lastSide, decideChair, noteUnfilteredCall, applyEntryMode, noteCall };
+
 /** Record a failure with its scope and text: sets the single lastError (kept for
  *  the UI/watchdog) and appends to the bounded ring so recent failures keep
  *  their detail — which window, feed, or write, and why. */
