@@ -1,5 +1,5 @@
 import type { ChairResult, CallLogRow, Snapshot } from "./types";
-import { bookState } from "./book-floor";
+import { bookState } from "./book-floor.ts";
 
 /** These sentences describe recorded Chair state; they never make a call. */
 export function guidedRead(chair: ChairResult, snap: Snapshot, callLog: CallLogRow[]) {

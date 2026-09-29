@@ -569,7 +569,7 @@ test("the full set is still available to a caller even though two are not drawn"
 // ---------------------------------------------------------------------------
 
 const feedGate: Gate = { id: "warden", label: "stale warden", pass: false, hard: true, value: "FROZEN" };
-const chalkGate: Gate = { id: "chalk", label: "phantom print", pass: false, hard: true, value: "CHALK" };
+const chalkGate: Gate = { id: "chalk", label: "Book not chalk (YES or NO ≥ 99¢)", pass: false, hard: true, value: "YES 99¢ NO 1¢" };
 const barGate: Gate = { id: "bar", label: "score vs bar", pass: false, hard: true, value: "1.2/2.0" };
 
 test("a data-trust gate is reported as a feed condition, not as a read on the market", () => {
@@ -588,13 +588,26 @@ test("a feed condition outranks every other reason, because bad inputs void the 
 
 test("all four WAIT reasons are reachable and distinct", () => {
   const reasons = [
-    whyFacts(chair({ lean: "WAIT", gates: [chalkGate], score: 3, bar: 2 }), "").wait_reason,
+    whyFacts(chair({ lean: "WAIT", gates: [feedGate], score: 3, bar: 2 }), "").wait_reason,
     whyFacts(chair({ lean: "WAIT", gates: [barGate], score: 3, bar: 2 }), "").wait_reason,
     whyFacts(chair({ lean: "WAIT", gates: [], score: 1, bar: 2 }), "").wait_reason,
     whyFacts(chair({ lean: "WAIT", gates: [], score: 3, bar: 2 }), "").wait_reason,
   ];
   assert.deepEqual(reasons, ["feed-condition", "hard-gate", "under-bar", "no-edge"]);
   assert.equal(new Set(reasons).size, 4, "four answers, four remedies");
+});
+
+test("chalk alone is a book-price blocker, not a feed outage", () => {
+  const w = whyFacts(chair({ lean: "WAIT", gates: [chalkGate], score: 3, bar: 2 }), "");
+  assert.equal(w.wait_reason, "hard-gate");
+  assert.deepEqual(w.feed_gates, []);
+  assert.deepEqual(w.failed_hard.map((g) => g.id), ["chalk"]);
+});
+
+test("a real feed failure still takes priority over chalk", () => {
+  const w = whyFacts(chair({ lean: "WAIT", gates: [chalkGate, feedGate], score: 3, bar: 2 }), "");
+  assert.equal(w.wait_reason, "feed-condition");
+  assert.deepEqual(w.feed_gates.map((g) => g.id), ["warden"]);
 });
 
 test("a non-feed hard gate is not miscategorised as a feed condition", () => {
@@ -604,9 +617,9 @@ test("a non-feed hard gate is not miscategorised as a feed condition", () => {
 });
 
 test("the feed-gate set is the data-trust gates only, from chair.ts's own ids", () => {
-  assert.deepEqual([...FEED_GATE_IDS], ["warden", "chalk", "quote"]);
-  // bar/edge/leftover/law/early/late are about the TRADE, not about the inputs.
-  for (const id of ["bar", "edge", "leftover", "law", "early", "late"]) {
+  assert.deepEqual([...FEED_GATE_IDS], ["warden", "quote"]);
+  // A chalked book is a price blocker even with healthy feeds.
+  for (const id of ["chalk", "bar", "edge", "leftover", "law", "early", "late"]) {
     assert.equal(FEED_GATE_IDS.includes(id), false, `${id} is not a data-trust gate`);
   }
 });

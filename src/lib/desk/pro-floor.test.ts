@@ -30,6 +30,7 @@ import {
   type ProFloorFacts,
 } from "./pro-floor.ts";
 import { whyFacts } from "./floor-clarity.ts";
+import { guidedRead } from "./guided-read.ts";
 // SEAT_IDS is a runtime value, so this import keeps its extension; the rest are
 // types and are erased before Node ever resolves them.
 import { SEAT_IDS } from "./types.ts";
@@ -1157,4 +1158,79 @@ test("family counts and the Chair's own quorum reconcile, and the one divergence
   assert.equal(f.balance.no_authority.up - f.balance.veto_directional.up, 1, "one of them is the muted seat");
   // There is still no second aggregation competing with the Chair.
   assert.equal("lean" in f.balance, false);
+});
+
+// ---------------------------------------------------------------------------
+// COPY-FIX-A — chalk vs feed acceptance matrix, Pro and Guided, wording only.
+// Four frames: chalk only, true feed failure, chalk + feed failure, healthy no
+// direction. Pro must never call a chalked book a data-trust problem, and Guided
+// and Pro must name the same blocker.
+// ---------------------------------------------------------------------------
+
+const CHALK = gate("chalk", false, true, "YES 99¢ NO 1¢");
+const WARDEN_DOWN = gate("warden", false, true, "SPOT DOWN · KALSHI DOWN");
+const BAR_SHORT = gate("bar", false, true, "|0.000| × 0.55 = 0.000 vs bar 0.62");
+const DISTRUST = /cannot be trusted|does not trust its own inputs|feed condition/i;
+
+function matrixFrame(gates: Gate[], feedsDown: boolean) {
+  const c = chairResult({ lean: "WAIT", score: 0, bar: 0.62, gates });
+  const s = snapshot({
+    yes_ask: 99,
+    no_ask: 1,
+    chalk: gates.some((g) => g.id === "chalk"),
+    health: { ...snapshot().health, spot: feedsDown ? "DOWN" : "LIVE", kalshi: feedsDown ? "DOWN" : "LIVE" },
+  });
+  return { pro: waitFacts(c, whyFacts(c, "")), guided: guidedRead(c, s, []) };
+}
+
+test("COPY-FIX-A chalk only (live 04:14Z frame): Pro names the price blocker, never distrust, and agrees with Guided", () => {
+  const { pro, guided } = matrixFrame([CHALK, BAR_SHORT], false);
+  assert.equal(pro.kind, "hard-gate");
+  assert.equal(pro.headline, "BOOK CHALK");
+  assert.ok(!DISTRUST.test(pro.headline + " " + pro.explanation.replace("not a feed condition", "")));
+  assert.match(pro.explanation, /99¢/);
+  assert.match(pro.explanation, /evidence is also below the bar/);
+  assert.ok(!/not the thing standing in the way/.test(pro.explanation), "evidence 0.000 < 0.62 IS in the way");
+  assert.equal(guided.label, "WAIT");
+  assert.match(guided.why, /already costs 99¢/);
+  assert.ok(!DISTRUST.test(guided.why));
+});
+
+test("COPY-FIX-A chalk only with the evidence clearing: no 'also below the bar' clause", () => {
+  const c = chairResult({ lean: "WAIT", score: 0.9, bar: 0.5, gates: [CHALK, gate("bar", true, true)] });
+  const pro = waitFacts(c, whyFacts(c, ""));
+  assert.equal(pro.headline, "BOOK CHALK");
+  assert.ok(!/below the bar/.test(pro.explanation));
+});
+
+test("COPY-FIX-A true feed failure: both views say the inputs need a check", () => {
+  const { pro, guided } = matrixFrame([WARDEN_DOWN, BAR_SHORT], true);
+  assert.equal(pro.kind, "feed-condition");
+  assert.equal(pro.headline, "FEED CONDITION");
+  assert.match(pro.explanation, /does not trust its own inputs/);
+  assert.equal(guided.note, "Feed check needed");
+});
+
+test("COPY-FIX-A chalk + true feed failure: feed outranks, chalk is not counted as a feed gate", () => {
+  const { pro, guided } = matrixFrame([CHALK, WARDEN_DOWN, BAR_SHORT], true);
+  assert.equal(pro.kind, "feed-condition");
+  assert.deepEqual(pro.feed_gates.map((g) => g.id), ["warden"]);
+  assert.ok(pro.blocking.some((g) => g.id === "chalk"), "chalk is still listed as blocking");
+  assert.equal(pro.more_than_one_thing_missing, true);
+  assert.equal(guided.note, "Feed check needed");
+});
+
+test("COPY-FIX-A healthy, no direction, no chalk: low confluence on Pro, bar wording on Guided", () => {
+  const { pro, guided } = matrixFrame([BAR_SHORT], false);
+  assert.equal(pro.headline, "LOW CONFLUENCE");
+  assert.ok(!DISTRUST.test(pro.explanation));
+  assert.match(guided.why, /does not clear the Council's bar/);
+});
+
+test("COPY-FIX-A a non-chalk hard gate with the evidence short does not claim the evidence is fine", () => {
+  const c = chairResult({ lean: "WAIT", score: 0.1, bar: 0.6, gates: [gate("late", false, true, "1.00m"), BAR_SHORT] });
+  const pro = waitFacts(c, whyFacts(c, ""));
+  assert.equal(pro.headline, "HARD BLOCK");
+  assert.ok(!/not the thing standing in the way/.test(pro.explanation));
+  assert.match(pro.explanation, /evidence is also below the bar/);
 });
