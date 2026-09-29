@@ -492,12 +492,26 @@ export function waitFacts(chair: ChairResult, why: WhyFacts): WaitFacts {
   const kind = why.wait_reason;
   const barOnly = why.failed_hard.length > 0 && why.failed_hard.every((g) => g.id === "bar");
   const display: WaitKind = kind === "hard-gate" && barOnly ? "under-bar" : kind;
+  // Wording only. A chalked book is a PRICE blocker, never a feed condition, and
+  // when the evidence is ALSO short the hard-gate sentence must not claim the
+  // evidence is not in the way. Classification (`kind`/`display`) is untouched.
+  const chalk = why.failed_hard.find((g) => g.id === "chalk");
+  const evidenceShort = why.failed_hard.some((g) => g.id === "bar") || Math.abs(chair.score) < chair.bar;
+  const headline = display === "" ? "" : display === "hard-gate" && chalk ? "BOOK CHALK" : WAIT_HEADLINE[display];
+  const explanation =
+    display === ""
+      ? ""
+      : display === "hard-gate" && chalk
+        ? `One side of the book already costs 99¢ or more (${chalk.value}), so there is no qualifying entry at this price. Chalk is a price blocker, not a feed condition.${evidenceShort ? " The evidence is also below the bar." : ""}`
+        : display === "hard-gate" && evidenceShort
+          ? "A required gate is failing, and the evidence is also below the bar."
+          : WAIT_EXPLANATION[display];
   return {
     waiting,
     kind,
     display,
-    headline: display === "" ? "" : WAIT_HEADLINE[display],
-    explanation: display === "" ? "" : WAIT_EXPLANATION[display],
+    headline,
+    explanation,
     blocking: why.failed_hard,
     feed_gates: why.feed_gates,
     note: why.wait_note,
