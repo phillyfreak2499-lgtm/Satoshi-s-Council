@@ -180,9 +180,25 @@ async function fanout(subs: SubRow[], pick: (sub: SubRow) => PushPayload | null)
  *  Zero means the internal alert has no recipient — surfaced separately on
  *  /status so a dead alert channel is visible without faking a data problem. */
 export async function ownerSubCount(): Promise<number> {
+  return (await pushRecipientCounts()).owner;
+}
+
+/** Bounded, credential-free delivery readiness for each opt-in push channel.
+ *  These are rows the fanout queries would actually consider right now; they
+ *  prove a channel has a recipient, not that a future third-party delivery is
+ *  guaranteed. */
+export type PushRecipientCounts = { call: number; settle: number; owner: number };
+
+export async function pushRecipientCounts(): Promise<PushRecipientCounts> {
   const db = await sql();
-  const rows = await db<{ n: number }>`select count(*)::int as n from desk_push_subs where owner and fails < ${MAX_FAILS}`;
-  return rows[0]?.n ?? 0;
+  const rows = await db<PushRecipientCounts>`
+    select
+      count(*) filter (where on_call and fails < ${MAX_FAILS})::int as call,
+      count(*) filter (where on_settle and fails < ${MAX_FAILS})::int as settle,
+      count(*) filter (where owner and fails < ${MAX_FAILS})::int as owner
+    from desk_push_subs
+  `;
+  return rows[0] ?? { call: 0, settle: 0, owner: 0 };
 }
 
 async function subsFor(kind: "call" | "settle" | "owner"): Promise<SubRow[]> {

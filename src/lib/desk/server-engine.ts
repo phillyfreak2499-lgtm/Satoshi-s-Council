@@ -209,6 +209,10 @@ type Eng = {
   lastGapScanAt: number;
   /** Owner push subscriptions the watchdog could reach, from the last probe. */
   alertOwnerSubs: number;
+  /** Visitor subscriptions eligible for a paper-call or settlement push. These
+   *  are readiness facts only; they never gate or create a call. */
+  alertCallSubs: number;
+  alertSettleSubs: number;
   /** Recent failures with scope + text, bounded — which window/feed/write, and why. */
   errors: ErrLog[];
   /** When this process booted (for the health boot-grace). */
@@ -356,6 +360,8 @@ function freshEng(): Eng {
     ledgerGapCount: 0,
     lastGapScanAt: 0,
     alertOwnerSubs: 0,
+    alertCallSubs: 0,
+    alertSettleSubs: 0,
     errors: [],
     startedAt: Date.now(),
     reconAt: 0,
@@ -1943,8 +1949,11 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
     noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
   }
   try {
-    const { ownerSubCount } = await import("./push.server");
-    e.alertOwnerSubs = await ownerSubCount();
+    const { pushRecipientCounts } = await import("./push.server");
+    const counts = await pushRecipientCounts();
+    e.alertOwnerSubs = counts.owner;
+    e.alertCallSubs = counts.call;
+    e.alertSettleSubs = counts.settle;
   } catch {
     /* alert-channel probe is best-effort */
   }
@@ -2085,7 +2094,22 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       ledger_gaps: e.ledgerGapCount,
       reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
-      alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
+      alerts: {
+        deliverable: alerts.deliverable,
+        owner_subs: e.alertOwnerSubs,
+        note: alerts.note,
+        call_notifications: {
+          configured: e.alertCallSubs > 0,
+          subscribers: e.alertCallSubs,
+          note: e.alertCallSubs > 0
+            ? "eligible subscribers present; delivery is still verified per send"
+            : "no eligible call-alert subscriber; do not rely on call notifications for rollout",
+        },
+        settlement_notifications: {
+          configured: e.alertSettleSubs > 0,
+          subscribers: e.alertSettleSubs,
+        },
+      },
       // The grading race, both halves: windows decided but not yet settled, and
       // windows refused because their identity did not hold. Faults stay persisted
       // for forensics; only faults observed inside the current two-window incident
