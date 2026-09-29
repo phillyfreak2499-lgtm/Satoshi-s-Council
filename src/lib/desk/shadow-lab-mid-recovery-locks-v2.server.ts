@@ -38,7 +38,7 @@ import { exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./sha
 import type { MidRecoveryDeps, MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
 import { V2_EVALUATOR_REVISION, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
 import {
-  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2, summarizeLocksV2,
+  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2, planV2ReceiptTransition, summarizeLocksV2,
   type LocksV2ArmEvaluation, type LocksV2Summary,
 } from "./shadow-lab-mid-recovery-locks-v2.ts";
 import type { LocksArmState, LocksRecoveredArm } from "./shadow-lab-mid-recovery-locks.ts";
@@ -160,11 +160,11 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
     }
     const writes: Array<Promise<boolean>> = [];
     const pending = new Set<string>();
-    const decidedKinds = (arm: string) => (["fill", "intention", "veto", "no_fill"] as const).some((kind) => {
+    const recordedKinds = (arm: string) => new Set<ShadowReceipt["kind"]>((["fill", "intention", "veto", "no_fill"] as const).filter((kind) => {
       const k = `${EXPERIMENT}|${arm}|${windowKey}|${kind}`;
       return st.decided.has(k) || pending.has(k);
-    });
-    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false) => {
+    }));
+    const once = (r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided: false | true | "terminal" = false) => {
       if (!onlyIfUndecided && !entryOpen()) return;
       const k = receiptKey(r);
       if (st.decided.has(k) || pending.has(k)) return;
@@ -197,14 +197,15 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
       if (!observed || observed.key !== windowKey || observed.asOf > snap.as_of || snap.as_of > now || now - observed.asOf > maxObservationAge
         || !shouldWriteSitReceipt((snap.close_time - now) / 1000, false)) return;
       for (const arm of LOCKS_RECOVERED_ARMS) {
-        if (decidedKinds(arm)) continue;
+        const plan = planV2ReceiptTransition(recordedKinds(arm), { eligible: false, booked: false, at_terminal_checkpoint: true });
+        if (!plan.includes("no_fill")) continue;
         const mem = st.arms[arm];
         const stage = mem.stages.get(windowKey);
         const last = mem.lastRecord && mem.lastRecord.key === windowKey ? mem.lastRecord.record : {};
         once(receipt(arm, snap, "no_fill", null, null, null, null, null, "sit at T-3; receipt-only grace"), {
           ...last, experiment: EXPERIMENT, arm, secs_left: secs, checkpoint: 180, receipt_only: true, last_observed_as_of: observed.asOf, finalized_at: now,
           funnel_stage_index: stage?.stage ?? 0, funnel_stage: stage?.label ?? "observed",
-        }, true);
+        }, "terminal");
       }
       await Promise.all(writes);
       if (writes.length) st.lastCapture = now;
@@ -250,14 +251,19 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
       const q = side ? exactSideQuote(snap, side) : null;
       const payload = record(a, { hittability: "UNKNOWN at 2s poll", price_lane: "exact_measurement", qualification_ask_cents: q?.decisionAsk ?? null, exact_ask_cents: q?.exactAsk ?? null });
       mem.lastRecord = { key: windowKey, record: payload };
-      if (a.evaluation.recovered.eligible && side && q) once(receipt(arm, snap, "intention", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "first eligible tick"), payload);
-      if (a.evaluation.simulated.booked && side && q) {
+      const plan = planV2ReceiptTransition(recordedKinds(arm), {
+        eligible: a.evaluation.recovered.eligible && !!side && !!q,
+        booked: a.evaluation.simulated.booked && !!side && !!q,
+        at_terminal_checkpoint: shouldWriteSitReceipt(secs, false),
+      });
+      if (plan.includes("intention") && side && q) once(receipt(arm, snap, "intention", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "first eligible tick"), payload, "terminal");
+      if (plan.includes("fill") && side && q) {
         once(receipt(arm, snap, "fill", side, q.exactAsk, q.exactSize, q.exactAsk - q.exactBid, true, "confirmed; SIMULATED booking, research only"), {
           ...payload, execution_qualified: true, simulated: true, authority: MID_RECOVERY_LOCKS_V2_EXPERIMENT.authority,
-        });
+        }, "terminal");
       }
-      if (shouldWriteSitReceipt(secs, decidedKinds(arm))) {
-        once(receipt(arm, snap, "no_fill", null, null, null, null, null, "sit at T-3"), { ...payload, secs_left: secs, checkpoint: 180 });
+      if (plan.includes("no_fill")) {
+        once(receipt(arm, snap, "no_fill", null, null, null, null, null, "sit at T-3"), { ...payload, secs_left: secs, checkpoint: 180 }, "terminal");
       }
     }
 

@@ -34,7 +34,7 @@ import {
   auditWindow, isDiagnosticOnly, windowFacts,
   type Annotation, type CardCounters, type IntegrityStatus, type LedgerRow, type OpeningRow, type ReceiptRow, type WindowFact, type WindowInput,
 } from "./research-factory-analysis.ts";
-import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
+import { gradeWindow, tapeIdentityQuality, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
 import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
 import { flowH0, flowQuality, indexMinutes, type FlowMark, type FlowVenue, type FlowWindow, type StoredMinute } from "./trade-flow.ts";
 import { wickShadowH0, wickShadowQuality, type ShadowRow } from "./wick-effort.ts";
@@ -488,13 +488,16 @@ export const windowHandler: Handler = async (ctx) => {
     ctx.scanned(events.length);
     if (events.length && input.ledger) {
       const timeline = gradeWindow(events, input.ledger.winner);
+      const identityReasons = timeline.identity_exclusion_reasons;
+      const replayQuality = timeline.identity_excluded_events > 0 ? "UNAVAILABLE" : timeline.partial_window ? "PARTIAL" : "EXACT";
+      const reportableEvents = events.filter((e) => tapeIdentityQuality(e.ticker, e.close_ms).reportable);
       const fact: WindowFact = {
         ticker, close_ms: closeMs, experiment: "PRODUCTION_TAPE", arm: "DECISION_TAPE", fact_version: RESEARCH_FACTORY.fact_version,
-        replay_quality: timeline.partial_window ? "PARTIAL" : "EXACT", quality_reasons: timeline.partial_window ? ["PARTIAL_WINDOW"] : [],
-        experiment_version: null, source_build_sha: [...new Set(events.map((e) => e.build_sha))].sort().join(",") || null, decided_ms: events[0]!.as_of,
-        observed: true, terminal_kind: timeline.terminal_label, side: null, ask_cents: null, fee_cents: null, official_winner: input.ledger.winner, net_cents: null,
+        replay_quality: replayQuality, quality_reasons: [...identityReasons, ...(timeline.partial_window ? ["PARTIAL_WINDOW"] : [])],
+        experiment_version: null, source_build_sha: [...new Set(events.map((e) => e.build_sha))].sort().join(",") || null, decided_ms: reportableEvents[0]?.as_of ?? null,
+        observed: reportableEvents.length > 0, terminal_kind: timeline.terminal_label, side: null, ask_cents: null, fee_cents: null, official_winner: input.ledger.winner, net_cents: null,
         production_lean: input.ledger.chair_lean, production_booked: input.ledger.entry_cents != null,
-        funnel_stage: null, first_blocker: null, blockers: [...new Set(events.flatMap((e) => e.blockers))],
+        funnel_stage: null, first_blocker: null, blockers: [...new Set(reportableEvents.flatMap((e) => e.blockers))],
         facts: { source: "desk_research_decision_tape", recorded_not_rederived: true, timeline },
       };
       ctx.written(await writeFacts(ctx.sql, [fact]));

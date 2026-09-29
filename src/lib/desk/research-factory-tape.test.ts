@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
 import {
-  CHECKPOINTS, WAIT_REASONS, classifyTape, conditionMet, gradeWindow, shouldRecord,
+  CHECKPOINTS, WAIT_REASONS, classifyTape, conditionMet, gradeWindow, shouldRecord, tapeIdentityQuality,
   type Audit, type TapeEvent, type TapeFrame,
 } from "./research-factory-tape.ts";
 import {
@@ -18,7 +18,7 @@ import type { ChairResult, SeatId, SeatRow, Snapshot } from "./types";
 // ---------------------------------------------------------------------------
 
 const close = Date.parse("2026-09-28T15:15:00Z");
-const ticker = "KXBTC15M-26SEP281015-15";
+const ticker = "KXBTC15M-26SEP281115-15";
 const snap = (secsLeft = 300, extra: Partial<Snapshot> = {}): Snapshot => ({
   as_of: close - secsLeft * 1000, close_time: close, ticker, mins_left: secsLeft / 60, secs_left: secsLeft, demo: false,
   yes_ask: 85, yes_bid: 84, no_ask: 16, no_bid: 15, no_bid_size: 40, yes_bid_size: 30, yes_mid: 84.5, edge_up: 5, edge_down: -9,
@@ -129,6 +129,25 @@ test("a frame is recorded once per designated checkpoint and on every change, ne
   assert.deepEqual(shouldRecord(r, { label: r.label, stage_index: r.stage_index }, new Set([300])), { record: false, checkpoint: null, change: false });
   const later = classifyTape(frame({ snap: snap(290) }));
   assert.equal(shouldRecord(later, { label: r.label, stage_index: r.stage_index }, new Set([300])).record, false, "between checkpoints, an unchanged state is not re-recorded");
+});
+
+test("tape identity excludes a stale ticker/new close while preserving source counts; a valid rollover remains reportable", () => {
+  const stale = "KXBTC15M-26SEP290030-30";
+  const staleClose = Date.parse("2026-09-29T04:45:00Z");
+  assert.deepEqual(tapeIdentityQuality(stale, staleClose), {
+    reportable: false, on_grid: true, ticker_time_ok: false, reasons: ["TICKER_CLOSE_TIME_MISMATCH"],
+  });
+  assert.equal(tapeIdentityQuality("KXBTC15M-26SEP290045-45", staleClose).reportable, true, "the real rollover ticker matches the new close");
+  const source = ev(300, belowBar(0.4), { ticker: stale, close_ms: staleClose, as_of: staleClose - 300_000 });
+  const timeline = gradeWindow([source], "UP");
+  assert.equal(timeline.source_events, 1, "the append-only source row remains disclosed");
+  assert.equal(timeline.identity_excluded_events, 1);
+  assert.deepEqual(timeline.identity_exclusion_reasons, ["TICKER_CLOSE_TIME_MISMATCH"]);
+  assert.equal(timeline.events, 0, "the contradictory row cannot enter research results");
+  assert.equal(timeline.first_blocker, null);
+  const report = transitionReport([{ ticker: stale, close_ms: staleClose, events: [source], timeline }]);
+  assert.equal(report.identity_windows_excluded, 1, "report quality exposes the exclusion");
+  assert.equal(report.rolling.at(-1)?.windows, 0, "the stale source does not enter derived results");
 });
 
 const ev = (secsLeft: number, f: Partial<TapeFrame>, extra: Partial<TapeEvent> = {}): TapeEvent => {

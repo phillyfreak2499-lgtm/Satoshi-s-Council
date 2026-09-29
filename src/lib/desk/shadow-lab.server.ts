@@ -62,18 +62,28 @@ const buildSha = () => process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?
 // ---------------------------------------------------------------------------
 
 /** Insert one receipt; true when the row was new. The primary key is the idempotent key. */
-export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided = false): Promise<boolean> {
+export type ReceiptInsertGuard = false | true | "terminal";
+
+/**
+ * Insert one receipt. `true` preserves the legacy any-decision guard;
+ * `terminal` lets a non-terminal intention be followed by exactly one of
+ * fill/veto/no_fill while still making that terminal choice atomic in SQL.
+ */
+export async function recordShadowReceipt(sql: Sql, r: ShadowReceipt, payload: Record<string, unknown> = {}, onlyIfUndecided: ReceiptInsertGuard = false): Promise<boolean> {
+  const guarded = onlyIfUndecided !== false;
+  const terminalOnly = onlyIfUndecided === "terminal";
   const rows = await sql<{ experiment: string }>`
     insert into desk_shadow_receipts (experiment, arm, ticker, close_time, kind, decided_at, side, ask_cents, fee_engine, fee_cents, size_at_ask,
       spread_cents, feeds_ok, hittable_150ms, hittable_500ms, official_winner, net_cents, note, payload, build_sha)
     select ${r.experiment}, ${r.arm}, ${r.ticker}, ${new Date(r.close_ms).toISOString()}::timestamptz, ${r.kind}, ${new Date(r.decided_ms).toISOString()}::timestamptz,
       ${r.side}, ${r.ask_cents}, ${r.fee_engine}, ${r.fee_cents}, ${r.size_at_ask}, ${r.spread_cents}, ${r.feeds_ok}, ${r.hittable_150ms}, ${r.hittable_500ms},
       ${r.official_winner}, ${r.net_cents}, ${r.note}, ${JSON.stringify(payload)}::jsonb, ${buildSha()}
-    where not ${onlyIfUndecided}::boolean or not exists (
+    where not ${guarded}::boolean or not exists (
       select 1 from desk_shadow_receipts existing
       where existing.experiment = ${r.experiment} and existing.arm = ${r.arm}
         and existing.ticker = ${r.ticker} and existing.close_time = ${new Date(r.close_ms).toISOString()}::timestamptz
-        and existing.kind in ('fill', 'intention', 'veto', 'no_fill')
+        and ((${terminalOnly}::boolean and existing.kind in ('fill', 'veto', 'no_fill'))
+          or (not ${terminalOnly}::boolean and existing.kind in ('fill', 'intention', 'veto', 'no_fill')))
     )
     on conflict (experiment, arm, ticker, close_time, kind) do nothing
     returning experiment`;
