@@ -18,7 +18,7 @@ export type V2CohortClass = "legacy_unstamped" | "current" | "unknown_revision";
 export type V2BoundaryReason =
   | "LEGACY_UNSTAMPED" | "UNKNOWN_REVISION" | "MIXED_REVISIONS" | "MIXED_BUILDS" | "MISSING_BUILD"
   | "INCOMPLETE_ARMS" | "INCOMPLETE_TERMINAL_ARMS" | "MISSING_SESSION_BOUNDARY" | "WINDOW_CROSSES_SESSION_BOUNDARY"
-  | "CONFLICTING_RECEIPT_IDENTITY";
+  | "CONFLICTING_RECEIPT_IDENTITY" | "DEGRADED_OBSERVATION";
 export type V2ExcludedWindow = {
   ticker: string; close_ms: number; revisions: string[]; build_shas: string[];
   reasons: V2BoundaryReason[]; row_count: number;
@@ -90,6 +90,20 @@ export function partitionLocksV2Rows(rows: readonly LocksV2Row[]): V2CohortParti
       && Number.isFinite(r.payload.observer_session_start_ms) && r.payload.observer_session_start_ms > 0;
     if (current.some((r) => !hasSession(r))) reasons.push("MISSING_SESSION_BOUNDARY");
     if (current.some((r) => hasSession(r) && (r.payload!.observer_session_start_ms as number) > r.close_ms - 900_000)) reasons.push("WINDOW_CROSSES_SESSION_BOUNDARY");
+    // Guard-era receipts carry prospective observation-quality counters. A
+    // complete five-arm terminal set is still visible when collection was
+    // starved, but cannot enter the matched cohort. Pre-guard rows have none of
+    // these fields and retain their historical classification unchanged.
+    const degraded = current.some((r) => {
+      const p = r.payload;
+      if (!p || !("in_band_ticks" in p || "governor_skips" in p || "busy_skips" in p || "max_in_band_gap_ms" in p)) return false;
+      const governorSkips = Number(p.governor_skips ?? 0);
+      const busySkips = Number(p.busy_skips ?? 0);
+      const maxGap = Number(p.max_in_band_gap_ms ?? 0);
+      return !Number.isFinite(governorSkips) || !Number.isFinite(busySkips) || !Number.isFinite(maxGap)
+        || governorSkips > 0 || busySkips > 0 || maxGap > 10_000;
+    });
+    if (degraded) reasons.push("DEGRADED_OBSERVATION");
     if (reasons.length) excluded.push({ ticker: first.ticker, close_ms: first.close_ms, revisions, build_shas: builds, reasons, row_count: window.length });
     else cohorts.get(revisions[0]!)!.matched_rows.push(...window);
   }

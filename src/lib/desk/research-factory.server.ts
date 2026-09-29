@@ -30,6 +30,7 @@ import {
   JOB_KINDS, LEASE_MS, MAX_ATTEMPTS, RESEARCH_FACTORY, governorDecision, retryDelayMs, thresholdsFromEnv,
   type GovernorDecision, type GovernorThresholds, type JobKind, type ResourceSample,
 } from "./research-factory.ts";
+import { publishResourceGovernorWitness } from "./resource-governor-witness.ts";
 import {
   auditWindow, isDiagnosticOnly, windowFacts,
   type Annotation, type CardCounters, type IntegrityStatus, type LedgerRow, type OpeningRow, type ReceiptRow, type WindowFact, type WindowInput,
@@ -862,6 +863,7 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
     const sampler = opts.sampler ?? (() => defaultSample(sql));
     const thresholds = thresholdsFromEnv(opts.env ?? process.env, containerMemoryLimitMb());
     const sample = await sampler();
+    publishResourceGovernorWitness(now(), sample, thresholds);
     const guard = governorDecision(sample, thresholds);
     st.lastSample = sample;
     st.lastGuard = guard;

@@ -26,7 +26,7 @@
  * (never back-filled), and the T-3 sit is written only for a window this
  * session evaluated in band.
  */
-import { getSql, type Sql } from "@/lib/db";
+import { dbPoolStats, getSql, type Sql } from "@/lib/db";
 import { runBotsWithEvaluatedCandidates } from "./bots";
 import { projectInactiveE1Recovery } from "./call-recovery-candidate";
 import { runChair } from "./chair";
@@ -37,11 +37,13 @@ import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import { exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
 import type { MidRecoveryDeps, MidRecoveryRow } from "./shadow-lab-mid-recovery.ts";
 import { V2_EVALUATOR_REVISION, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
+import { governorDecision, type GovernorDecision, type ResourceSample } from "./resource-governor.ts";
+import { readResourceGovernorWitness } from "./resource-governor-witness.ts";
 import {
-  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2, planV2ReceiptTransition, summarizeLocksV2,
+  LOCKS_ARMS, LOCKS_RECOVERED_ARMS, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, evaluateLocksV2InSlices, planV2ReceiptTransition, summarizeLocksV2,
   type LocksV2ArmEvaluation, type LocksV2Summary,
 } from "./shadow-lab-mid-recovery-locks-v2.ts";
-import type { LocksArmState, LocksRecoveredArm } from "./shadow-lab-mid-recovery-locks.ts";
+import type { LocksArmState, LocksInput, LocksRecoveredArm } from "./shadow-lab-mid-recovery-locks.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
 import type { CallLogRow, Lean, Snapshot } from "./types";
 
@@ -63,6 +65,14 @@ type ArmMemory = {
   stages: Map<string, { stage: number; label: string }>;
   lastRecord: { key: string; record: Record<string, unknown> } | null;
 };
+type ObservationQuality = {
+  closeMs: number;
+  inBandTicks: number;
+  governorSkips: number;
+  busySkips: number;
+  maxInBandGapMs: number;
+  lastInBandTickMs: number | null;
+};
 type Observer = {
   timer: ReturnType<typeof setInterval> | null;
   busy: boolean;
@@ -76,13 +86,93 @@ type Observer = {
   /** Process-local boundary: no window already open when this observer session began. */
   sessionStartedAt: number;
   lastObservedWindow: { key: string; asOf: number } | null;
+  activeWindow: { key: string; closeMs: number } | null;
+  observationQuality: Map<string, ObservationQuality>;
+  unattributedSkips: Array<{ at: number; kind: "governor" | "busy" }>;
+  lastGuard: GovernorDecision | null;
+  guardSkips: number;
 };
 const blankArm = (): ArmMemory => ({ watch: null, lastLean: null, stages: new Map(), lastRecord: null });
 const blankArms = (): Record<LocksRecoveredArm, ArmMemory> => ({ CONTROL: blankArm(), BAR_NO_SITMASS: blankArm(), SUPPORT_UNCAL_E1: blankArm(), COMBINED_DIAG: blankArm() });
 const globalRef = globalThis as typeof globalThis & { __midRecoveryLocksV2__?: Observer };
 const state = (): Observer => globalRef.__midRecoveryLocksV2__ ??= {
   timer: null, busy: false, arms: blankArms(), decided: new Set(), lastSettle: 0, lastCapture: null, written: 0, rejected: 0, error: null, sessionStartedAt: 0, lastObservedWindow: null,
+  activeWindow: null, observationQuality: new Map(), unattributedSkips: [], lastGuard: null, guardSkips: 0,
 };
+
+const observationOf = (st: Observer, key: string, closeMs: number): ObservationQuality => {
+  const existing = st.observationQuality.get(key);
+  if (existing) return existing;
+  const created: ObservationQuality = { closeMs, inBandTicks: 0, governorSkips: 0, busySkips: 0, maxInBandGapMs: 0, lastInBandTickMs: null };
+  st.observationQuality.set(key, created);
+  if (st.observationQuality.size > 200) st.observationQuality = new Map([...st.observationQuality.entries()].slice(-100));
+  return created;
+};
+
+const noteObservation = (q: ObservationQuality, at: number, kind: "tick" | "governor" | "busy") => {
+  if (q.lastInBandTickMs != null && at >= q.lastInBandTickMs) q.maxInBandGapMs = Math.max(q.maxInBandGapMs, at - q.lastInBandTickMs);
+  if (kind === "tick") { q.inBandTicks += 1; q.lastInBandTickMs = at; }
+  else if (kind === "governor") q.governorSkips += 1;
+  else q.busySkips += 1;
+};
+
+const noteActiveSkip = (st: Observer, at: number, kind: "governor" | "busy") => {
+  const active = st.activeWindow;
+  if (active) {
+    const secs = (active.closeMs - at) / 1000;
+    const band = MID_RECOVERY_LOCKS_V2_EXPERIMENT.band_secs;
+    if (secs >= band.min && secs <= band.max) {
+      noteObservation(observationOf(st, active.key, active.closeMs), at, kind);
+      return;
+    }
+  }
+  // A guard or busy skip can occur before the first frame of a window is read.
+  // Keep only a bounded recent timestamp trail; the next clean in-band frame
+  // attributes matching timestamps to its exact close instead of losing them.
+  st.unattributedSkips.push({ at, kind });
+  st.unattributedSkips = st.unattributedSkips.filter((skip) => at - skip.at <= 15 * 60_000).slice(-500);
+};
+
+const attributePendingSkips = (st: Observer, key: string, closeMs: number) => {
+  const band = MID_RECOVERY_LOCKS_V2_EXPERIMENT.band_secs;
+  const keep: Observer["unattributedSkips"] = [];
+  for (const skip of st.unattributedSkips) {
+    const secs = (closeMs - skip.at) / 1000;
+    if (secs >= band.min && secs <= band.max) noteObservation(observationOf(st, key, closeMs), skip.at, skip.kind);
+    else if (skip.at > closeMs - 15 * 60_000) keep.push(skip);
+  }
+  st.unattributedSkips = keep;
+};
+
+const observationPayload = (st: Observer, key: string, closeMs: number) => {
+  const q = observationOf(st, key, closeMs);
+  return {
+    in_band_ticks: q.inBandTicks,
+    governor_skips: q.governorSkips,
+    busy_skips: q.busySkips,
+    max_in_band_gap_ms: q.maxInBandGapMs,
+  };
+};
+
+/**
+ * Reuse the factory's measured CPU/event-loop/DB-latency witness and exact
+ * thresholds, while refreshing memory and pool occupancy without another SQL
+ * ping. A missing or stale factory sample fails closed.
+ */
+export function midRecoveryLocksV2Governor(at: number = Date.now()): GovernorDecision {
+  const witness = readResourceGovernorWitness();
+  if (!witness || !Number.isFinite(witness.measured_at_ms) || at - witness.measured_at_ms > 2 * 30_000) {
+    return { run: false, reasons: ["RESOURCE_SAMPLE_UNAVAILABLE"] };
+  }
+  const pool = dbPoolStats();
+  const sample: ResourceSample = {
+    ...witness.sample,
+    rss_mb: process.memoryUsage().rss / 1_048_576,
+    db_waiting: pool ? pool.waiting : witness.sample.db_waiting,
+    db_in_use: pool ? pool.total - pool.idle : witness.sample.db_in_use,
+  };
+  return governorDecision(sample, witness.thresholds);
+}
 
 const receipt = (arm: string, snap: Snapshot, kind: ShadowReceipt["kind"], side: "UP" | "DOWN" | null, ask: number | null, size: number | null, spread: number | null, feedsOk: boolean | null, note: string | null): ShadowReceipt => ({
   experiment: EXPERIMENT, arm, ticker: snap.ticker, close_ms: snap.close_time, kind, decided_ms: snap.as_of, side, ask_cents: ask, fee_engine: DEFAULT_FEE_ENGINE,
@@ -124,9 +214,16 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
   now = currentTime();
   if (!Number.isFinite(now) || now <= 0) return;
   const st = state();
-  if (st.busy) return;
+  if (st.busy) { noteActiveSkip(st, now, "busy"); return; }
   st.busy = true;
   try {
+    const guard = midRecoveryLocksV2Governor(now);
+    st.lastGuard = guard;
+    if (!guard.run) {
+      st.guardSkips += 1;
+      noteActiveSkip(st, now, "governor");
+      return;
+    }
     const sql = await getSql();
     if (now - st.lastSettle > MID_RECOVERY_LOCKS_V2_SETTLE_EVERY_MS) {
       st.lastSettle = now;
@@ -153,6 +250,11 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
     const windowOpen = snap.close_time - 15 * 60_000;
     if (st.sessionStartedAt > 0 && windowOpen < st.sessionStartedAt) return;
     const windowKey = `${snap.ticker}|${snap.close_time}`;
+    if (inEntryWindow) {
+      st.activeWindow = { key: windowKey, closeMs: snap.close_time };
+      attributePendingSkips(st, windowKey, snap.close_time);
+      noteObservation(observationOf(st, windowKey, snap.close_time), now, "tick");
+    }
     for (const arm of LOCKS_RECOVERED_ARMS) {
       const mem = st.arms[arm];
       if (mem.watch && mem.watch.key !== windowKey) mem.watch = null; // no latch leaks across windows
@@ -172,7 +274,8 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
       // One stamping point covers NULL, recovered intentions/fills, and both
       // in-band and grace no-fill finalization. Never rewrite prior receipts.
       const stampedPayload = { ...payload, experiment: EXPERIMENT, arm: r.arm,
-        evaluator_revision: V2_EVALUATOR_REVISION, observer_session_start_ms: st.sessionStartedAt };
+        evaluator_revision: V2_EVALUATOR_REVISION, observer_session_start_ms: st.sessionStartedAt,
+        ...observationPayload(st, windowKey, snap.close_time) };
       writes.push(
         recordShadowReceipt(sql, r, stampedPayload, onlyIfUndecided)
           .then((inserted) => {
@@ -222,7 +325,9 @@ export async function midRecoveryLocksV2Tick(now?: number): Promise<void> {
       const mem = st.arms[arm];
       arms[arm] = { watch: mem.watch, calls: calls[arm], last_lean: mem.lastLean?.key === windowKey ? mem.lastLean.lean : "WAIT" };
     }
-    const ev = evaluateLocksV2({ snap, chair, learner, settings, call_log, audit, ready: true, start, arms }, MID_RECOVERY_LOCKS_V2_DEPS);
+    const evaluationInput: LocksInput = { snap, chair, learner, settings, call_log, audit, ready: true, start, arms };
+    const ev = await evaluateLocksV2InSlices(evaluationInput, MID_RECOVERY_LOCKS_V2_DEPS);
+    if (!entryOpen()) { await Promise.all(writes); return; }
 
     // NULL_FAV_80 at its frozen checkpoints: the same benchmark rule and identity as the shadow lab.
     const cp = scheduledCheckpoint(secs);
@@ -299,13 +404,16 @@ export function midRecoveryLocksV2Health(): {
   last_capture: number | null;
   written: number;
   rejected: number;
+  guard_skips: number;
+  last_guard: GovernorDecision | null;
   error: string | null;
 } {
   const st = globalRef.__midRecoveryLocksV2__;
   return {
     experiment: EXPERIMENT, env_flag: MID_RECOVERY_LOCKS_V2_ENV_FLAG, enabled: midRecoveryLocksV2Enabled(), running: !!st?.timer, session_start: st?.sessionStartedAt ? st.sessionStartedAt : null,
     evaluator_revision: V2_EVALUATOR_REVISION,
-    last_capture: st?.lastCapture ?? null, written: st?.written ?? 0, rejected: st?.rejected ?? 0, error: st?.error ?? null,
+    last_capture: st?.lastCapture ?? null, written: st?.written ?? 0, rejected: st?.rejected ?? 0,
+    guard_skips: st?.guardSkips ?? 0, last_guard: st?.lastGuard ?? null, error: st?.error ?? null,
   };
 }
 

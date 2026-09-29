@@ -134,19 +134,27 @@ test("real producer: V2 does not revive a selected roster vote forced to SIT out
 function loader(deps = {}, { env = {}, clock = null } = {}) {
   const cache = new Map();
   const FakeDate = clock == null ? Date : class extends Date { constructor(...a) { super(...(a.length ? a : [clock.now])); } static now() { return clock.now; } };
+  const safeSample = { rss_mb: 100, load_per_cpu: 0.01, event_loop_p99_ms: 1, db_waiting: 0, db_in_use: 1, db_ping_ms: 1 };
+  const safeThresholds = { max_rss_mb: 1_400, max_load_per_cpu: 0.7, max_event_loop_p99_ms: 80, max_db_waiting: 0, max_db_in_use: 6, max_db_ping_ms: 300 };
   function load(file) {
     if (cache.has(file)) return cache.get(file);
     const exports = {};
     cache.set(file, exports);
     const code = ts.transpileModule(read(file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
     vm.runInNewContext(code, { exports, require: (key) => {
+      if (key === "@/lib/db") return { dbPoolStats: () => null, ...(deps[key] ?? {}) };
+      if (key === "./resource-governor-witness.ts" || key === "./resource-governor-witness") return deps[key] ?? { readResourceGovernorWitness: () => ({
+        measured_at_ms: FakeDate.now(), sample: safeSample, thresholds: safeThresholds,
+      }) };
       if (key in deps) return deps[key];
       const bare = key.replace(/\.ts$/, "");
       if (bare in deps) return deps[bare];
       assert.ok(key.startsWith("."), `unexpected dependency ${key}`);
       const path = new URL(key.endsWith(".ts") ? key : `${key}.ts`, new URL(file, root));
       return load(path.href.slice(root.href.length));
-    }, Date: FakeDate, Math, JSON, Number, Array, Object, Map, Set, Intl, Promise, Error, structuredClone, setInterval: () => 1, clearInterval: () => {}, globalThis: {}, console, process: { env: { ...env } } });
+    }, Date: FakeDate, Math, JSON, Number, Array, Object, Map, Set, Intl, Promise, Error, structuredClone, setImmediate,
+    setInterval: () => 1, clearInterval: () => {}, globalThis: {}, console,
+    process: { env: { ...env }, memoryUsage: () => ({ rss: 100 * 1_048_576 }) } });
     return exports;
   }
   return load;
@@ -188,6 +196,27 @@ test("env flag: only the literal MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED=true start
   assert.equal(mod.midRecoveryLocksV2Health().enabled, false);
   assert.equal(mod.midRecoveryLocksV2Health().env_flag, "MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED");
   assert.equal(mod.midRecoveryLocksV2Health().experiment, "MID_RECOVERY_LOCKS_V2_INACTIVE");
+});
+
+test("resource governor breach performs zero SQL, frame, or evaluator work and records the skip", async () => {
+  let sqlCalls = 0, frameCalls = 0, producerCalls = 0;
+  const factory = { readResourceGovernorWitness: () => ({
+    measured_at_ms: now,
+    sample: { rss_mb: 100, load_per_cpu: 0.01, event_loop_p99_ms: 1, db_waiting: 0, db_in_use: 1, db_ping_ms: 1 },
+    thresholds: { max_rss_mb: 1_400, max_load_per_cpu: 0.7, max_event_loop_p99_ms: 80, max_db_waiting: 0, max_db_in_use: 6, max_db_ping_ms: 300 },
+  }) };
+  const mod = loader({
+    "@/lib/db": { getSql: async () => { sqlCalls += 1; throw new Error("must not query"); }, dbPoolStats: () => ({ total: 10, idle: 0, waiting: 1 }) },
+    "./resource-governor-witness": factory,
+    "./server-engine": { getServerFrame: async () => { frameCalls += 1; throw new Error("must not read frame"); } },
+    "./bots": { runBotsWithEvaluatedCandidates: () => { producerCalls += 1; throw new Error("must not evaluate"); } },
+  })(OBSERVER);
+  await mod.midRecoveryLocksV2Tick(now);
+  assert.equal(sqlCalls, 0);
+  assert.equal(frameCalls, 0);
+  assert.equal(producerCalls, 0);
+  assert.equal(mod.midRecoveryLocksV2Health().guard_skips, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(mod.midRecoveryLocksV2Health().last_guard)), { run: false, reasons: ["DB_POOL_WAITING", "DB_POOL_BUSY"] });
 });
 
 test("wiring and isolation: healthz kicks it fire-and-forget; no production module imports it; it owns no SQL writer and never reaches production state", () => {
@@ -244,6 +273,9 @@ test("in band, all five arms record under their own experiment on the same windo
   assert.ok(rows.every((r) => r.experiment === "MID_RECOVERY_LOCKS_V2_INACTIVE"), "never a V1 row");
   assert.ok(rows.every((r) => r.payload.evaluator_revision === "V2_CANDIDATE_PROVENANCE_V1"), "one revision stamp covers NULL no-fill and every grace finalization");
   assert.ok(rows.every((r) => typeof r.payload.observer_session_start_ms === "number"), "the observer boundary is carried by every arm");
+  assert.ok(rows.every((r) => r.payload.in_band_ticks >= 2 && r.payload.governor_skips === 0 && r.payload.busy_skips === 0), "every terminal row carries the observation counters at its decision time");
+  assert.ok(rows.slice(1).every((r) => r.payload.in_band_ticks === 3), "the grace-finalized recovered arms carry all three observed ticks");
+  assert.ok(rows.every((r) => r.payload.max_in_band_gap_ms === 120_000), "the largest observed in-band gap is explicit");
   for (const r of rows.slice(1)) {
     assert.equal(r.payload.capture_policy, "P2_EXPLOIT_GUARD_V1", "every record carries the producer's P2 guard");
     assert.equal(typeof r.payload.intervention.e1_book_dedupe.applied, "boolean", "and the P1 trace");
@@ -326,7 +358,7 @@ test("actual receipt writer stamps NULL fill, recovered intentions/fills and in-
   const mod = loader({
     "@/lib/db": { getSql: async () => sql },
     "./server-engine": { getServerFrame: async () => ({ snap, chair: {}, learner: {}, settings: {}, call_log: [], selective: { ready: true, start: now - 3_600_000 } }) },
-    "./shadow-lab-mid-recovery-locks-v2.ts": { ...m, evaluateLocksV2: evaluation },
+    "./shadow-lab-mid-recovery-locks-v2.ts": { ...m, evaluateLocksV2InSlices: async () => evaluation() },
   }, { env: { RENDER_GIT_COMMIT: "candidate-build" } })(OBSERVER);
   await mod.midRecoveryLocksV2Tick(now + 1);
   assert.equal(mod.midRecoveryLocksV2Health().error, null);
