@@ -201,6 +201,27 @@ export function evaluateLocksV2(input: LocksInput, deps: MidRecoveryDeps): Locks
   return { experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, arms, null_fav: structuredClone(arms.CONTROL.evaluation.null_fav) };
 }
 
+/**
+ * The same evaluator, split into bounded event-loop slices for the server-side
+ * observer. The producer frame is captured exactly once and every arm receives
+ * that immutable same-frame input; only scheduling differs from evaluateLocksV2.
+ */
+export async function evaluateLocksV2InSlices(
+  input: LocksInput,
+  deps: MidRecoveryDeps,
+  yieldToLoop: () => Promise<void> = () => new Promise<void>((resolve) => setImmediate(resolve)),
+): Promise<LocksV2Evaluation> {
+  const frame = deps.runBotsWithEvaluatedCandidates(structuredClone(input.snap), structuredClone(input.learner));
+  if (frame.capture_policy !== REQUIRED_CAPTURE_POLICY) throw new CapturePolicyMissing(frame.capture_policy);
+  const arms = {} as Record<LocksRecoveredArm, LocksV2ArmEvaluation>;
+  for (let i = 0; i < LOCKS_RECOVERED_ARMS.length; i += 1) {
+    if (i > 0) await yieldToLoop();
+    const arm = LOCKS_RECOVERED_ARMS[i]!;
+    arms[arm] = evaluateLocksV2Arm(arm, input, frame, deps);
+  }
+  return { experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, arms, null_fav: structuredClone(arms.CONTROL.evaluation.null_fav) };
+}
+
 type V2ArmStatistics = Omit<LocksSummary, "experiment" | "experiment_version" | "foreign_rows">;
 export type LocksV2Summary = {
   experiment: typeof MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;

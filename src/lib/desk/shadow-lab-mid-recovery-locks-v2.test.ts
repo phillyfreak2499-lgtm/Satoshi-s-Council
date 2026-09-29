@@ -6,7 +6,7 @@ import {
   type LocksArmState, type LocksInput, type LocksRecoveredArm,
 } from "./shadow-lab-mid-recovery-locks.ts";
 import {
-  CapturePolicyMissing, E1_BOOK_DUPLICATE, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, REQUIRED_CAPTURE_POLICY, dedupeE1BookSupport, evaluateLocksV2, planV2ReceiptTransition,
+  CapturePolicyMissing, E1_BOOK_DUPLICATE, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, REQUIRED_CAPTURE_POLICY, dedupeE1BookSupport, evaluateLocksV2, evaluateLocksV2InSlices, planV2ReceiptTransition,
   summarizeLocksV2, type P1Trace,
 } from "./shadow-lab-mid-recovery-locks-v2.ts";
 import { V2_COHORT_ARMS, V2_EVALUATOR_REVISION, V2_EXPERIMENT_ID, V2_LEGACY_REVISION, partitionLocksV2Rows, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
@@ -223,6 +223,31 @@ test("isolation: no arm sees another arm's objects, and nothing handed in is mut
   assert.ok(spy.chair.every((c) => c.touched === undefined), "each arm's Chair sees its own learner");
 });
 
+test("sliced evaluator is byte-identical and yields between the four same-frame arms", async () => {
+  const i = input(snap());
+  const deps = depsFor({ ...OPEN, extraRows: [STRIKE_UP] });
+  const expected = evaluateLocksV2(i, deps);
+  let yields = 0;
+  const actual = await evaluateLocksV2InSlices(i, depsFor({ ...OPEN, extraRows: [STRIKE_UP] }), async () => { yields += 1; });
+  assert.deepEqual(actual, expected);
+  assert.equal(yields, LOCKS_RECOVERED_ARMS.length - 1);
+});
+
+test("sliced evaluator keeps the largest synchronous slice within 40ms on a production-sized learner clone", async () => {
+  const i = input(snap());
+  (i.learner as unknown as { bench_blob: string }).bench_blob = "x".repeat(170_000);
+  const slices: number[] = [];
+  let started = performance.now();
+  await evaluateLocksV2InSlices(i, depsFor({ ...OPEN, extraRows: [STRIKE_UP] }), async () => {
+    slices.push(performance.now() - started);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    started = performance.now();
+  });
+  slices.push(performance.now() - started);
+  assert.equal(slices.length, LOCKS_RECOVERED_ARMS.length);
+  assert.ok(Math.max(...slices) <= 40, `largest synchronous slice ${Math.max(...slices).toFixed(1)}ms`);
+});
+
 const receiptWindow = (ticker: string, revision: string | null = V2_EVALUATOR_REVISION, build = "build-a"): LocksV2Row[] => V2_COHORT_ARMS.map((arm) => ({
   experiment: V2_EXPERIMENT_ID, build_sha: build, arm, ticker, close_ms: now + 420_000,
   kind: "no_fill", decided_ms: now, side: null, ask_cents: null, fee_cents: null, official_winner: "UP", net_cents: null,
@@ -298,6 +323,27 @@ test("incomplete, unknown, mixed-build, and session-boundary windows remain expl
   for (const [ticker, reason] of [["incomplete", "INCOMPLETE_ARMS"], ["intention-only", "INCOMPLETE_TERMINAL_ARMS"], ["mixed-build", "MIXED_BUILDS"], ["missing-build", "MISSING_BUILD"], ["unknown-build", "MISSING_BUILD"], ["crosses", "WINDOW_CROSSES_SESSION_BOUNDARY"], ["missing-session", "MISSING_SESSION_BOUNDARY"], ["unknown", "UNKNOWN_REVISION"]] as const) {
     assert.ok(p.excluded_windows.find((w) => w.ticker === ticker)!.reasons.includes(reason), `${ticker}: ${reason}`);
   }
+});
+
+test("complete guard-era windows with a skipped or over-gap observation stay visible but are excluded from matched", () => {
+  const skipped = receiptWindow("governor-starved").map((r) => ({ ...r, payload: {
+    ...r.payload, in_band_ticks: 9, governor_skips: 1, busy_skips: 0, max_in_band_gap_ms: 4_000,
+  } }));
+  const gapped = receiptWindow("event-loop-starved").map((r) => ({ ...r, payload: {
+    ...r.payload, in_band_ticks: 8, governor_skips: 0, busy_skips: 0, max_in_band_gap_ms: 10_001,
+  } }));
+  const clean = receiptWindow("guard-clean").map((r) => ({ ...r, payload: {
+    ...r.payload, in_band_ticks: 10, governor_skips: 0, busy_skips: 0, max_in_band_gap_ms: 2_100,
+  } }));
+  const legacyShape = receiptWindow("pre-guard-current");
+  const p = partitionLocksV2Rows([...skipped, ...gapped, ...clean, ...legacyShape]);
+  assert.equal(p.windows, 4);
+  assert.equal(p.cohorts[0]!.rows.length, 20, "all source rows remain visible");
+  assert.equal(p.cohorts[0]!.matched_rows.length, 10, "only the clean and pre-guard current windows remain matched");
+  for (const ticker of ["governor-starved", "event-loop-starved"]) {
+    assert.ok(p.excluded_windows.find((w) => w.ticker === ticker)!.reasons.includes("DEGRADED_OBSERVATION"), ticker);
+  }
+  assert.equal(p.excluded_windows.some((w) => w.ticker === "pre-guard-current"), false, "missing historical fields do not rewrite prior cohort membership");
 });
 
 test("the V2 foreign-row guard rejects explicit foreign identities and unknown arms", () => {
