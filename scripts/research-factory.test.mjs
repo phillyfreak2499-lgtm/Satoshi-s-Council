@@ -155,6 +155,26 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   assert.deepEqual(tick, { ran: 0, guard: { run: false, reasons: ["MEMORY"] } });
 });
 
+test("guarded rollups back off for fifteen minutes without delaying bounded window retries", async (t) => {
+  const m = await factory(t);
+  assert.equal(m.resourceGuardBackoffMs("window"), 60_000);
+  assert.equal(m.resourceGuardBackoffMs("digest"), 60_000);
+  assert.equal(m.resourceGuardBackoffMs("rollup"), 15 * 60_000);
+
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "rollup", "2026-09-29T13|r2", {}, EPOCH);
+  const job = await m.claim(sql, "p", EPOCH);
+  assert.equal(await m.runJob(sql, job, "p", {
+    sampler: pressure,
+    handlers: { rollup: async (ctx) => { await ctx.unit(); } },
+    now: () => EPOCH,
+  }), "skipped_resource_guard");
+  assert.equal(await m.claim(sql, "p", EPOCH + 14 * 60_000), null,
+    "the expensive rollup is not re-read every minute while pressure persists");
+  assert.ok(await m.claim(sql, "p", EPOCH + 15 * 60_000 + 1),
+    "the rollup becomes eligible after the bounded backoff");
+});
+
 test("a governor pause logs bounded measurements and thresholds once per unchanged reason set", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();

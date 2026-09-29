@@ -302,6 +302,14 @@ async function finish(sql: Sql, job: JobRow, owner: string, status: "complete" |
 export class ResourceGuardPause extends Error { constructor(readonly reasons: string[]) { super(`resource guard: ${reasons.join(",")}`); } }
 export class Defer extends Error { constructor(readonly ms: number, why: string) { super(why); } }
 
+/**
+ * Rollups scan the historical cohort before their next checkpoint, so retrying
+ * one every minute under sustained pressure simply repeats the expensive read.
+ * Window jobs stay on the short retry because they are bounded and time-sensitive.
+ */
+export const resourceGuardBackoffMs = (jobKind: string): number =>
+  jobKind === "rollup" ? 15 * 60_000 : 60_000;
+
 export type JobContext = {
   sql: Sql;
   job: JobRow;
@@ -818,7 +826,11 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
   } catch (error) {
     if (error instanceof ResourceGuardPause) {
       opts.onResourcePause?.(error.reasons);
-      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), { guard: error.reasons.join(","), checkpoint, not_before_ms: now() + 60_000 }, now());
+      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), {
+        guard: error.reasons.join(","),
+        checkpoint,
+        not_before_ms: now() + resourceGuardBackoffMs(job.job_kind),
+      }, now());
       return "skipped_resource_guard";
     }
     if (error instanceof Defer) {
