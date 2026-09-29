@@ -5,9 +5,9 @@
  * returns "disabled" unless RESEARCH_FACTORY_ENABLED=true (the literal string).
  *
  * PRODUCTION WINS. Before every job, and between every unit of work inside a
- * job, the governor samples memory, load, event-loop delay (the direct cause of
- * request latency in this single Node process) and DB pool pressure; any one
- * over its threshold pauses research. A paused job is checkpointed and marked
+ * job, the governor samples memory, process CPU, event-loop delay (the direct
+ * cause of request latency in this single Node process) and DB pool pressure;
+ * any one over its threshold pauses research. A paused job is checkpointed and marked
  * `skipped_resource_guard`; it resumes on a later tick. Work runs in small
  * units separated by `setImmediate`, so no single unit holds the event loop,
  * and the timer is unref'd so it can never keep the process alive.
@@ -22,7 +22,7 @@
  * desk_research_integrity and desk_research_reports. It reads receipts, the
  * research ledger view and decision snapshots; it never updates them.
  */
-import { availableParallelism, loadavg } from "node:os";
+import { availableParallelism } from "node:os";
 import { readFileSync } from "node:fs";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { dbPoolStats, getSql, type Sql } from "@/lib/db";
@@ -78,6 +78,21 @@ export function containerMemoryLimitMb(read: (p: string) => string = (p) => read
   return null;
 }
 
+export type CpuMeter = { at_ms: number; used_us: number };
+
+/**
+ * Process CPU as a fraction of the capacity visible to this container.
+ * Linux loadavg is host-wide on Render and can permanently pause an otherwise
+ * quiet service, so it is not a valid container-pressure witness.
+ */
+export function processCpuPerCapacity(previous: CpuMeter | null, current: CpuMeter, cpus: number): number {
+  if (!previous || !Number.isFinite(previous.at_ms) || !Number.isFinite(previous.used_us) ||
+      !Number.isFinite(current.at_ms) || !Number.isFinite(current.used_us) ||
+      !(current.at_ms > previous.at_ms) || !(current.used_us >= previous.used_us) || !(cpus > 0)) return Number.NaN;
+  const elapsedUs = (current.at_ms - previous.at_ms) * 1_000;
+  return (current.used_us - previous.used_us) / (elapsedUs * cpus);
+}
+
 type State = {
   timer: ReturnType<typeof setInterval> | null;
   busy: boolean;
@@ -91,10 +106,11 @@ type State = {
   completed: number;
   paused: number;
   lastReportedKey: string | null;
+  cpuMeter: CpuMeter | null;
 };
 const g = globalThis as typeof globalThis & { __researchFactory__?: State };
 const state = (): State => g.__researchFactory__ ??= {
-  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedKey: null,
+  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedKey: null, cpuMeter: null,
 };
 
 type RuntimeStatus = "disabled" | "started" | "running" | "paused" | "error" | "progress";
@@ -156,9 +172,13 @@ async function defaultSample(sql: Sql | null): Promise<ResourceSample> {
   const pool = dbPoolStats();
   let ping: number | null = null;
   if (sql) { const t = performance.now(); await sql`select 1`; ping = performance.now() - t; }
+  const usage = process.cpuUsage();
+  const cpuMeter = { at_ms: performance.now(), used_us: usage.user + usage.system };
+  const processCpu = processCpuPerCapacity(st.cpuMeter, cpuMeter, availableParallelism());
+  st.cpuMeter = cpuMeter;
   return {
     rss_mb: process.memoryUsage().rss / 1_048_576,
-    load_per_cpu: loadavg()[0]! / Math.max(1, availableParallelism()),
+    load_per_cpu: processCpu,
     event_loop_p99_ms: p99,
     db_waiting: pool ? pool.waiting : null,
     db_in_use: pool ? pool.total - pool.idle : null,
@@ -839,7 +859,10 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
         reasons: guard.reasons,
         sample: boundedResourceSample(sample),
         thresholds: boundedGovernorThresholds(thresholds),
-      }, true, researchFactoryLogLine("paused", { reasons: guard.reasons }));
+      }, true, researchFactoryLogLine("paused", {
+        reasons: guard.reasons,
+        cpu_sample: Number.isFinite(sample.load_per_cpu) ? "MEASURED" : "WARMUP",
+      }));
       return { ran: 0, guard };
     }
     if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) {

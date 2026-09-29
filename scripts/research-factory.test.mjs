@@ -198,6 +198,39 @@ test("a governor pause logs bounded measurements and thresholds once per unchang
   assert.deepEqual(m.boundedResourceSample({ ...sample, load_per_cpu: Number.NaN }), { ...payload.sample, load_per_cpu: "INVALID" });
 });
 
+test("the CPU governor uses scoped process work rather than host load average", async (t) => {
+  const m = await factory(t);
+  assert.equal(m.processCpuPerCapacity(null, { at_ms: 1_000, used_us: 50_000 }, 2), Number.NaN);
+  assert.equal(m.processCpuPerCapacity(
+    { at_ms: 1_000, used_us: 50_000 },
+    { at_ms: 31_000, used_us: 6_050_000 },
+    2,
+  ), 0.1, "six CPU-seconds over 30 wall-seconds on two CPUs is ten percent of capacity");
+  assert.equal(Number.isNaN(m.processCpuPerCapacity(
+    { at_ms: 31_000, used_us: 6_050_000 },
+    { at_ms: 30_000, used_us: 6_100_000 },
+    2,
+  )), true, "backward clocks fail closed");
+});
+
+test("a warm-up CPU pause reports once again when a measured breach replaces it", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const lines = [];
+  const originalWarn = console.warn;
+  console.warn = (line) => lines.push(String(line));
+  t.after(() => { console.warn = originalWarn; });
+  const base = { rss_mb: 200, event_loop_p99_ms: 5, db_waiting: 0, db_in_use: 1, db_ping_ms: 10 };
+
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: Number.NaN }), now: () => EPOCH });
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: 0.9 }), now: () => EPOCH + 30_000 });
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: 0.91 }), now: () => EPOCH + 60_000 });
+
+  assert.equal(lines.length, 2, "warm-up and first measured breach are distinct, later numeric drift stays deduped");
+  assert.equal(JSON.parse(lines[0].replace(/^\[research-factory\] /, "")).sample.load_per_cpu, "INVALID");
+  assert.equal(JSON.parse(lines[1].replace(/^\[research-factory\] /, "")).sample.load_per_cpu, 0.9);
+});
+
 test("a failing job is retried with back-off and stops at the attempt limit; the error is recorded", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();

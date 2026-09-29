@@ -64,7 +64,7 @@ export function retryDelayMs(attempts: number): number {
 
 export type ResourceSample = {
   rss_mb: number;
-  /** 1-minute load average divided by available CPUs. */
+  /** Process CPU used since the prior sample, divided by wall time and available CPUs. */
   load_per_cpu: number;
   /** p99 event-loop delay over the last sample window: the direct cause of request latency in one Node process. */
   event_loop_p99_ms: number;
