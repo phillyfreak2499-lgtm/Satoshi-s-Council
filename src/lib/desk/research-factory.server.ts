@@ -28,7 +28,7 @@ import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { dbPoolStats, getSql, type Sql } from "@/lib/db";
 import {
   JOB_KINDS, LEASE_MS, MAX_ATTEMPTS, RESEARCH_FACTORY, governorDecision, retryDelayMs, thresholdsFromEnv,
-  type GovernorDecision, type JobKind, type ResourceSample,
+  type GovernorDecision, type GovernorThresholds, type JobKind, type ResourceSample,
 } from "./research-factory.ts";
 import {
   auditWindow, isDiagnosticOnly, windowFacts,
@@ -90,11 +90,11 @@ type State = {
   lastError: string | null;
   completed: number;
   paused: number;
-  lastReportedStatus: string | null;
+  lastReportedKey: string | null;
 };
 const g = globalThis as typeof globalThis & { __researchFactory__?: State };
 const state = (): State => g.__researchFactory__ ??= {
-  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedStatus: null,
+  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedKey: null,
 };
 
 type RuntimeStatus = "disabled" | "started" | "running" | "paused" | "error" | "progress";
@@ -107,14 +107,43 @@ export function researchFactoryLogLine(status: RuntimeStatus, details: Record<st
   return `[research-factory] ${JSON.stringify({ status, ...details })}`;
 }
 
-function reportRuntime(status: RuntimeStatus, details: Record<string, unknown> = {}, dedupe = true): void {
+function reportRuntime(status: RuntimeStatus, details: Record<string, unknown> = {}, dedupe = true, dedupeKey?: string): void {
   const st = state();
   const line = researchFactoryLogLine(status, details);
-  if (dedupe && st.lastReportedStatus === line) return;
-  st.lastReportedStatus = line;
+  const key = dedupeKey ?? line;
+  if (dedupe && st.lastReportedKey === key) return;
+  st.lastReportedKey = key;
   if (status === "error") console.error(line);
   else if (status === "paused") console.warn(line);
   else console.info(line);
+}
+
+type BoundedNumber = number | "INVALID";
+const bounded = (value: number, digits = 1): BoundedNumber => Number.isFinite(value)
+  ? Math.round(value * 10 ** digits) / 10 ** digits
+  : "INVALID";
+
+/** Stable, low-precision diagnostics only; no environment values or job data. */
+export function boundedResourceSample(sample: ResourceSample): Record<string, BoundedNumber | null> {
+  return {
+    rss_mb: bounded(sample.rss_mb, 0),
+    load_per_cpu: bounded(sample.load_per_cpu, 3),
+    event_loop_p99_ms: bounded(sample.event_loop_p99_ms, 1),
+    db_waiting: sample.db_waiting == null ? null : bounded(sample.db_waiting, 0),
+    db_in_use: sample.db_in_use == null ? null : bounded(sample.db_in_use, 0),
+    db_ping_ms: sample.db_ping_ms == null ? null : bounded(sample.db_ping_ms, 1),
+  };
+}
+
+export function boundedGovernorThresholds(thresholds: GovernorThresholds): Record<string, BoundedNumber> {
+  return {
+    max_rss_mb: bounded(thresholds.max_rss_mb, 0),
+    max_load_per_cpu: bounded(thresholds.max_load_per_cpu, 3),
+    max_event_loop_p99_ms: bounded(thresholds.max_event_loop_p99_ms, 1),
+    max_db_waiting: bounded(thresholds.max_db_waiting, 0),
+    max_db_in_use: bounded(thresholds.max_db_in_use, 0),
+    max_db_ping_ms: bounded(thresholds.max_db_ping_ms, 1),
+  };
 }
 
 export type Sampler = () => Promise<ResourceSample>;
@@ -806,7 +835,11 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
     st.lastGuard = guard;
     if (!guard.run) {
       st.paused += 1;
-      reportRuntime("paused", { reasons: guard.reasons });
+      reportRuntime("paused", {
+        reasons: guard.reasons,
+        sample: boundedResourceSample(sample),
+        thresholds: boundedGovernorThresholds(thresholds),
+      }, true, researchFactoryLogLine("paused", { reasons: guard.reasons }));
       return { ran: 0, guard };
     }
     if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) {

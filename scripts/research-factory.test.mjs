@@ -155,6 +155,49 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   assert.deepEqual(tick, { ran: 0, guard: { run: false, reasons: ["MEMORY"] } });
 });
 
+test("a governor pause logs bounded measurements and thresholds once per unchanged reason set", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const lines = [];
+  const originalWarn = console.warn;
+  console.warn = (line) => lines.push(String(line));
+  t.after(() => { console.warn = originalWarn; });
+  const sample = {
+    rss_mb: 200.49,
+    load_per_cpu: 0.98765,
+    event_loop_p99_ms: 88.84,
+    db_waiting: 1,
+    db_in_use: 7,
+    db_ping_ms: 301.26,
+  };
+
+  const env = { RESEARCH_FACTORY_MAX_RSS_MB: "1536" };
+  const first = await m.factoryTick({ sql, sampler: async () => sample, env, now: () => EPOCH });
+  const second = await m.factoryTick({ sql, sampler: async () => sample, env, now: () => EPOCH + 30_000 });
+
+  assert.deepEqual(first.guard.reasons, ["SYSTEM_LOAD", "REQUEST_LATENCY", "DB_POOL_WAITING", "DB_POOL_BUSY", "DB_LATENCY"]);
+  assert.deepEqual(second.guard, first.guard);
+  assert.equal(lines.length, 1, "unchanged reasons do not turn low-precision samples into per-tick log spam");
+  const payload = JSON.parse(lines[0].replace(/^\[research-factory\] /, ""));
+  assert.deepEqual(payload.sample, {
+    rss_mb: 200,
+    load_per_cpu: 0.988,
+    event_loop_p99_ms: 88.8,
+    db_waiting: 1,
+    db_in_use: 7,
+    db_ping_ms: 301.3,
+  });
+  assert.deepEqual(payload.thresholds, {
+    max_rss_mb: 1536,
+    max_load_per_cpu: 0.7,
+    max_event_loop_p99_ms: 80,
+    max_db_waiting: 0,
+    max_db_in_use: 6,
+    max_db_ping_ms: 300,
+  });
+  assert.deepEqual(m.boundedResourceSample({ ...sample, load_per_cpu: Number.NaN }), { ...payload.sample, load_per_cpu: "INVALID" });
+});
+
 test("a failing job is retried with back-off and stops at the attempt limit; the error is recorded", async (t) => {
   const m = await factory(t);
   const { sql } = await freshDb();
