@@ -336,8 +336,10 @@ function walk(dir, out = []) {
 
 test("rails: default OFF on a literal flag, kicked by healthz, writes only its own tables, no paid API, and production imports none of it", async (t) => {
   const m = await factory(t);
+  assert.equal(m.researchFactoryLogLine("paused", { reasons: ["MEMORY"] }), '[research-factory] {"status":"paused","reasons":["MEMORY"]}');
+  assert.doesNotMatch(m.researchFactoryLogLine("error", { message: "database unavailable" }), /key|secret|token|payload/i, "runtime status has no credential or research payload fields");
   for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(m.ensureResearchFactory({ RESEARCH_FACTORY_ENABLED: v }), "disabled", String(v));
-  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(error\) => console\.error\("\[research-factory\] startup import failed", error\)\);/);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",

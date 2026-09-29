@@ -90,11 +90,32 @@ type State = {
   lastError: string | null;
   completed: number;
   paused: number;
+  lastReportedStatus: string | null;
 };
 const g = globalThis as typeof globalThis & { __researchFactory__?: State };
 const state = (): State => g.__researchFactory__ ??= {
-  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0,
+  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedStatus: null,
 };
+
+type RuntimeStatus = "disabled" | "started" | "running" | "paused" | "error" | "progress";
+
+/**
+ * Render-visible, credential-free scheduler status. Keep this deliberately
+ * small: no environment values, job payloads, report contents or credentials.
+ */
+export function researchFactoryLogLine(status: RuntimeStatus, details: Record<string, unknown> = {}): string {
+  return `[research-factory] ${JSON.stringify({ status, ...details })}`;
+}
+
+function reportRuntime(status: RuntimeStatus, details: Record<string, unknown> = {}, dedupe = true): void {
+  const st = state();
+  const line = researchFactoryLogLine(status, details);
+  if (dedupe && st.lastReportedStatus === line) return;
+  st.lastReportedStatus = line;
+  if (status === "error") console.error(line);
+  else if (status === "paused") console.warn(line);
+  else console.info(line);
+}
 
 export type Sampler = () => Promise<ResourceSample>;
 
@@ -760,6 +781,7 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
   const now = opts.now ?? Date.now;
   st.lastTickAt = now();
   let ran = 0;
+  let enqueued = 0;
   try {
     const sql = await getSql();
     const sampler = opts.sampler ?? (() => defaultSample(sql));
@@ -768,8 +790,15 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
     const guard = governorDecision(sample, thresholds);
     st.lastSample = sample;
     st.lastGuard = guard;
-    if (!guard.run) { st.paused += 1; return { ran: 0, guard }; }
-    if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) { await enqueueDue(sql, now()); st.lastEnqueueAt = now(); }
+    if (!guard.run) {
+      st.paused += 1;
+      reportRuntime("paused", { reasons: guard.reasons });
+      return { ran: 0, guard };
+    }
+    if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) {
+      enqueued = await enqueueDue(sql, now());
+      st.lastEnqueueAt = now();
+    }
     const started = performance.now();
     while (performance.now() - started < TICK_BUDGET_MS) {
       const job = await claim(sql, st.owner, now());
@@ -781,9 +810,12 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
       await yieldToLoop();
     }
     st.lastError = null;
+    if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
+    else reportRuntime("running", { enqueued: 0, ran: 0 });
     return { ran, guard };
   } catch (error) {
     st.lastError = error instanceof Error ? error.message : String(error);
+    reportRuntime("error", { message: st.lastError });
     return { ran, guard: st.lastGuard };
   } finally {
     st.busy = false;
@@ -792,13 +824,20 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
 
 /** Env-gated, default OFF. */
 export function ensureResearchFactory(env: Record<string, string | undefined> = process.env): "started" | "already" | "disabled" {
-  if (!researchFactoryEnabled(env)) return "disabled";
+  if (!researchFactoryEnabled(env)) {
+    reportRuntime("disabled");
+    return "disabled";
+  }
   const st = state();
   if (st.timer) return "already";
   st.eld = monitorEventLoopDelay({ resolution: 20 });
   st.eld.enable();
   st.timer = setInterval(() => void factoryTick(), TICK_MS);
   st.timer.unref?.();
+  reportRuntime("started", { tick_ms: TICK_MS, enqueue_every_ms: ENQUEUE_EVERY_MS, max_concurrent_jobs: RESEARCH_FACTORY.max_concurrent_jobs });
+  // Do not leave a newly enabled factory opaque for the first interval. The
+  // same busy flag and governor used by scheduled ticks keep this bounded.
+  void factoryTick();
   return "started";
 }
 
