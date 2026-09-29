@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { takerFeeCentsExact } from "./clock";
 import type { Arena } from "./arena";
+import { AsyncStaleCache } from "./async-stale-cache";
 import { CALLSIGN_RE, callsignVerdict, isBlocked, normalize, publicLabel } from "./callsign-guard";
 
 async function sql() {
@@ -21,6 +22,14 @@ const MIN_MINS_LEFT = 0.5;
 export const RANK_MIN_N = 3;
 /** New callsigns one network may create in a day. Enough for a household, not for hopping. */
 export const NEW_NAMES_PER_DAY = 3;
+
+/**
+ * Arena is a read-only display model polled by several surfaces. Keep a short,
+ * bounded process-local snapshot per device token so overlapping polls share
+ * one database fan-out and a transient connection failure can show the last
+ * successful board instead of turning the room dark.
+ */
+const arenaSummaryCache = new AsyncStaleCache<string, Arena>(45_000, 5 * 60_000, 256);
 
 /** A one-way id for a network: hash of a server secret and the address. The address itself is never stored. */
 export function netHash(ip: unknown): string | null {
@@ -125,6 +134,7 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
     returning ticker, close_time::text as close_time, lean, conf, entry_cents, fee, mins_left, t::text as t, winner, cents
   `;
   if (!rows.length) return { ok: false, error: "you already called this window — one call per window", status: 409 };
+  arenaSummaryCache.clear();
   return { ok: true, call: rows[0]! };
 }
 
@@ -132,13 +142,15 @@ export async function placeCall(input: CallInput): Promise<CallResult> {
 export async function settleHumanCalls(ticker: string, winner: "UP" | "DOWN"): Promise<{ token: string; cents: number }[]> {
   try {
     const db = await sql();
-    return await db<{ token: string; cents: number }>`
+    const rows = await db<{ token: string; cents: number }>`
       update desk_human_calls
          set winner = ${winner},
              cents = case when lean = ${winner} then 100 - entry_cents - fee else -entry_cents - fee end
        where ticker = ${ticker} and winner is null
        returning token, cents
     `;
+    if (rows.length) arenaSummaryCache.clear();
+    return rows;
   } catch {
     /* the next grade retries nothing; a missed settle shows as an open call */
     return [];
@@ -203,8 +215,7 @@ async function deskRows(days: number | null): Promise<ArenaRow[]> {
   return [mk("SATOSHI (the chair)", chair)];
 }
 
-export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
-  const token = cleanToken(tokenRaw);
+async function loadArenaSummary(token: string | null): Promise<Arena> {
   const db = await sql();
   const [week, all, desk7, deskAll] = await Promise.all([humanRows(7, token), humanRows(null, token), deskRows(7), deskRows(null)]);
   let me: Arena["me"] = null;
@@ -242,6 +253,11 @@ export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
   return { me, week, all, desk_week: desk7, desk_all: deskAll, at: Date.now() };
 }
 
+export async function arenaSummary(tokenRaw: unknown): Promise<Arena> {
+  const token = cleanToken(tokenRaw);
+  return arenaSummaryCache.get(token ?? "anonymous", () => loadArenaSummary(token));
+}
+
 export type HideResult = { ok: true; hidden: number } | { ok: false; error: string; status: number };
 
 /**
@@ -264,6 +280,7 @@ export async function hideCallsign(nameRaw: unknown): Promise<HideResult> {
         update desk_players set name = ${label}, hidden_at = now(), hidden_reason = 'policy'
          where token = ${token} and hidden_at is null returning token
       `;
+      if (done.length) arenaSummaryCache.clear();
       return { ok: true, hidden: done.length };
     } catch {
       /* that label is taken: widen it */
@@ -279,6 +296,7 @@ export async function resetArena(): Promise<{ locks: number; players: number }> 
   const [p] = await db<{ n: number }>`select count(*)::int as n from desk_players`;
   await db`delete from desk_human_calls`;
   await db`delete from desk_players`;
+  arenaSummaryCache.clear();
   return { locks: c?.n ?? 0, players: p?.n ?? 0 };
 }
 
