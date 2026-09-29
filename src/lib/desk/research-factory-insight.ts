@@ -41,6 +41,10 @@ const chicagoDay = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: 
 /** One settled window's tape, as the factory stores it. */
 export type TapeWindow = { ticker: string; close_ms: number; events: TapeEvent[]; timeline: WindowTimeline };
 
+/** A contradictory source identity is preserved on the timeline but cannot contribute to derived evidence. */
+const reportableTapeWindows = (windows: readonly TapeWindow[]) => windows.filter((w) => w.timeline.identity_excluded_events === 0);
+const identityExcludedWindows = (windows: readonly TapeWindow[]) => windows.filter((w) => w.timeline.identity_excluded_events > 0).length;
+
 export type HonestyLabel = { hypothesis_kind: "PRESPECIFIED" | "EXPLORATORY"; variants_tested: number; population: string; note?: string };
 
 // ---------------------------------------------------------------------------
@@ -48,7 +52,8 @@ export type HonestyLabel = { hypothesis_kind: "PRESPECIFIED" | "EXPLORATORY"; va
 // ---------------------------------------------------------------------------
 
 export function abstentionReport(windows: readonly TapeWindow[]) {
-  const checkpoints = windows.flatMap((w) => w.events.filter((e) => e.checkpoint != null && e.state !== "BOOKED" && e.state !== "QUALIFIED"));
+  const reportable = reportableTapeWindows(windows);
+  const checkpoints = reportable.flatMap((w) => w.events.filter((e) => e.checkpoint != null && e.state !== "BOOKED" && e.state !== "QUALIFIED"));
   const by = (key: (e: TapeEvent) => string) => {
     const groups = new Map<string, TapeEvent[]>();
     for (const e of checkpoints) { const k = key(e); groups.set(k, [...(groups.get(k) ?? []), e]); }
@@ -58,7 +63,7 @@ export function abstentionReport(windows: readonly TapeWindow[]) {
   };
   // Structural vs episodic: in windows where a blocker appears at any checkpoint, what share of that window's checkpoints does it hold?
   const persistence = new Map<string, number[]>();
-  for (const w of windows) {
+  for (const w of reportable) {
     const cps = w.events.filter((e) => e.checkpoint != null);
     if (!cps.length) continue;
     const seen = new Set(cps.flatMap((e) => e.blockers));
@@ -69,9 +74,9 @@ export function abstentionReport(windows: readonly TapeWindow[]) {
     return { blocker, windows: shares.length, mean_share_of_checkpoints: round(m, 3), character: m >= 0.8 ? "STRUCTURAL" : m <= 0.35 ? "EPISODIC" : "MIXED" };
   }).sort((a, b) => b.windows - a.windows);
   // What precedes conversion: blockers present before the first directional frame, in windows that did vs did not become directional.
-  const converted = windows.filter((w) => w.timeline.became_directional && !w.timeline.partial_window);
-  const never = windows.filter((w) => !w.timeline.became_directional && !w.timeline.partial_window);
-  const blockers = [...new Set(windows.flatMap((w) => w.timeline.blockers_before_directional))].sort();
+  const converted = reportable.filter((w) => w.timeline.became_directional && !w.timeline.partial_window);
+  const never = reportable.filter((w) => !w.timeline.became_directional && !w.timeline.partial_window);
+  const blockers = [...new Set(reportable.flatMap((w) => w.timeline.blockers_before_directional))].sort();
   const precede = blockers.map((b) => {
     const inConv = converted.filter((w) => w.timeline.blockers_before_directional.includes(b)).length;
     const inNever = never.filter((w) => w.timeline.blockers_before_directional.includes(b)).length;
@@ -79,7 +84,7 @@ export function abstentionReport(windows: readonly TapeWindow[]) {
   });
   return {
     population: "production decision tape: designated checkpoints of settled windows while WAIT or DIRECTIONAL-not-qualified",
-    frames: checkpoints.length, windows: windows.length,
+    frames: checkpoints.length, windows: reportable.length, identity_windows_excluded: identityExcludedWindows(windows),
     frequency: {
       primary: tally(checkpoints.map((e) => e.primary_blocker ?? "NONE")).map(([blocker, n]) => ({ blocker, n, pct: pct(n, checkpoints.length) })),
       any: tally(checkpoints.flatMap((e) => e.blockers)).map(([blocker, n]) => ({ blocker, n, pct: pct(n, checkpoints.length) })),
@@ -102,7 +107,8 @@ export function abstentionReport(windows: readonly TapeWindow[]) {
 // ---------------------------------------------------------------------------
 
 export function transitionReport(windows: readonly TapeWindow[]) {
-  const full = windows.filter((w) => !w.timeline.partial_window).sort((a, b) => b.close_ms - a.close_ms);
+  const reportable = reportableTapeWindows(windows);
+  const full = reportable.filter((w) => !w.timeline.partial_window).sort((a, b) => b.close_ms - a.close_ms);
   const view = (ws: readonly TapeWindow[]) => {
     const t = ws.flatMap((w) => w.timeline.transitions);
     const from = new Map<string, number>();
@@ -141,7 +147,8 @@ export function transitionReport(windows: readonly TapeWindow[]) {
   const first = (w: TapeWindow) => w.events[0];
   return {
     population: "production decision tape: settled windows observed from their start (partial windows excluded)",
-    partial_windows_excluded: windows.length - full.length,
+    partial_windows_excluded: reportable.length - full.length,
+    identity_windows_excluded: identityExcludedWindows(windows),
     rolling,
     breakdowns: {
       direction: breakdown((w) => w.timeline.first_directional_side ?? "never directional"),
@@ -159,7 +166,7 @@ export function transitionReport(windows: readonly TapeWindow[]) {
 // ---------------------------------------------------------------------------
 
 export function briefAccuracy(windows: readonly TapeWindow[]) {
-  const briefs = windows.flatMap((w) => w.timeline.briefs);
+  const briefs = reportableTapeWindows(windows).flatMap((w) => w.timeline.briefs);
   const gradable = briefs.filter((b) => b.gradable);
   const met = gradable.filter((b) => b.condition_met);
   const cleared = gradable.filter((b) => b.blocker_cleared);
@@ -177,7 +184,7 @@ export function briefAccuracy(windows: readonly TapeWindow[]) {
   });
   return {
     population: "designated checkpoint briefs of settled windows whose primary blocker has a condition production's own logic defines",
-    briefs: briefs.length, gradable: gradable.length,
+    briefs: briefs.length, gradable: gradable.length, identity_windows_excluded: identityExcludedWindows(windows),
     brief_condition_hit_rate: pct(met.length, gradable.length),
     brief_correct_transition_rate: pct(met.filter((b) => b.correct_transition).length, met.length),
     brief_false_hope_rate: pct(met.filter((b) => b.false_hope).length, met.length),
@@ -219,10 +226,10 @@ export function smallestChange(e: TapeEvent): Lever | null {
 
 const MAGNITUDE_BUCKET: Record<string, number> = { chair_bar: 0.02, min_supporters: 1, min_families: 1, max_opposing: 1, floor_cents: 1, min_model_edge: 1, min_index_edge: 1 };
 
-export function survivalReport(windows: readonly TapeWindow[]): HonestyLabel & { levers: unknown[]; false_unlocks: string[]; highest_leverage: unknown } {
+export function survivalReport(windows: readonly TapeWindow[]): HonestyLabel & { levers: unknown[]; false_unlocks: string[]; highest_leverage: unknown; identity_windows_excluded: number } {
   type Row = { lever: string; step: string; w: TapeWindow; later_fail: string[]; side: "UP" | "DOWN" | null; ask: number | null };
   const rows: Row[] = [];
-  for (const w of windows) {
+  for (const w of reportableTapeWindows(windows)) {
     if (w.timeline.qualified || w.timeline.booked) continue;
     // The window's deepest frame (its best chance), not an arbitrary one.
     const best = [...w.events].filter((e) => e.primary_blocker).sort((a, b) => b.stage_index - a.stage_index || b.as_of - a.as_of)[0];
@@ -258,6 +265,7 @@ export function survivalReport(windows: readonly TapeWindow[]): HonestyLabel & {
   return {
     hypothesis_kind: "EXPLORATORY", variants_tested: levers.length,
     population: "settled production windows that never qualified; each at its deepest recorded frame; one single-variable change at a time",
+    identity_windows_excluded: identityExcludedWindows(windows),
     levers, false_unlocks: falseUnlocks,
     highest_leverage: best ? { lever: best.lever, step: best.step, qualified_fills_created: best.qualified_fills_created_per_rule_change, net_cents: best.net_cents_at_recorded_ask } : null,
     note: "Ranked by qualified fills created, not windows unblocked. A change that only moves a window from one blocker to the next is a false unlock.",
@@ -367,11 +375,11 @@ export function redundancy(stances: ReadonlyMap<string, ReadonlyMap<string, { si
 }
 
 /** Seat and family signal value from the production tape, at one fixed checkpoint per window (default T-5:00). */
-export function signalValueReport(windows: readonly TapeWindow[], checkpoint = 300): HonestyLabel & { signals: unknown[]; redundancy: unknown[]; best_incremental: string | null; most_redundant: string | null } {
+export function signalValueReport(windows: readonly TapeWindow[], checkpoint = 300): HonestyLabel & { signals: unknown[]; redundancy: unknown[]; best_incremental: string | null; most_redundant: string | null; identity_windows_excluded: number } {
   const obsBy = new Map<string, SignalObs[]>();
   const stances = new Map<string, Map<string, { side: "UP" | "DOWN" }>>();
   const winners = new Map<string, "UP" | "DOWN">();
-  for (const w of windows) {
+  for (const w of reportableTapeWindows(windows)) {
     const e = w.events.find((x) => x.checkpoint === checkpoint && x.seats && x.market.yes_mid != null);
     if (!e || !w.timeline.winner) continue;
     const key = `${w.ticker}|${w.close_ms}`;
@@ -403,6 +411,7 @@ export function signalValueReport(windows: readonly TapeWindow[], checkpoint = 3
   return {
     hypothesis_kind: "EXPLORATORY", variants_tested: signals.length,
     population: `production seat reads at the T-${checkpoint / 60}:00 checkpoint of settled windows; favourite-perspective; price-band controlled`,
+    identity_windows_excluded: identityExcludedWindows(windows),
     signals, redundancy: red.slice(0, 40), best_incremental: best, most_redundant: redundant,
     note: "Raw value and incremental value are separate scores. Nothing here mutes, promotes or re-weights a seat.",
   };

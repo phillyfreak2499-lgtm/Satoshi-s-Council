@@ -25,6 +25,7 @@ import { SELECTIVE_PARAMS } from "./floor-policy.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
 import { chairWaitReason } from "./telemetry.ts";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
+import { onGrid, tickerAgrees } from "./window-identity.ts";
 
 // ---------------------------------------------------------------------------
 // Taxonomy.
@@ -335,6 +336,19 @@ export function shouldRecord(rec: TapeRecord, prev: { label: string; stage_index
 
 export type TapeEvent = TapeRecord & { checkpoint: number | null; partial_window: boolean; build_sha: string };
 
+export type TapeIdentityReason = "WINDOW_OFF_GRID" | "TICKER_CLOSE_TIME_MISMATCH";
+export type TapeIdentityQuality = { reportable: boolean; on_grid: boolean; ticker_time_ok: boolean | null; reasons: TapeIdentityReason[] };
+
+/** Reuses the production window-identity witnesses without rewriting source rows. */
+export function tapeIdentityQuality(ticker: string, closeMs: number): TapeIdentityQuality {
+  const grid = onGrid(closeMs);
+  const tickerTimeOk = tickerAgrees(ticker, closeMs);
+  const reasons: TapeIdentityReason[] = [];
+  if (!grid) reasons.push("WINDOW_OFF_GRID");
+  if (tickerTimeOk === false) reasons.push("TICKER_CLOSE_TIME_MISMATCH");
+  return { reportable: reasons.length === 0, on_grid: grid, ticker_time_ok: tickerTimeOk, reasons };
+}
+
 export type BriefGrade = {
   checkpoint: number;
   secs_left: number;
@@ -357,6 +371,10 @@ export type BriefGrade = {
 };
 
 export type WindowTimeline = {
+  /** Raw append-only source count, including identity-excluded rows. */
+  source_events: number;
+  identity_excluded_events: number;
+  identity_exclusion_reasons: TapeIdentityReason[];
   partial_window: boolean;
   events: number;
   labels: Array<{ label: string; stage_index: number; from_secs_left: number; dwell_s: number }>;
@@ -381,7 +399,9 @@ const stageIdx = (label: string): number => {
 };
 
 export function gradeWindow(events: readonly TapeEvent[], winner: "UP" | "DOWN" | null): WindowTimeline {
-  const ev = [...events].sort((a, b) => a.as_of - b.as_of);
+  const source = [...events].sort((a, b) => a.as_of - b.as_of);
+  const excluded = source.filter((e) => !tapeIdentityQuality(e.ticker, e.close_ms).reportable);
+  const ev = source.filter((e) => tapeIdentityQuality(e.ticker, e.close_ms).reportable);
   const closeMs = ev[0]?.close_ms ?? 0;
   const labels: WindowTimeline["labels"] = [];
   const transitions: WindowTimeline["transitions"] = [];
@@ -425,6 +445,9 @@ export function gradeWindow(events: readonly TapeEvent[], winner: "UP" | "DOWN" 
   const deepest = ev.reduce<TapeEvent | null>((m, e) => (!m || e.stage_index > m.stage_index ? e : m), null);
   const before = firstDir ? ev.filter((e) => e.as_of < firstDir.as_of) : ev;
   return {
+    source_events: source.length,
+    identity_excluded_events: excluded.length,
+    identity_exclusion_reasons: [...new Set(excluded.flatMap((e) => tapeIdentityQuality(e.ticker, e.close_ms).reasons))],
     partial_window: ev.some((e) => e.partial_window), events: ev.length, labels, transitions,
     first_blocker: ev[0]?.label ?? null, terminal_label: ev[ev.length - 1]?.label ?? null, deepest_stage: deepest?.stage ?? null,
     became_directional: !!firstDir, qualified: ev.some((e) => e.state === "QUALIFIED" || e.state === "BOOKED"), booked: ev.some((e) => e.state === "BOOKED"),

@@ -41,6 +41,7 @@ import {
   type LocksArmState, type LocksInput, type LocksIntervention, type LocksRecoveredArm, type LocksSummary,
 } from "./shadow-lab-mid-recovery-locks.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
+import type { ReceiptKind } from "./shadow-lab.ts";
 import type { ChairResult, SeatId, SeatRow } from "./types";
 
 /** bots.ts CAPTURE_POLICY, held as data (a rail test pins the two equal). */
@@ -61,6 +62,21 @@ export const MID_RECOVERY_LOCKS_V2_EXPERIMENT = Object.freeze({
 } as const);
 
 export const MID_RECOVERY_LOCKS_V2_ENV_FLAG = "MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED";
+
+/** An intention is evidence of eligibility, not a terminal arm outcome. */
+export const V2_TERMINAL_RECEIPT_KINDS = Object.freeze(["fill", "veto", "no_fill"] as const satisfies readonly ReceiptKind[]);
+
+export function planV2ReceiptTransition(
+  existingKinds: ReadonlySet<ReceiptKind>,
+  state: { eligible: boolean; booked: boolean; at_terminal_checkpoint: boolean },
+): ReceiptKind[] {
+  if (V2_TERMINAL_RECEIPT_KINDS.some((kind) => existingKinds.has(kind))) return [];
+  const out: ReceiptKind[] = [];
+  if (state.eligible && !existingKinds.has("intention")) out.push("intention");
+  if (state.booked) out.push("fill");
+  else if (state.at_terminal_checkpoint) out.push("no_fill");
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // The P1 correction.

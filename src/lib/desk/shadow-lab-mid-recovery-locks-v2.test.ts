@@ -6,7 +6,7 @@ import {
   type LocksArmState, type LocksInput, type LocksRecoveredArm,
 } from "./shadow-lab-mid-recovery-locks.ts";
 import {
-  CapturePolicyMissing, E1_BOOK_DUPLICATE, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, REQUIRED_CAPTURE_POLICY, dedupeE1BookSupport, evaluateLocksV2,
+  CapturePolicyMissing, E1_BOOK_DUPLICATE, MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_V2_EXPERIMENT, REQUIRED_CAPTURE_POLICY, dedupeE1BookSupport, evaluateLocksV2, planV2ReceiptTransition,
   summarizeLocksV2, type P1Trace,
 } from "./shadow-lab-mid-recovery-locks-v2.ts";
 import { V2_COHORT_ARMS, V2_EVALUATOR_REVISION, V2_EXPERIMENT_ID, V2_LEGACY_REVISION, partitionLocksV2Rows, type LocksV2Row } from "./mid-recovery-locks-v2-cohort.ts";
@@ -110,6 +110,13 @@ test("identity: a new experiment and flag beside LOCKS V1, the same five arms, b
   assert.equal(MID_RECOVERY_LOCKS_V2_ENV_FLAG, "MID_RECOVERY_LOCKS_V2_SHADOW_ENABLED");
   assert.notEqual(MID_RECOVERY_LOCKS_V2_ENV_FLAG, MID_RECOVERY_LOCKS_ENV_FLAG);
   assert.ok(Object.isFrozen(X) && Object.isFrozen(X.corrections));
+});
+
+test("receipt lifecycle: intention remains non-terminal, lost confirmation finalizes no_fill, and no late fill can follow", () => {
+  assert.deepEqual(planV2ReceiptTransition(new Set(), { eligible: true, booked: false, at_terminal_checkpoint: false }), ["intention"]);
+  assert.deepEqual(planV2ReceiptTransition(new Set(["intention"]), { eligible: false, booked: false, at_terminal_checkpoint: true }), ["no_fill"]);
+  assert.deepEqual(planV2ReceiptTransition(new Set(["intention", "no_fill"]), { eligible: true, booked: true, at_terminal_checkpoint: false }), [], "no fill is allowed after terminal no_fill");
+  assert.deepEqual(planV2ReceiptTransition(new Set(["intention"]), { eligible: true, booked: true, at_terminal_checkpoint: true }), ["fill"], "confirmation wins before terminal finalization");
 });
 
 test("P1: STREAK beside another E1 book supporter of the same side counts once; nothing else about the Chair moves", () => {
