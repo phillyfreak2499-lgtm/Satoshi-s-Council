@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   RECOVERY_PILOT_SOURCE,
+  chairOnlyCalls,
   recoveryPilotBookOk,
   recoveryPilotCandidate,
   recoveryPilotDecision,
   recoveryPilotEnabled,
+  recoveryPilotStartAtBoot,
   type RecoveryPilotContext,
 } from "./recovery-pilot.ts";
 import type { CallLogRow, Snapshot } from "./types";
@@ -51,6 +53,23 @@ test("the recovery pilot is off unless explicitly enabled", () => {
   assert.equal(recoveryPilotEnabled({}), false);
   assert.equal(recoveryPilotEnabled({ RECOVERY_PILOT_CALLS_ENABLED: "true" }), true);
   assert.equal(recoveryPilotEnabled({ RECOVERY_PILOT_CALLS_ENABLED: "TRUE" }), false);
+});
+
+test("only source-free rows may feed Chair-only consumers", () => {
+  const chair = { id: "chair", t: NOW, ticker: "C", close_time: NOW, lean: "UP", cents: 88, settle: null, flipped: false } as CallLogRow;
+  const pilot = { ...chair, id: "pilot", source: RECOVERY_PILOT_SOURCE } as CallLogRow;
+  assert.deepEqual(chairOnlyCalls([pilot, chair]), [chair]);
+});
+
+test("activation resets to the next complete window unless the prior process was enabled", () => {
+  const stale = NOW - 3_600_000;
+  const next = Math.ceil(NOW / 900_000) * 900_000;
+  // OFF processes still persist a housekeeping boundary. It must not become
+  // activation authority when the flag later flips on.
+  assert.equal(recoveryPilotStartAtBoot(NOW, true, false, stale), next);
+  assert.equal(recoveryPilotStartAtBoot(NOW, true, true, stale), stale);
+  assert.equal(recoveryPilotStartAtBoot(NOW, false, true, stale), next);
+  assert.equal(recoveryPilotStartAtBoot(NOW, true, true, "bad"), next);
 });
 
 test("candidate is the 85–94.9c favourite only on a fresh, tight, sized book", () => {

@@ -51,6 +51,31 @@ export function recoveryPilotEnabled(env: NodeJS.ProcessEnv = process.env): bool
   return env.RECOVERY_PILOT_CALLS_ENABLED === "true";
 }
 
+/**
+ * Keep non-Chair pilot positions out of consumers whose contract is explicitly
+ * the Chair's paper book (milestones, Chair settlement copy and exit policy).
+ */
+export function chairOnlyCalls(calls: CallLogRow[]): CallLogRow[] {
+  return calls.filter((row) => row.source == null);
+}
+
+/**
+ * A newly enabled pilot starts at the next complete market window. A persisted
+ * boundary is reusable only when the previous process also persisted that the
+ * pilot was enabled; otherwise it was merely an off-state housekeeping value.
+ */
+export function recoveryPilotStartAtBoot(
+  now: number,
+  enabled: boolean,
+  previousEnabled: boolean,
+  previousStart: unknown,
+): number {
+  if (enabled && previousEnabled && typeof previousStart === "number" && Number.isFinite(previousStart) && previousStart > 0) {
+    return previousStart;
+  }
+  return Math.ceil(now / 900_000) * 900_000;
+}
+
 function feedsFresh(snap: Snapshot): boolean {
   const receiptAge = (snap.as_of - snap.obs?.receipt_ts) / 1000;
   return snap.health.spot_ok && snap.health.kalshi_ok &&

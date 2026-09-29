@@ -35,9 +35,11 @@ import {
 } from "./selective-entry";
 import {
   RECOVERY_PILOT_SOURCE,
+  chairOnlyCalls,
   recoveryPilotBookOk,
   recoveryPilotDecision,
   recoveryPilotEnabled,
+  recoveryPilotStartAtBoot,
   withRecoveryPilotSourceColumn,
   type RecoveryPilotDecision,
   type RecoveryPilotWatch,
@@ -332,7 +334,7 @@ function freshEng(): Eng {
     riskReady: false,
     entryWatch: null,
     recoveryPilotWatch: null,
-    recoveryPilotStart: Math.ceil(Date.now() / 900_000) * 900_000,
+    recoveryPilotStart: recoveryPilotStartAtBoot(Date.now(), recoveryPilotEnabled(), false, null),
     lastAdmissionAudit: null,
     selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
     baselineCalls: [],
@@ -445,6 +447,7 @@ async function loadState(e: Eng) {
           selective_start?: number;
           selective_policy?: string;
           baseline_calls?: unknown;
+          recovery_pilot_enabled?: boolean;
           recovery_pilot_start?: number;
         }
       | undefined;
@@ -460,7 +463,12 @@ async function loadState(e: Eng) {
     e.riskCalls = risk.calls;
     e.riskReady = risk.valid && raw.risk_history_valid !== false;
     e.baselineCalls = restoreRiskCalls(raw.baseline_calls, []).calls;
-    if (Number.isFinite(raw.recovery_pilot_start) && raw.recovery_pilot_start! > 0) e.recoveryPilotStart = raw.recovery_pilot_start!;
+    e.recoveryPilotStart = recoveryPilotStartAtBoot(
+      Date.now(),
+      recoveryPilotEnabled(),
+      raw.recovery_pilot_enabled === true,
+      raw.recovery_pilot_start,
+    );
     if (raw.selective_policy === SELECTIVE_ENTRY_ID && Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
@@ -508,6 +516,7 @@ async function persistState(e: Eng, force = false) {
       selective_start: e.selectiveStart,
       selective_policy: SELECTIVE_ENTRY_ID,
       baseline_calls: e.baselineCalls,
+      recovery_pilot_enabled: recoveryPilotEnabled(),
       recovery_pilot_start: e.recoveryPilotStart,
       settings: {
         bar_override: e.settings.bar_override,
@@ -1157,7 +1166,9 @@ async function applyGrade(
   e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source, scoreAudit), Date.now());
   void gradeV2(e, snap, finish);
   void gradeTaker(e, snap, finish); // shadow seat, recorded only — no chair/learner effect
-  const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const booked = chairOnlyCalls(e.callLog).find(
+    (r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000,
+  );
   const chairBits =
     booked && booked.settle != null
       ? { entry: booked.cents, settle: booked.settle, ev: Math.round((booked.settle - booked.cents - takerFeeCents(booked.cents)) * 10) / 10 }
@@ -1442,7 +1453,7 @@ function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void 
     }
     return;
   }
-  void observeChairWaitMilestone(snap, chair, e.callLog).catch(() => {});
+  void observeChairWaitMilestone(snap, chair, chairOnlyCalls(e.callLog)).catch(() => {});
   try {
     const row = decisionSnapshotFrom(snap, chair);
     void recordDecisionSnapshot(row).catch((err) => {
