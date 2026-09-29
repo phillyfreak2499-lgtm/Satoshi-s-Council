@@ -420,6 +420,10 @@ test("factory V2 economics never pool old winning receipts with corrected losing
   assert.equal(chokeAttribution(graded, V2, "BAR_NO_SITMASS").rolling[0]!.n, 2);
   const coverage = cohortCoverage(graded);
   assert.equal(coverage.observed_windows, 3);
+  assert.equal(coverage.current_comparable_windows, 2);
+  assert.equal(coverage.current_promotion_quality_windows, 2);
+  assert.equal(coverage.current_non_promotion_quality_windows, 0);
+  assert.deepEqual(coverage.non_promotion_quality_windows, []);
   assert.equal(coverage.excluded_windows.length, 1);
   assert.deepEqual(coverage.excluded_windows[0]!.reasons, ["LEGACY_UNSTAMPED"]);
   const safety = evidenceSafety(graded, []).rows.find((r) => r.experiment === V2 && r.arm === "BAR_NO_SITMASS")!;
@@ -458,8 +462,23 @@ test("current V2 cohort membership never certifies candidate integrity", () => {
   const graded = gradedWindows(1, () => rows);
   const V2 = MID_RECOVERY_LOCKS_V2_EXPERIMENT.id;
   assert.equal(cohortCoverage(graded).current_comparable_windows, 1);
+  assert.equal(cohortCoverage(graded).current_promotion_quality_windows, 0);
+  assert.equal(cohortCoverage(graded).current_non_promotion_quality_windows, 1);
+  assert.deepEqual(cohortCoverage(graded).non_promotion_quality_windows[0]!.quality_reasons, ["BAR_NO_SITMASS:INTEGRITY_SUSPECT"]);
   assert.equal(matchedGrade(graded, V2).matched_clean_windows, 0);
   assert.equal(lifecycle(graded).find((l) => l.experiment === V2 && l.arm === "BAR_NO_SITMASS")!.current_result.fills, 0);
+});
+
+test("factory V2 coverage reports comparable-but-partial windows as non-promotion-quality", () => {
+  const graded = gradedWindows(1, () => v2Receipts());
+  const bar = graded.find((f) => f.experiment === MID_RECOVERY_LOCKS_V2_EXPERIMENT.id && f.arm === "BAR_NO_SITMASS")!;
+  bar.replay_quality = "PARTIAL";
+  bar.quality_reasons = ["NO_BOOK_AT_CHECKPOINT"];
+  const coverage = cohortCoverage(graded);
+  assert.equal(coverage.current_comparable_windows, 1);
+  assert.equal(coverage.current_promotion_quality_windows, 0);
+  assert.equal(coverage.current_non_promotion_quality_windows, 1);
+  assert.deepEqual(coverage.non_promotion_quality_windows[0]!.quality_reasons, ["BAR_NO_SITMASS:REPLAY_PARTIAL"]);
 });
 
 test("partly written V2 derived facts cannot enter economic comparisons despite complete raw metadata", () => {
@@ -476,6 +495,9 @@ test("partly written V2 derived facts cannot enter economic comparisons despite 
   const coverage = cohortCoverage(partial);
   assert.equal(coverage.observed_windows, 1);
   assert.equal(coverage.current_comparable_windows, 0);
+  assert.equal(coverage.current_promotion_quality_windows, 0);
+  assert.equal(coverage.current_non_promotion_quality_windows, 0);
+  assert.deepEqual(coverage.non_promotion_quality_windows, []);
   assert.deepEqual(coverage.excluded_windows[0]!.reasons, ["INCOMPLETE_DERIVED_ARMS"]);
   assert.equal(JSON.stringify(partial), before);
 });

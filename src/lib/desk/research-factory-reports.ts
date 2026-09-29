@@ -48,18 +48,31 @@ export function cohortCoverage(all: readonly GradedFact[]) {
   for (const f of own) { const k = winKey(f); windows.set(k, [...(windows.get(k) ?? []), f]); }
   const details = [...windows.entries()].map(([window, fs]) => {
     const c = facts(fs[0]!).v2_cohort as Obj | undefined;
+    const qualityReasons = comparable.has(window) ? fs.flatMap((f) => {
+      if (isDiagnosticOnly(f.experiment, f.arm)) return [];
+      const reasons: string[] = [];
+      if (f.replay_quality !== "EXACT") reasons.push(`${f.arm}:REPLAY_${f.replay_quality}`);
+      if (f.integrity.length === 0) reasons.push(`${f.arm}:MISSING_INTEGRITY`);
+      for (const status of new Set(f.integrity.filter((s) => s !== "CLEAN"))) reasons.push(`${f.arm}:INTEGRITY_${status}`);
+      return reasons;
+    }).sort() : [];
     return {
       window, ticker: fs[0]!.ticker, close_ms: fs[0]!.close_ms,
       revisions: c?.revisions ?? [V2_LEGACY_REVISION], build_shas: c?.build_shas ?? [],
       arms: fs.map((f) => f.arm).sort(), comparable: comparable.has(window),
+      promotion_quality: comparable.has(window) && qualityReasons.length === 0,
+      quality_reasons: qualityReasons,
       reasons: [...(Array.isArray(c?.reasons) ? c.reasons : ["MISSING_DERIVED_COHORT_METADATA"]), ...(fs.every(currentEvidenceCohort) && !comparable.has(window) ? ["INCOMPLETE_DERIVED_ARMS"] : [])],
     };
   }).sort((a, b) => a.close_ms - b.close_ms || a.ticker.localeCompare(b.ticker));
   return {
     experiment: MID_RECOVERY_LOCKS_V2_EXPERIMENT.id, current_revision: V2_EVALUATOR_REVISION,
     observed_windows: details.length, current_comparable_windows: details.filter((w) => w.comparable).length,
+    current_promotion_quality_windows: details.filter((w) => w.promotion_quality).length,
+    current_non_promotion_quality_windows: details.filter((w) => w.comparable && !w.promotion_quality).length,
     excluded_windows: details.filter((w) => !w.comparable),
-    rule: "Factory V2 economics use only complete current-revision windows with one known build and a complete observer session. Legacy, unknown, mixed, and incomplete windows remain visible here. Cohort membership does not certify CLEAN integrity, settlement, execution, or promotion. Original receipts remain unchanged.",
+    non_promotion_quality_windows: details.filter((w) => w.comparable && !w.promotion_quality),
+    rule: "Comparable means only a complete current-revision cohort with one known build and a complete observer session. Promotion-quality additionally requires every non-diagnostic arm to replay EXACT with at least one integrity annotation and every annotation CLEAN; this includes the matched NULL_FAV_80 settlement row. COMBINED_DIAG never qualifies promotion. Legacy, unknown, mixed, incomplete, partial, unsettled, suspect, invalid, and unverifiable windows remain visible and separate. Original receipts remain unchanged.",
   };
 }
 
