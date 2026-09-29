@@ -2664,3 +2664,21 @@ test("public Settings hides shared-desk controls until the owner key is verified
     "the owner watchdog stays inside verified owner mode",
   );
 });
+
+test("call-notification readiness is independently visible and never gates booking", () => {
+  const engine = read("src/lib/desk/server-engine.ts");
+  const push = read("src/lib/desk/push.server.ts");
+  const noteCall = between(engine, "async function noteCall(", "function settleCallLog(");
+  const health = between(engine, "export async function getHealth(", "/** The shared brain's latest snapshot");
+
+  assert.match(push, /export async function pushRecipientCounts/,
+    "push readiness counts the same bounded recipient population as fanout");
+  assert.match(push, /on_call and fails < \$\{MAX_FAILS\}/,
+    "failed subscriptions are excluded from call readiness");
+  assert.match(health, /call_notifications:[\s\S]*configured: e\.alertCallSubs > 0/,
+    "deep health names whether call alerts have any eligible recipient");
+  assert.match(health, /do not rely on call notifications for rollout/,
+    "zero-recipient readiness fails honestly");
+  assert.doesNotMatch(noteCall, /alertCallSubs|pushRecipientCounts/,
+    "notification readiness is observability only and cannot create or gate a booking");
+});
