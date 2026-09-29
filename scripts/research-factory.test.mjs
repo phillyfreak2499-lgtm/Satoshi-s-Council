@@ -174,6 +174,29 @@ test("a failing job is retried with back-off and stops at the attempt limit; the
   assert.equal(row.attempts, 3);
 });
 
+test("a tick with a failed job reports error rather than healthy progress", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "TICK-FAIL|1", {}, EPOCH);
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: calm,
+    handlers: { window: async () => { throw new Error("bounded boom"); } },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 1);
+  assert.equal((await jobsOf(sql))[0].status, "failed");
+  assert.equal(m.researchFactoryHealth().error, "bounded boom");
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", { message: "bounded boom", failed: 1 })));
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
+});
+
 // ---------------------------------------------------------------------------
 // End to end on seeded research data.
 // ---------------------------------------------------------------------------

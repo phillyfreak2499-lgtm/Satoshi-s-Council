@@ -714,11 +714,13 @@ export const HANDLERS: Record<JobKind, Handler> = { window: windowHandler, rollu
 // ---------------------------------------------------------------------------
 
 export type RunOptions = {
+  sql?: Sql;
   sampler?: Sampler;
   handlers?: Partial<Record<JobKind, Handler>>;
   now?: () => number;
   env?: Record<string, string | undefined>;
   onResourcePause?: (reasons: string[]) => void;
+  onJobError?: (message: string) => void;
 };
 
 /**
@@ -775,7 +777,9 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
       return "queued";
     }
     const message = error instanceof Error ? error.message : String(error);
-    await finish(rawSql, job, owner, "failed", telemetry(), { error: message.slice(0, 2000), checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) }, now());
+    const boundedMessage = message.slice(0, 2000);
+    opts.onJobError?.(boundedMessage);
+    await finish(rawSql, job, owner, "failed", telemetry(), { error: boundedMessage, checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) }, now());
     return "failed";
   }
 }
@@ -790,8 +794,10 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
   let ran = 0;
   let enqueued = 0;
   let midJobPause: string[] | null = null;
+  let failed = 0;
+  let lastJobError: string | null = null;
   try {
-    const sql = await getSql();
+    const sql = opts.sql ?? await getSql();
     const sampler = opts.sampler ?? (() => defaultSample(sql));
     const thresholds = thresholdsFromEnv(opts.env ?? process.env, containerMemoryLimitMb());
     const sample = await sampler();
@@ -817,18 +823,29 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
           midJobPause = reasons;
           opts.onResourcePause?.(reasons);
         },
+        onJobError: (message) => {
+          lastJobError = message;
+          opts.onJobError?.(message);
+        },
       });
       ran += 1;
       if (status === "complete") st.completed += 1;
+      if (status === "failed") failed += 1;
       if (status === "skipped_resource_guard") { st.paused += 1; break; }
       await yieldToLoop();
     }
-    st.lastError = null;
     if (midJobPause) {
+      st.lastError = null;
       st.lastGuard = { run: false, reasons: midJobPause };
       reportRuntime("paused", { reasons: midJobPause, phase: "job" });
-    } else if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
-    else reportRuntime("running", { enqueued: 0, ran: 0 });
+    } else if (failed > 0) {
+      st.lastError = lastJobError ?? `${failed} research job(s) failed`;
+      reportRuntime("error", { message: st.lastError, failed });
+    } else {
+      st.lastError = null;
+      if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
+      else reportRuntime("running", { enqueued: 0, ran: 0 });
+    }
     return { ran, guard };
   } catch (error) {
     st.lastError = error instanceof Error ? error.message : String(error);
