@@ -23,6 +23,7 @@ function stamp(t: number | null): string {
 export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full: boolean }) {
   const p = facts.paper;
   const lean = facts.conclusion.lean;
+  const pilot = p.entry_source === "RECOVERY_FAV85_V1";
   return (
     <Panel
       id="paper"
@@ -40,7 +41,7 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
           label="paper position"
           value={p.held ? "HELD" : "NONE"}
           tone={p.held ? "text-fg" : "text-subtle"}
-          sub={p.held ? `${p.entry_side} on this window` : p.no_position_why}
+          sub={p.held ? `${pilot ? "recovery pilot · " : ""}${p.entry_side} on this window` : p.no_position_why}
         />
         <StatBox
           label="entry"
@@ -51,10 +52,11 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
 
       {p.held ? (
         <p className="mt-3 max-w-[80ch] font-sans text-ui leading-relaxed text-muted">
-          The book holds {p.entry_side} at {p.entry_cents?.toFixed(1) ?? "—"}¢
+          {pilot ? "The recovery pilot" : "The book"} holds {p.entry_side} at {p.entry_cents?.toFixed(1) ?? "—"}¢
           {p.ask_now == null ? "" : `, and that side's ask is ${p.ask_now.toFixed(1)}¢ now`}. One position per window, so
           the held side does not change when the read does
           {p.entry_side && p.entry_side !== lean ? ` — and right now it does differ from the ${lean} read above` : ""}.
+          {pilot ? " This is a bounded paper-only price-favourite test, not a Council call." : ""}
         </p>
       ) : (
         <p className="mt-3 max-w-[80ch] font-sans text-ui leading-relaxed text-muted">

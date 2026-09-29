@@ -161,7 +161,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
           <div className="mt-2 font-mono text-ui text-muted">
             {book.kind === "booked" ? (
               <>
-                {book.lean} booked {book.cents.toFixed(1)}¢ · {bookSide} ask now {book.ask.toFixed(1)}¢
+                {book.source === "RECOVERY_FAV85_V1" ? "recovery pilot · " : ""}{book.lean} booked {book.cents.toFixed(1)}¢ · {bookSide} ask now {book.ask.toFixed(1)}¢
               </>
             ) : lean === "WAIT" ? (
               "no paper fill"
@@ -713,7 +713,7 @@ export function SatoshiTab({
           </CouncilFloorRoom>
         }
       />
-      {chair.lean === "WAIT" ? <WaitResearchNote /> : null}
+      {chair.lean === "WAIT" && book.kind !== "booked" ? <WaitResearchNote /> : null}
       {density === "full" && strip ? <div>{strip}</div> : null}
 
       <details className="company-decision-notes"><summary>Decision notes and voting context</summary><WhyBlock why={why} chair={chair} /></details>

@@ -51,7 +51,7 @@ export function lastCallLine(
   const ago = windowsAgo(fill.close_time, latest?.close_time ?? null);
   const agoText = ago == null ? "" : ` — ${ago} ${ago === 1 ? "window" : "windows"} ago`;
   return {
-    label: "Last call",
+    label: fill.call.source === "RECOVERY_FAV85_V1" ? "Last recovery-pilot position" : "Last call",
     text: `${readStamp(fill.close_time)} · ${side} · settled ${fill.winner} · ${net}${agoText}`,
     href: hrefOf(fill),
     replayHref: fill.ticker ? hrefOf(fill) : null,

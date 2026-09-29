@@ -999,6 +999,8 @@ export type PaperFacts = {
   entry_at: number | null;
   /** The side held, which need not be the Chair's current read. */
   entry_side: "UP" | "DOWN" | null;
+  /** A labelled non-Chair pilot source, or null for canonical Chair calls. */
+  entry_source: CallLogRow["source"] | null;
   /** That side's ask right now. */
   ask_now: number | null;
   /** Why there is no position, when there is none. */
@@ -1017,6 +1019,7 @@ export function paperFacts(snap: Snapshot, chair: ChairResult, callLog: readonly
     entry_cents: held && realCents(state.cents) ? state.cents : null,
     entry_at: open && open.t > 0 ? open.t : null,
     entry_side: held ? state.lean : null,
+    entry_source: open?.source ?? null,
     ask_now: state.kind === "wait" ? null : realCents(state.ask) ? state.ask : null,
     no_position_why: held
       ? ""

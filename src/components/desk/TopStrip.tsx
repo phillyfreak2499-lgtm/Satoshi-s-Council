@@ -175,7 +175,7 @@ export function TopStrip({
           ) : book.kind === "booked" ? (
             <Tip k="pane.call-log" mark={false}>
               <span className="font-mono text-micro text-muted">
-                booked {book.lean} {book.cents.toFixed(0)}¢
+                {book.source === "RECOVERY_FAV85_V1" ? "pilot " : ""}booked {book.lean} {book.cents.toFixed(0)}¢
               </span>
             </Tip>
           ) : null}

@@ -63,7 +63,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
           <div className="company-live-decision">
             <p className="company-eyebrow" id="home-live-title">{demo ? "Demo preview" : "From the research floor"}</p>
             <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
-            <span className="company-muted">{book?.kind === "booked" ? `${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
+            <span className="company-muted">{book?.kind === "booked" ? `${book.source === "RECOVERY_FAV85_V1" ? "Recovery pilot · " : ""}${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
           </div>
           <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} fill={fill} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
           {snap ? (
@@ -72,7 +72,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
             <p className="company-muted">Waiting for the next window. The feed reconnects on its own.</p>
           )}
         </section>
-        {!demo && chair?.lean === "WAIT" ? <div className="mt-4"><WaitResearchNote /></div> : null}
+        {!demo && chair?.lean === "WAIT" && book?.kind !== "booked" ? <div className="mt-4"><WaitResearchNote /></div> : null}
         <section id="call-alerts" className="mt-4 scroll-mt-24" aria-label="Paper call notifications">
           <p className="mb-2 font-sans text-ui text-muted">You can leave the Floor. Turn on a browser alert for SATOSHI’s next booked UP or DOWN paper call; quiet WAIT windows send nothing.</p>
           <AlertsPanel />
@@ -80,7 +80,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
         <div className="mt-4"><CanonicalRecord books={books} compact /></div>
         <p className="company-snapshot">
           {snap ? <>{demo ? "Simulated data" : "Snapshot"} · {new Date(snap.as_of).toISOString().slice(11, 19)} UTC · </> : null}
-          {last && !still ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · paper ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}
+          {last && !still ? <>Last graded window · <a href={`/window/${encodeURIComponent(last.ticker)}`}>{utcStamp(last.close_time)}</a> settled {last.winner}{last.call ? ` · ${last.call.source === "RECOVERY_FAV85_V1" ? "recovery pilot" : "paper"} ${last.call.lean ?? "position"} at ${last.call.entry.toFixed(0)}¢, ${last.call.ev == null ? "not yet graded" : `${last.call.ev > 0 ? "+" : ""}${last.call.ev.toFixed(1)}¢ after fee`}` : " · the desk sat"} · </> : null}
           A directional read and a recorded paper fill are different.
         </p>
         <section className="company-method" aria-labelledby="method-title">

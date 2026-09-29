@@ -113,7 +113,7 @@ export function ProChairCard({ facts, plain }: { facts: ProFloorFacts; plain: st
           v={
             paper.held ? (
               <>
-                a paper position is held: {paper.entry_side} locked at {paper.entry_cents?.toFixed(1) ?? "—"}¢. The
+                a {paper.entry_source === "RECOVERY_FAV85_V1" ? "recovery-pilot " : ""}paper position is held: {paper.entry_side} locked at {paper.entry_cents?.toFixed(1) ?? "—"}¢. The
                 read above is the desk&apos;s opinion now; the position is what the book already did.
               </>
             ) : (

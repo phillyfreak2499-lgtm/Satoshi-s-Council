@@ -15,6 +15,9 @@ export function plainLine(chair: ChairResult, snap: Snapshot, book: BookState): 
   const lean = chair.lean;
 
   if (book.kind === "booked") {
+    if (book.source === "RECOVERY_FAV85_V1") {
+      return `Recovery pilot: ${book.lean} at ${book.cents.toFixed(0)}¢. This bounded price-favourite paper position is separate from the Council's ${lean} read and is held to settlement.`;
+    }
     const agree = book.lean === "UP" ? up : down;
     const against = book.lean === "UP" ? down : up;
     const moved = lean !== book.lean ? " The read has moved since, but the position is held to settlement." : "";
