@@ -135,7 +135,9 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   };
   const opts = () => ({ sampler: () => sampler(), handlers: { window: handler }, now: () => t0 });
   const job = await m.claim(sql, "p", t0);
-  assert.equal(await m.runJob(sql, job, "p", opts()), "skipped_resource_guard");
+  let pausedFor = [];
+  assert.equal(await m.runJob(sql, job, "p", { ...opts(), onResourcePause: (reasons) => { pausedFor = reasons; } }), "skipped_resource_guard");
+  assert.deepEqual(pausedFor, ["MEMORY"], "a mid-job governor pause is available to the runtime reporter");
   let row = (await jobsOf(sql))[0];
   assert.equal(row.status, "skipped_resource_guard");
   assert.equal(row.guard_reason, "MEMORY");
@@ -170,6 +172,70 @@ test("a failing job is retried with back-off and stops at the attempt limit; the
   assert.equal(row.status, "failed");
   assert.equal(row.error, "boom");
   assert.equal(row.attempts, 3);
+});
+
+test("a tick with a failed job reports error rather than healthy progress", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "TICK-FAIL|1", {}, EPOCH);
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: calm,
+    handlers: { window: async () => { throw new Error("bounded boom"); } },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 1);
+  assert.equal((await jobsOf(sql))[0].status, "failed");
+  assert.equal(m.researchFactoryHealth().error, "bounded boom");
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", { code: "JOB_FAILED", failed: 1 })));
+  assert.equal(lines.some((line) => line.includes("bounded boom")), false, "runtime logs do not expose the stored job error");
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
+});
+
+test("a later resource pause cannot hide an earlier failure in the same tick", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "A-FAIL|1", {}, EPOCH);
+  await m.enqueue(sql, "window", "B-PAUSE|2", {}, EPOCH);
+  let samples = 0;
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: async () => {
+      samples += 1;
+      return samples === 1 ? calm() : pressure();
+    },
+    handlers: {
+      window: async (ctx) => {
+        if (ctx.job.job_key === "A-FAIL|1") throw new Error("first job failed");
+        await ctx.unit();
+      },
+    },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 2);
+  assert.deepEqual((await jobsOf(sql)).map((row) => row.status), ["failed", "skipped_resource_guard"]);
+  assert.equal(m.researchFactoryHealth().error, "first job failed");
+  assert.deepEqual(m.researchFactoryHealth().last_guard, { run: false, reasons: ["MEMORY"] });
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", {
+    code: "JOB_FAILED",
+    failed: 1,
+    paused_reasons: ["MEMORY"],
+    phase: "job",
+  })));
+  assert.equal(lines.some((line) => line.includes("first job failed")), false, "combined failure/pause logs remain research-data free");
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -336,8 +402,10 @@ function walk(dir, out = []) {
 
 test("rails: default OFF on a literal flag, kicked by healthz, writes only its own tables, no paid API, and production imports none of it", async (t) => {
   const m = await factory(t);
+  assert.equal(m.researchFactoryLogLine("paused", { reasons: ["MEMORY"] }), '[research-factory] {"status":"paused","reasons":["MEMORY"]}');
+  assert.equal(m.researchFactoryLogLine("error", { code: "TICK_FAILED" }), '[research-factory] {"status":"error","code":"TICK_FAILED"}');
   for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(m.ensureResearchFactory({ RESEARCH_FACTORY_ENABLED: v }), "disabled", String(v));
-  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => console\.error\('\[research-factory\] \{"status":"error","code":"STARTUP_IMPORT_FAILED"\}'\)\);/);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
