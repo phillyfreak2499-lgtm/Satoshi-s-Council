@@ -2045,7 +2045,10 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
     e.alertSettleSubs = counts.settle;
     e.alertDelivery = delivery;
   } catch {
-    /* alert-channel probe is best-effort */
+    // The probe is best-effort for service health, but pilot readiness must not
+    // survive a failed refresh on stale in-memory evidence.
+    e.alertCallSubs = 0;
+    e.alertDelivery = null;
   }
   await reconcile(e);
 }
