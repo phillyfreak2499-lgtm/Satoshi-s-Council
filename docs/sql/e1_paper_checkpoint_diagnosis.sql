@@ -3,6 +3,7 @@
 -- simulated fill, or P1/P2-clean evidence. Qualification remains UNKNOWN.
 -- Missing selected outputs, malformed receipts and absent sources stay visible.
 -- A nonpartial flag and one build do not prove exhaustive frame coverage.
+-- The event cap resets per process session; aggregate row counts cannot prove it.
 with bounded as materialized (
   select * from desk_research_decision_tape
    where close_time >= now() - interval '24 hours' and close_time <= now()
@@ -16,7 +17,7 @@ with bounded as materialized (
 )
 select t.ticker, t.close_time, t.as_of, t.secs_left, t.checkpoint_secs,
        t.build_sha, c.builds, c.unknown_build_rows, c.partial, c.checkpoints, c.tape_rows,
-       c.tape_rows >= 80 as event_cap_reached,
+       'UNKNOWN'::text as session_event_cap_status,
        t.record->'e1_paper'->>'source' paper_source,
        t.record->'e1_paper'->>'authority' authority,
        t.record->'e1_paper'->>'qualification' qualification,
