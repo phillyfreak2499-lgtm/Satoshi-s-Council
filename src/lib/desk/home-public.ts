@@ -14,7 +14,7 @@ export const publicHomeSnapshot = createServerFn({ method: "GET" }).handler(asyn
     if (!frame) return null;
     return {
       snap: frame.snap, votes: frame.votes, chair: frame.chair,
-      learner: frame.learner, call_log: frame.call_log, v2: frame.v2,
+      learner: frame.learner, call_log: frame.call_log, v2: frame.v2, operational: frame.operational,
       settings: { ...DEFAULT_SETTINGS, ...frame.settings, source: "live" },
       ticking: false, settling: frame.settling, lastError: frame.lastError,
       brain_age_s: frame.tick_age_s >= 0 ? frame.tick_age_s : null,

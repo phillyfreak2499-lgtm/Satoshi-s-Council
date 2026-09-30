@@ -11,7 +11,7 @@ import { bookable } from "./book-floor";
 import { stickLean, type Stick } from "./stick";
 import { softenTimeGates } from "./time-gates";
 import { startPulse, stopPulse } from "./pulse";
-import type { ServerFrame, V2Frame } from "./server-engine";
+import type { DeskOperational, ServerFrame, V2Frame } from "./server-engine";
 import type { CallLogRow, ChairResult, Learner, Lean, Settings, Snapshot, Vote } from "./types";
 
 export type DeskFrame = {
@@ -32,6 +32,8 @@ export type DeskFrame = {
   frame_at: number;
   /** Shadow chair v2 (live viewer mode only). */
   v2: V2Frame | null;
+  /** One visible answer to dead versus ordinarily quiet (live viewer mode only). */
+  operational: DeskOperational | null;
 };
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -134,6 +136,7 @@ async function pullFrame(generation: number): Promise<void> {
   connectionError = null;
   brainAge = typeof f.tick_age_s === "number" && f.tick_age_s >= 0 ? f.tick_age_s : null;
   v2Frame = f.v2 ?? null;
+  operationalFrame = f.operational ?? null;
   frameAt = Date.now();
   emit({ settling: f.settling });
 }
@@ -192,6 +195,7 @@ function emit(partial: Partial<DeskFrame> = {}) {
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
     v2: settings.source === "live" ? v2Frame : null,
+    operational: settings.source === "live" ? operationalFrame : null,
     ...partial,
   };
   for (const l of listeners) l(frame);
@@ -204,6 +208,7 @@ let connectionError: string | null = null;
 let brainAge: number | null = null;
 let frameAt = 0;
 let v2Frame: V2Frame | null = null;
+let operationalFrame: DeskOperational | null = null;
 let lastPersistAt = 0;
 let persistDirty = false;
 let visBound = false;
@@ -500,6 +505,7 @@ export function subscribe(fn: (f: DeskFrame) => void) {
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
     v2: settings.source === "live" ? v2Frame : null,
+    operational: settings.source === "live" ? operationalFrame : null,
   });
   return () => listeners.delete(fn);
 }
@@ -612,6 +618,7 @@ export function patchSettings(p: Partial<Settings>) {
     frameAt = 0;
     brainAge = null;
     v2Frame = null;
+    operationalFrame = null;
     learner = loadLearner(p.source);
     callLog = loadCallLog(p.source);
     lastCall = null;
@@ -733,6 +740,7 @@ export function getFrame(): DeskFrame {
     brain_age_s: settings.source === "live" ? brainAge : null,
     frame_at: frameAt,
     v2: settings.source === "live" ? v2Frame : null,
+    operational: settings.source === "live" ? operationalFrame : null,
   };
 }
 
