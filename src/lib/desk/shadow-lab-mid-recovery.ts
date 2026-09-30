@@ -18,7 +18,7 @@
  *                  already on the captured vote; explicit clock/in-window holds
  *                  are excluded by the projection; the actual Chair folds
  *                  families and builds rows; eligibleSupportRows/gateVector
- *                  apply the deployed policy (80¢ floor, ceiling < 99, spread
+ *                  apply the experiment's frozen V3 policy (80¢ floor, ceiling < 99, spread
  *                  ≤ 2, resting size ≥ 1, fees, feeds, settlement index,
  *                  opposition, day risk, selective math); STREAK is counted as
  *                  a book read (E1_FAMILY_OVERRIDE); its own confirmation
@@ -43,7 +43,8 @@ import type { RecoveryProjection } from "./call-recovery-candidate";
 import { bookable, floorBreakevenPct } from "./book-floor.ts";
 import { takerFeeCents } from "./clock.ts";
 import { DEFAULT_FEE_ENGINE, feeCents, neededWinRatePct, realAskCents } from "./fee-engine.ts";
-import { DEPLOYED_POLICY, gateVector, supporterRows, type GateVector } from "./gate-vector.ts";
+import { SELECTIVE_V3_PARAMS } from "./floor-policy.ts";
+import { gateVector, supporterRows, type AdmissionPolicy, type GateVector } from "./gate-vector.ts";
 import { maxDrawdown, mean } from "./promotion-gates.ts";
 import type { EvidenceFamily } from "./seats.ts";
 import { hasPaperPosition, type EntryWatch, type SelectiveContext } from "./selective-entry.ts";
@@ -53,6 +54,24 @@ import type { CallLogRow, ChairResult, Learner, Lean, LedgerCite, SeatId, Settin
 // ---------------------------------------------------------------------------
 // The frozen experiment.
 // ---------------------------------------------------------------------------
+
+/** Existing receipts were recorded under V3. Keep their gate definition frozen
+ * so a later Champion cannot silently relabel old research evidence. */
+export const MID_RECOVERY_POLICY: AdmissionPolicy = Object.freeze({
+  id: "ENTRY_SELECTIVE_V3",
+  label: "frozen V3 policy for MID_RECOVERY_V1_INACTIVE",
+  kind: "owner_reference",
+  params: Object.freeze({
+    ...SELECTIVE_V3_PARAMS,
+    edge_must_exceed_min: false,
+    require_index_edge: true,
+    tight_max_opposing: SELECTIVE_V3_PARAMS.max_opposing,
+    tight_min_seconds_left: SELECTIVE_V3_PARAMS.min_seconds_left,
+    tight_max_seconds_left: SELECTIVE_V3_PARAMS.max_seconds_left,
+    tight_edge_must_exceed_min: false,
+    tight_require_index_edge: true,
+  }),
+});
 
 export const MID_RECOVERY_EXPERIMENT = Object.freeze({
   id: "MID_RECOVERY_V1_INACTIVE",
@@ -66,7 +85,7 @@ export const MID_RECOVERY_EXPERIMENT = Object.freeze({
   family_override: E1_FAMILY_OVERRIDE,
   band_secs: Object.freeze({ min: 180, max: 600 } as const),
   floor_cents: 80,
-  policy_id: DEPLOYED_POLICY.id,
+  policy_id: MID_RECOVERY_POLICY.id,
   recovery_version: "E1_RECOVERY_V1_INACTIVE",
   fee_engine: DEFAULT_FEE_ENGINE,
 } as const);
@@ -304,7 +323,7 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
   const { snap } = input;
   const secs = (snap.close_time - snap.as_of) / 1000;
   const inBand = Number.isFinite(secs) && secs >= MID_RECOVERY_EXPERIMENT.band_secs.min && secs <= MID_RECOVERY_EXPERIMENT.band_secs.max;
-  const p = DEPLOYED_POLICY.params;
+  const p = MID_RECOVERY_POLICY.params;
 
   // A) BASELINE — read, never recomputed. The production selective gate carries its own reason.
   const chair = input.chair;
@@ -335,7 +354,7 @@ export function evaluateMidRecovery(input: MidRecoveryInput, deps: MidRecoveryDe
   const simulated = deps.runChair(projection.simulated.votes, snap, projection.simulated.learner, fullSettings, input.last_recovered_lean, []);
   const side = dir(simulated.lean);
   const ctx: SelectiveContext = { calls: [...input.recovered_calls], ready: input.ready, start: input.start, watch: input.watch };
-  const vector: GateVector = gateVector(snap, simulated, ctx, DEPLOYED_POLICY);
+  const vector: GateVector = gateVector(snap, simulated, ctx, MID_RECOVERY_POLICY);
   const rows = side ? supporterRows(simulated, side) : [];
   const supporters = uniq(rows.map((r) => r.seat));
   const families = uniq(rows.map((r) => e1FamilyOf(r.seat)));

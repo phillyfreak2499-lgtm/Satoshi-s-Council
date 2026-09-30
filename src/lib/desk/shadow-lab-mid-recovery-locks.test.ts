@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { SELECTIVE_PARAMS } from "./floor-policy.ts";
-import { DEPLOYED_POLICY } from "./gate-vector.ts";
+import { SELECTIVE_V3_PARAMS } from "./floor-policy.ts";
 import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import {
   MID_RECOVERY_ENV_FLAG, MID_RECOVERY_EXPERIMENT, evaluateMidRecovery,
@@ -128,8 +127,8 @@ test("separate experiment identity and version: own id, own env flag, five appro
     SUPPORT_UNCAL_E1: { bar_no_sitmass: false, support_uncal_e1: true }, COMBINED_DIAG: { bar_no_sitmass: true, support_uncal_e1: true },
   });
   assert.equal(X.floor_cents, 80);
-  assert.equal(X.floor_cents, SELECTIVE_PARAMS.floor_cents, "the deployed floor, never lower");
-  assert.equal(X.policy_id, DEPLOYED_POLICY.id);
+  assert.equal(X.floor_cents, SELECTIVE_V3_PARAMS.floor_cents, "the frozen floor is never lower");
+  assert.equal(X.policy_id, "ENTRY_SELECTIVE_V3");
   assert.ok(Object.isFrozen(X) && Object.isFrozen(X.arms) && Object.isFrozen(X.interventions) && Object.isFrozen(X.promotion_eligible));
   const ev = evaluateLocks(input(snap()), depsFor(OPEN));
   for (const arm of LOCKS_RECOVERED_ARMS) {
@@ -319,8 +318,8 @@ test("confirmation cannot be bypassed: one tick, two frames, or three frames in 
     for (const a of LOCKS_RECOVERED_ARMS) {
       assert.equal(ev.arms[a].evaluation.recovered.eligible, true, a);
       assert.equal(ev.arms[a].evaluation.confirmation.confirmed, false, a);
-      assert.equal(ev.arms[a].evaluation.confirmation.need_frames, SELECTIVE_PARAMS.confirmation_frames);
-      assert.equal(ev.arms[a].evaluation.confirmation.need_seconds, SELECTIVE_PARAMS.confirmation_seconds);
+      assert.equal(ev.arms[a].evaluation.confirmation.need_frames, SELECTIVE_V3_PARAMS.confirmation_frames);
+      assert.equal(ev.arms[a].evaluation.confirmation.need_seconds, SELECTIVE_V3_PARAMS.confirmation_seconds);
     }
   }
   const ok = drive(OPEN, 3, 4_000);
@@ -374,21 +373,21 @@ test("the report reads only this experiment's arms, per arm, and never mixes in 
 });
 
 // ---------------------------------------------------------------------------
-// MID_RECOVERY_V1_INACTIVE is unchanged.
+// MID_RECOVERY_V1_INACTIVE remains semantically frozen under its V3 gates.
 // ---------------------------------------------------------------------------
 
 /**
- * SHA-256 of the V1 experiment's source at the commit this experiment was
- * added on. LOCKS reuses V1's evaluator unchanged; if these move, V1 changed —
- * which needs its own reviewed change, not a side effect of this experiment.
+ * SHA-256 of the reviewed V1 experiment sources. The evaluator now names its
+ * original V3 gate set explicitly so later Champion changes cannot relabel its
+ * existing receipts; any further movement needs its own reviewed change.
  */
 const V1_SOURCES: Record<string, string> = {
-  "src/lib/desk/shadow-lab-mid-recovery.ts": "16b5112f3c10631a41c4038d03f01d394f1522688be0e90077ba2ce1d7c17974",
+  "src/lib/desk/shadow-lab-mid-recovery.ts": "16793d8d23f15e37cb6edcca240d1b8bcbc9bc18725640c4f0258a0109e34726",
   "src/lib/desk/shadow-lab-mid-recovery.server.ts": "3232f493f06475cef70741bedc7bb07459b8b87cc293d909a845abeec7628591",
   "server/routes/research/mid-recovery.get.ts": "e8f8c239c1be36c00fcdfc3ae6820a4826f65eedfe35bbb071d6c79c50a8ba8d",
 };
 
-test("MID_RECOVERY_V1_INACTIVE is unchanged: same identity, same sources, and CONTROL is exactly its recovered arm", () => {
+test("MID_RECOVERY_V1_INACTIVE keeps its reviewed V3 sources and CONTROL is exactly its recovered arm", () => {
   assert.equal(MID_RECOVERY_EXPERIMENT.id, "MID_RECOVERY_V1_INACTIVE");
   assert.equal(MID_RECOVERY_EXPERIMENT.version, 1);
   assert.deepEqual({ ...MID_RECOVERY_EXPERIMENT.arms }, { baseline: "BASELINE", recovered: "RECOVERED_MID", null_fav: "NULL_FAV_80" });
