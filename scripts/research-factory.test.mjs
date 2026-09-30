@@ -584,6 +584,66 @@ const tapeAudit = (lean) => ({ mode: "normal", positioned: false, eligible: fals
   pass: id === "confirmation" ? (lean === "WAIT" ? null : false) : id === "direction" ? lean !== "WAIT" : lean === "WAIT" && ["team", "supporters", "families", "opposition", "quote", "profit_reserve", "model_edge", "index_edge"].includes(id) ? null : true })) });
 const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { audit: tapeAudit(lean), daily: { tightened: false } } });
 
+test("decision tape E1 paper: checkpoint receipts copy actual published outputs without changing decisions or sampling", async () => {
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  let frame = { ...tapeFrame(610), votes: [{ seat: "STRIKE", paper: [{ id: "STRIKE.itm_time", lean: "UP", confidence: 61, status: "SHADOW" }] }] };
+  const pure = loader()("src/lib/desk/research-factory-tape.ts");
+  const input = () => ({ snap: frame.snap, chair: frame.chair, audit: frame.selective.audit, daily: frame.selective.daily, call_log: frame.call_log });
+  assert.equal(JSON.stringify(pure.classifyTape({ ...input(), votes: frame.votes })), JSON.stringify(pure.classifyTape({ ...input(), votes: frame.votes.map((v) => ({ ...v, paper: [] })) })), "published papers cannot alter classification bytes");
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } }, { RENDER_GIT_COMMIT: "paper-observation-build" })(TAPE);
+  const before = JSON.stringify(frame);
+  await mod.decisionTapeTick(frame.snap.as_of);
+  assert.equal(JSON.stringify(frame), before);
+  assert.equal(JSON.parse(calls[0].values[11]).e1_paper, undefined, "change-only record has no papers");
+  frame = { ...frame, snap: tapeSnap(598) };
+  const rec = await mod.decisionTapeTick(frame.snap.as_of);
+  const row = calls[1];
+  const payload = JSON.parse(row.values[11]);
+  assert.equal(row.values[4], 600);
+  assert.equal(row.values[0], frame.snap.ticker);
+  assert.equal(row.values[1], new Date(frame.snap.close_time).toISOString());
+  assert.equal(row.values[2], new Date(frame.snap.as_of).toISOString());
+  assert.equal(row.values[12], "paper-observation-build");
+  assert.deepEqual(payload.e1_paper.outputs, [{ kind: "PAPER_EVALUATED", card_id: "STRIKE.itm_time", seat: "STRIKE", lean: "UP", conf: 61, status: "SHADOW" }]);
+  assert.equal(payload.e1_paper.authority, "NONE");
+  assert.equal(payload.e1_paper.qualification, "UNKNOWN");
+  assert.equal(payload.e1_paper.missing.length, 5);
+  delete payload.e1_paper; delete payload.seats;
+  assert.equal(JSON.stringify(payload), JSON.stringify(rec), "supplemental field cannot alter decision payload");
+  frame = { ...frame, snap: tapeSnap(590), votes: [{ seat: "STRIKE", paper: [{ id: "STRIKE.itm_time", lean: "DOWN", confidence: 99, status: "LIVE" }] }] };
+  await mod.decisionTapeTick(frame.snap.as_of);
+  assert.equal(calls.length, 2, "paper changes alone cannot trigger inserts");
+  assert.equal(pure.MAX_EVENTS_PER_WINDOW, 80);
+  assert.equal(pure.CHECKPOINTS.length, 7);
+});
+
+test("decision tape E1 paper: missing source, wrong owner/card, malformed and duplicate receipts stay explicitly unavailable", () => {
+  const { observeE1Paper } = loader()("src/lib/desk/research-factory-tape.ts");
+  const plain = (v) => JSON.parse(JSON.stringify(v));
+  assert.equal(observeE1Paper(undefined).missing.length, 6);
+  assert.ok(observeE1Paper(undefined).missing.every((r) => r.reason === "PAPER_SOURCE_MISSING"));
+  const empty = observeE1Paper([{ seat: "STRIKE", paper: [] }]);
+  assert.equal(empty.missing.find((r) => r.card_id === "STRIKE.itm_time").reason, "CARD_NOT_PRESENT");
+  const selected = observeE1Paper([{ seat: "STRIKE", skill_used: "STRIKE.itm_time", paper: [] }]);
+  assert.equal(selected.missing.find((r) => r.card_id === "STRIKE.itm_time").reason, "ACTIVE_SELECTION_NOT_IN_PAPER", "selected output is separate and never synthesized into papers");
+  const down = observeE1Paper([{ seat: "STRIKE", skill_used: "SIT", health: "DOWN", paper: [] }]);
+  assert.equal(down.outputs.length, 0);
+  assert.equal(down.qualification, "UNKNOWN", "feed-down empty papers cannot establish a qualifying read");
+  const wrong = observeE1Paper([{ seat: "CHAIN", paper: [{ id: "STRIKE.itm_time", lean: "UP", confidence: 60, status: "LIVE" }, { id: "CHAIN.unknown", lean: "UP", confidence: 60, status: "LIVE" }] }]);
+  assert.equal(wrong.outputs.length, 0);
+  const receipt = { id: "STRIKE.itm_time", lean: "UP", confidence: 60, status: "BENCH" };
+  for (const bad of [{ lean: "ADD" }, { confidence: NaN }, { confidence: 101 }, { status: "SIT" }]) {
+    const result = observeE1Paper([{ seat: "STRIKE", paper: [{ ...receipt, ...bad }] }]);
+    assert.equal(result.outputs.length, 0);
+    assert.equal(result.missing.find((r) => r.card_id === receipt.id).reason, "MALFORMED_RECEIPT");
+  }
+  const duplicate = observeE1Paper([{ seat: "STRIKE", paper: [receipt, receipt] }]);
+  assert.equal(duplicate.outputs.length, 0);
+  assert.equal(duplicate.missing.find((r) => r.card_id === receipt.id).reason, "DUPLICATE_RECEIPT");
+  assert.equal(plain(observeE1Paper([{ seat: "STRIKE", paper: [receipt] }])).outputs[0].status, "BENCH", "bench/exploit-rejected output is observed without promotion");
+});
+
 test("decision tape: env-gated on a literal flag; records checkpoints and changes only; marks the window open at boot partial; never mutates the frame", async () => {
   const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(TAPE);
   for (const v of [undefined, "TRUE", "1", "yes"]) assert.equal(off.ensureDecisionTape({ RESEARCH_DECISION_TAPE_ENABLED: v }), "disabled", String(v));

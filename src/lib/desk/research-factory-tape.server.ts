@@ -20,7 +20,7 @@
  * typically 10–30 rows per window.
  */
 import { getSql } from "@/lib/db";
-import { MAX_EVENTS_PER_WINDOW, classifyTape, shouldRecord, tapeIdentityQuality, type Audit, type TapeFrame, type TapeIdentityReason, type TapeRecord } from "./research-factory-tape.ts";
+import { MAX_EVENTS_PER_WINDOW, classifyTape, observeE1Paper, shouldRecord, tapeIdentityQuality, type Audit, type TapeFrame, type TapeIdentityReason, type TapeRecord } from "./research-factory-tape.ts";
 
 export const TAPE_POLL_MS = 2_000;
 export const TAPE_ENV_FLAG = "RESEARCH_DECISION_TAPE_ENABLED";
@@ -79,7 +79,7 @@ export async function decisionTapeTick(now: number = Date.now()): Promise<TapeRe
     if (!decision.record) return null;
     // Seat reads ride along on checkpoints only (signal-value research); change events stay compact.
     const record: TapeRecord = decision.checkpoint != null
-      ? { ...rec, seats: (f.chair.rows ?? []).map((r) => ({ seat: r.seat, lean: r.lean, conf: typeof r.conf === "number" ? r.conf : null, status: String(r.status), weight: typeof r.weight === "number" ? r.weight : null, folded: r.folded === true })) }
+      ? { ...rec, seats: (f.chair.rows ?? []).map((r) => ({ seat: r.seat, lean: r.lean, conf: typeof r.conf === "number" ? r.conf : null, status: String(r.status), weight: typeof r.weight === "number" ? r.weight : null, folded: r.folded === true })), e1_paper: observeE1Paper(f.votes) }
       : rec;
     const sql = await getSql();
     const rows = await sql<{ ok: number }>`

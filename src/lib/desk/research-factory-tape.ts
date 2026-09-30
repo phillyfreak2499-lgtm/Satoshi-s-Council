@@ -26,6 +26,7 @@ import { eligibleSupportRows } from "./support-eligibility.ts";
 import { chairWaitReason } from "./telemetry.ts";
 import type { CallLogRow, ChairResult, Snapshot, Vote } from "./types";
 import { onGrid, tickerAgrees } from "./window-identity.ts";
+import { E1_ROSTER_CARDS } from "./shadow-arms.ts";
 
 // ---------------------------------------------------------------------------
 // Taxonomy.
@@ -89,6 +90,40 @@ export type TapeFrame = {
   daily: ReturnType<typeof dailyAdmission> | null;
   call_log: readonly CallLogRow[];
 };
+
+export type E1PaperObservation = {
+  source: "FRAME_VOTES_PAPER";
+  authority: "NONE";
+  qualification: "UNKNOWN";
+  outputs: Array<{ kind: "PAPER_EVALUATED"; card_id: string; seat: string; lean: "UP" | "DOWN" | "WAIT"; conf: number; status: string }>;
+  missing: Array<{ card_id: string; seat: string; reason: "PAPER_SOURCE_MISSING" | "CARD_NOT_PRESENT" | "ACTIVE_SELECTION_NOT_IN_PAPER" | "MALFORMED_RECEIPT" | "DUPLICATE_RECEIPT" }>;
+};
+
+/** Copy only existing paper receipts. These unscaled outputs may include
+ * exploit-rejected cards, so they establish neither eligibility nor support. */
+export function observeE1Paper(votes: unknown): E1PaperObservation {
+  const observation: E1PaperObservation = { source: "FRAME_VOTES_PAPER", authority: "NONE", qualification: "UNKNOWN", outputs: [], missing: [] };
+  const rows = Array.isArray(votes) ? votes : [];
+  for (const card_id of E1_ROSTER_CARDS) {
+    const seat = card_id.split(".")[0]!;
+    const owned = rows.filter((row) => row && typeof row === "object" && row.seat === seat);
+    const papers = owned.flatMap((row) => Array.isArray(row.paper) ? row.paper : []);
+    const matching = papers.filter((paper) => paper && typeof paper === "object" && paper.id === card_id);
+    let reason: E1PaperObservation["missing"][number]["reason"] | null = null;
+    if (!owned.some((row) => Array.isArray(row.paper))) reason = "PAPER_SOURCE_MISSING";
+    else if (!matching.length) reason = owned.some((row) => row.skill_used === card_id) ? "ACTIVE_SELECTION_NOT_IN_PAPER" : "CARD_NOT_PRESENT";
+    else if (matching.length > 1) reason = "DUPLICATE_RECEIPT";
+    else {
+      const p = matching[0];
+      if (!["UP", "DOWN", "WAIT"].includes(p.lean) || typeof p.confidence !== "number" ||
+          !Number.isFinite(p.confidence) || p.confidence < 0 || p.confidence > 100 ||
+          !["LIVE", "SHADOW", "BENCH", "CANDIDATE"].includes(p.status)) reason = "MALFORMED_RECEIPT";
+      else observation.outputs.push({ kind: "PAPER_EVALUATED", card_id, seat, lean: p.lean, conf: p.confidence, status: p.status });
+    }
+    if (reason) observation.missing.push({ card_id, seat, reason });
+  }
+  return observation;
+}
 
 // ---------------------------------------------------------------------------
 // Conditions.
@@ -155,6 +190,8 @@ export type TapeRecord = {
   market: { yes_ask: number | null; no_ask: number | null; yes_bid: number | null; no_bid: number | null; yes_mid: number | null; favorite_ask: number | null; regime: string | null };
   /** Compact seat reads for signal-value research (checkpoints only). */
   seats?: Array<{ seat: string; lean: string; conf: number | null; status: string; weight: number | null; folded: boolean }>;
+  /** Supplemental checkpoint-only producer paper outputs; never classification input. */
+  e1_paper?: E1PaperObservation;
 };
 
 const fin = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
