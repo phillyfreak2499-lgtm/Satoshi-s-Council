@@ -28,9 +28,23 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { queueStatusTransitions, skillStatusSnapshot } from "./status-transitions";
-import { applyOwnerRestore, ownerRestoreMode, type OwnerRestoreReceipt } from "./owner-restore";
+import {
+  applyOwnerRestore,
+  OWNER_RESTORE_CARDS,
+  OWNER_RESTORE_E1_PAIR_V1,
+  ownerRestoreMode,
+  type OwnerRestoreReceipt,
+} from "./owner-restore";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
+import {
+  bookable,
+  bookableShadow,
+  CHAIR_MIN_ASK_CENTS,
+  FLOOR_LIVE_CENTS,
+  FLOOR_SHADOW_CENTS,
+  paperBookEdgeOk,
+  paperBookTeamOk,
+} from "./book-floor";
 import {
   dailyAdmission, hasPaperPosition, paperSummary, restoreRiskCalls, selectiveBookOk, selectiveChair,
   settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, OWNER_ROLLBACK_V1_FROZEN_AT, type EntryWatch,
@@ -89,7 +103,14 @@ import { observeChairWaitMilestone } from "./chamber-wait.server";
 import { notifyCall, notifySettle, notifyWatchdog, pushDeliverySummary, pushRecipientCounts } from "./push.server";
 import { pushDeliveryNote, type PushDeliverySummary } from "./push-receipts";
 import { weeklyRecap } from "./recap.server";
-import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
+import {
+  applyWatchdog,
+  freshWatchdog,
+  WATCHDOG_REPEAT_MS,
+  watchdogDecision,
+  watchdogPayload,
+  type WatchdogState,
+} from "./push-rules";
 import {
   V2_POPULATION,
   V2_SAMPLE_MINS,
@@ -125,11 +146,15 @@ import {
   type LedgerRow,
   ledgerGaps,
   oldestQueueAgeMs,
+  operationalVerdict,
   recentIdentityFaultCount,
   OUTBOX_CAP,
   partitionResolved,
   PENDING_CAP,
   persistOnce,
+  producerVerdict,
+  type OperationalVerdict,
+  type ProducerVerdict,
   type PersistIO,
   pushErr,
   removeKeyed,
@@ -251,6 +276,9 @@ type Eng = {
   readinessAlerted: boolean;
   watchdog: WatchdogState;
   watchdogTimer: ReturnType<typeof setInterval> | null;
+  /** Distinct producer-path incident, repeated hourly until it clears. */
+  producerAlertKey: string;
+  producerAlertAt: number;
 };
 
 /** A window graded once its official Kalshi result arrives; held in a bounded
@@ -403,6 +431,8 @@ function freshEng(): Eng {
     readinessAlerted: false,
     watchdog: freshWatchdog(),
     watchdogTimer: null,
+    producerAlertKey: "",
+    producerAlertAt: 0,
   };
 }
 
@@ -2195,6 +2225,72 @@ async function reconcile(e: Eng): Promise<void> {
   }
 }
 
+function engineHealth(e: Eng, now: number) {
+  return healthVerdict({
+    now,
+    started: e.started,
+    startedAt: e.startedAt,
+    lastTickAt: e.lastTickAt,
+    lastLedgerOkAt: e.lastLedgerOkAt,
+    queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
+    gaps: e.ledgerGapCount,
+    recentIdentityFaults: recentIdentityFaultCount(e.identityFaults.map((f) => f.at), now),
+  });
+}
+
+/** The exact restored pair is an operational dependency. This deliberately
+ * reads only authority/heartbeat state; it never participates in a decision. */
+function producerPathVerdict(e: Eng): ProducerVerdict {
+  const marker = e.learner.owner_restore;
+  const restoreActive = marker?.version === OWNER_RESTORE_E1_PAIR_V1 && marker.state === "APPLIED";
+  return producerVerdict({
+    restore_active: restoreActive,
+    restore_pending: e.ownerRestorePending,
+    cards: OWNER_RESTORE_CARDS.map((id) => {
+      const card = e.learner.skills?.[id];
+      const seat = id.split(".")[0]!;
+      const appliedDebt = marker?.applied.debt[seat];
+      const currentDebt = e.learner.seat_calib_debt?.[seat];
+      return {
+        id,
+        status: card?.status ?? null,
+        manual_hold: card?.manual_hold === true,
+        // Normal successful reviews can pay debt down. Only a move above the
+        // restored value is a regression to the failure state we are guarding.
+        calibration_ok: appliedDebt == null || (currentDebt != null && currentDebt <= appliedDebt),
+        // During boot grace there is no completed frame to inspect yet.
+        seat_seen: e.lastTickAt <= 0 || e.lastVotes.some((vote) => vote.seat === seat),
+      };
+    }),
+  });
+}
+
+function criticalFeedReasons(e: Eng): string[] {
+  const health = e.prevSnap?.health;
+  if (!health) return [];
+  // STALE is already visible on the desk and can clear on the next poll. DEAD
+  // is reserved for a feed that has crossed its own hard DOWN threshold.
+  return (["spot", "kalshi", "derivs"] as const)
+    .filter((feed) => health[feed] === "DOWN")
+    .map((feed) => `${feed} feed is ${health[feed]}`);
+}
+
+export type DeskOperational = OperationalVerdict & { producer: ProducerVerdict };
+
+function deskOperational(e: Eng, now: number): DeskOperational {
+  const producer = producerPathVerdict(e);
+  return {
+    ...operationalVerdict({
+      engine: engineHealth(e, now),
+      producer,
+      critical_reasons: criticalFeedReasons(e),
+      chair_lean: e.lastChair?.lean,
+      booked: e.prevSnap ? hasPaperPosition(e.riskCalls, e.prevSnap) : false,
+    }),
+    producer,
+  };
+}
+
 /** Its own timer, on purpose: a tick loop that is stuck or throwing every
  *  pass is exactly what this has to notice, so it must not live inside it. It
  *  also drains the ledger queue and scans for holes, so persistence keeps
@@ -2206,6 +2302,29 @@ function watchdogTick(e: Eng) {
   void scanLedgerGaps(e);
   try {
     const now = Date.now();
+    const producerIncident = [...producerPathVerdict(e).reasons, ...criticalFeedReasons(e)];
+    const producerKey = producerIncident.join(" | ");
+    if (producerKey) {
+      if (producerKey !== e.producerAlertKey || now - e.producerAlertAt >= WATCHDOG_REPEAT_MS) {
+        notifyWatchdog({
+          title: e.producerAlertKey ? "Desk producer path still broken" : "Desk producer path broken",
+          body: `${producerIncident.join(" · ")} · this is an outage, not an ordinary WAIT · see /status`.slice(0, 220),
+          tag: "producer-watchdog",
+          url: "/",
+        });
+        e.producerAlertKey = producerKey;
+        e.producerAlertAt = now;
+      }
+    } else if (e.producerAlertKey) {
+      notifyWatchdog({
+        title: "Desk producer path recovered",
+        body: "STRIKE and CHAIN authority, seat heartbeat and critical feeds are healthy again.",
+        tag: "producer-watchdog",
+        url: "/",
+      });
+      e.producerAlertKey = "";
+      e.producerAlertAt = 0;
+    }
     const d = watchdogDecision({ now, lastGradeAt: e.lastLedgerOkAt, state: e.watchdog });
     if (d.kind === "quiet") return;
     e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastLedgerOkAt);
@@ -2230,18 +2349,10 @@ function watchdogTick(e: Eng) {
 export async function getHealth(): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const e = eng();
   ensureServerEngine();
+  if (e.ready) await e.ready;
   const now = Date.now();
   const recentIdentityFaults = recentIdentityFaultCount(e.identityFaults.map((f) => f.at), now);
-  const v = healthVerdict({
-    now,
-    started: e.started,
-    startedAt: e.startedAt,
-    lastTickAt: e.lastTickAt,
-    lastLedgerOkAt: e.lastLedgerOkAt,
-    queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
-    gaps: e.ledgerGapCount,
-    recentIdentityFaults,
-  });
+  const operational = deskOperational(e, now);
   let lastSend: string | null = null;
   try {
     const { pushLastLog } = await import("./push.server");
@@ -2252,11 +2363,19 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
   const alerts = alertHealth({ ownerSubs: e.alertOwnerSubs, lastSend });
   const s = e.prevSnap;
   return {
-    ok: v.ok,
-    status: v.ok ? 200 : 503,
+    ok: operational.ok,
+    status: operational.ok ? 200 : 503,
     body: {
-      ok: v.ok,
-      reasons: v.reasons,
+      ok: operational.ok,
+      state: operational.state,
+      summary: operational.summary,
+      reasons: operational.reasons,
+      producer_path: operational.producer,
+      books: {
+        live_floor_cents: FLOOR_LIVE_CENTS,
+        shadow_floor_cents: FLOOR_SHADOW_CENTS,
+        shadow_contract: "same signal and integrity gates; price floor is the only admission difference",
+      },
       tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
       last_recorded_age_s: Math.round((now - e.lastLedgerOkAt) / 1000),
       ledger_queue: e.ledgerQueue.length,
@@ -2378,6 +2497,7 @@ export type ServerFrame = {
   call_log: CallLogRow[];
   lastError: string | null;
   settling: boolean;
+  operational: DeskOperational;
   v2: V2Frame;
   selective: {
     policy: string;
@@ -2394,9 +2514,10 @@ export async function getServerFrame(): Promise<ServerFrame> {
   const e = eng();
   ensureServerEngine();
   if (e.ready) await e.ready;
+  const now = Date.now();
   return {
-    as_of: Date.now(),
-    tick_age_s: e.lastTickAt ? Math.round((Date.now() - e.lastTickAt) / 100) / 10 : -1,
+    as_of: now,
+    tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 100) / 10 : -1,
     snap: e.prevSnap,
     votes: e.lastVotes,
     chair: e.lastChair,
@@ -2410,6 +2531,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
     call_log: e.callLog,
     lastError: e.lastError,
     settling: e.pending.length > 0,
+    operational: deskOperational(e, now),
     v2: v2Frame(e),
     selective: {
       audit: e.lastAdmissionAudit,

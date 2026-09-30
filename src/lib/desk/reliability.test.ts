@@ -21,7 +21,9 @@ import {
   ledgerGaps,
   MAX_QUEUE,
   oldestQueueAgeMs,
+  operationalVerdict,
   persistOnce,
+  producerVerdict,
   type PersistIO,
   recentIdentityFaultCount,
   pushErr,
@@ -342,6 +344,66 @@ test("a recent identity contradiction is unhealthy but forensic history ages out
 
 test("before boot the service is not a failure", () => {
   assert.equal(healthVerdict({ ...healthy, started: false, lastTickAt: 0 }).ok, true);
+});
+
+// --- producer liveness: a grading desk can still be operationally dead ---
+
+const healthyProducers = producerVerdict({
+  restore_active: true,
+  restore_pending: false,
+  cards: [
+    { id: "STRIKE.itm_time", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+    { id: "CHAIN.oi_with_price", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+  ],
+});
+
+test("an all-WAIT desk with live restored producers is explicitly QUIET, not dead", () => {
+  const v = operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "WAIT" });
+  assert.equal(v.ok, true);
+  assert.equal(v.state, "QUIET");
+  assert.match(v.summary, /real decision, not an outage/);
+});
+
+test("a de-authorized producer makes a ticking and grading desk DEAD", () => {
+  const producer = producerVerdict({
+    restore_active: true,
+    restore_pending: false,
+    cards: [
+      { id: "STRIKE.itm_time", status: "SHADOW", seat_seen: true, manual_hold: false, calibration_ok: true },
+      { id: "CHAIN.oi_with_price", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+    ],
+  });
+  const v = operationalVerdict({ engine: healthVerdict(healthy), producer, chair_lean: "WAIT" });
+  assert.equal(v.ok, false);
+  assert.equal(v.state, "DEAD");
+  assert.match(v.reasons.join(" "), /STRIKE\.itm_time is SHADOW, not LIVE/);
+});
+
+test("missing restoration, a missing seat heartbeat and calibration drift are loud", () => {
+  const v = producerVerdict({
+    restore_active: false,
+    restore_pending: false,
+    cards: [
+      { id: "STRIKE.itm_time", status: "LIVE", seat_seen: false, manual_hold: false, calibration_ok: false },
+    ],
+  });
+  assert.equal(v.ok, false);
+  assert.match(v.reasons.join(" "), /authority is not active/);
+  assert.match(v.reasons.join(" "), /seat is absent/);
+  assert.match(v.reasons.join(" "), /calibration has regressed/);
+});
+
+test("directional reads and booked positions are distinct healthy states", () => {
+  assert.equal(operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "UP" }).state, "READING");
+  assert.equal(operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "UP", booked: true }).state, "BOOKED");
+});
+
+test("critical feed failure is DEAD even while tick, ledger and producers look healthy", () => {
+  const v = operationalVerdict({
+    engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "WAIT", critical_reasons: ["Kalshi feed is DOWN"],
+  });
+  assert.equal(v.state, "DEAD");
+  assert.match(v.reasons.join(" "), /Kalshi feed is DOWN/);
 });
 
 // --- alert-channel health: surfaced separately, never a single point of failure ---
