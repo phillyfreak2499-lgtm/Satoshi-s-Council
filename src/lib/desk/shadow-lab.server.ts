@@ -38,7 +38,8 @@ import { getSql, type Sql } from "@/lib/db";
 import { runChair } from "./chair.ts";
 import { chicagoDayOf } from "./economics-book.ts";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
-import { DEPLOYED_POLICY, OWNER_REFERENCE_POLICY, gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
+import { ENTRY_SELECTIVE_V3, SELECTIVE_V3_PARAMS } from "./floor-policy.ts";
+import { gateVector, supporterRows, type AdmissionPolicy } from "./gate-vector.ts";
 import type { EntryWatch, SelectiveContext } from "./selective-entry.ts";
 import { JUMP_VETO, NULL_FAV_GRACE_SECS, blankJumpVeto, e1FamilyOf, edgeUnderBasis, nullFavIntention, observeJump, scheduledCheckpoint, unmuteRoster, vetoActive, type JumpVetoState } from "./shadow-arms.ts";
 import { shouldWriteSitReceipt } from "./shadow-sit.ts";
@@ -50,6 +51,30 @@ import type { CallLogRow, ChairResult, Settings, Snapshot } from "./types";
 export const SHADOW_LAB_ENV_FLAG = "SHADOW_LAB_ENABLED";
 export const SHADOW_LAB_POLL_MS = 2_000;
 export const SHADOW_LAB_SETTLE_EVERY_MS = 60_000;
+
+/** Frozen manifest evaluator. A deployed-kind vector follows the current
+ * Champion, so these historical V3 arms use their explicit frozen params. */
+export const SHADOW_PACKAGE_POLICY: AdmissionPolicy = Object.freeze({
+  id: ENTRY_SELECTIVE_V3.id,
+  label: "frozen V3 package admission",
+  kind: "owner_reference",
+  params: Object.freeze({
+    ...SELECTIVE_V3_PARAMS,
+    edge_must_exceed_min: false,
+    require_index_edge: true,
+    tight_max_opposing: SELECTIVE_V3_PARAMS.max_opposing,
+    tight_min_seconds_left: SELECTIVE_V3_PARAMS.min_seconds_left,
+    tight_max_seconds_left: SELECTIVE_V3_PARAMS.max_seconds_left,
+    tight_edge_must_exceed_min: false,
+    tight_require_index_edge: true,
+  }),
+});
+const SHADOW_OWNER_REFERENCE_POLICY: AdmissionPolicy = Object.freeze({
+  ...SHADOW_PACKAGE_POLICY,
+  id: "OWNER_REFERENCE_ADMISSION_2026_09_15",
+  label: "frozen owner reference: three supporters from two evidence groups",
+  params: Object.freeze({ ...SHADOW_PACKAGE_POLICY.params, min_speaking: 3 }),
+});
 
 export function shadowLabEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env[SHADOW_LAB_ENV_FLAG] === "true";
@@ -309,6 +334,9 @@ export async function shadowLabTick(now?: number): Promise<void> {
     }
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
+    // These frozen V3 cohorts cannot mix observations from another production policy.
+    // Existing receipts were settled above; only new collection is paused.
+    if (frame.selective?.policy !== undefined && frame.selective.policy !== ENTRY_SELECTIVE_V3.id) return;
     if (!frame.snap || !frame.chair || frame.snap.demo || !frame.selective.ready) return;
     const { snap, votes, learner, settings } = structuredClone({ snap: frame.snap, votes: frame.votes, learner: frame.learner, settings: frame.settings });
     // Validate before either stateful auxiliary observer, not merely before
@@ -325,7 +353,7 @@ export async function shadowLabTick(now?: number): Promise<void> {
     // (selector-attribution.server.ts). Its failure is its own health record.
     try {
       const a = structuredClone({ chair: frame.chair, call_log: frame.call_log ?? [], selective: frame.selective });
-      await observeSelectorAttribution(sql, { snap, chair: a.chair!, call_log: a.call_log, audit: a.selective?.audit ?? null, ready: a.selective?.ready, start: a.selective?.start, session_started_ms: st.sessionStartedAt }, st.attribution, now);
+      await observeSelectorAttribution(sql, { snap, chair: a.chair!, call_log: a.call_log, audit: a.selective?.audit ?? null, ready: a.selective?.ready, start: a.selective?.start, policy: a.selective?.policy, session_started_ms: st.sessionStartedAt }, st.attribution, now);
     } catch (error) {
       st.attribution.error = error instanceof Error ? error.message : String(error);
     }
@@ -429,8 +457,8 @@ export async function shadowLabTick(now?: number): Promise<void> {
     const fullSettings = { ...settings, poll_ms: SHADOW_LAB_POLL_MS, source: "live", show_faded: false, show_shadow: false, tz: "America/Chicago" } as unknown as Settings;
     const chair = runChair(unmuted.votes, snap, unmuted.learner, fullSettings, "WAIT", []);
     const packages: Array<{ arm: string; floor: number; min: number; base: AdmissionPolicy }> = [
-      { arm: "PKG_85", floor: 85, min: 2, base: DEPLOYED_POLICY }, { arm: "PKG_80", floor: 80, min: 2, base: DEPLOYED_POLICY },
-      { arm: "PKG_88", floor: 88, min: 2, base: DEPLOYED_POLICY }, { arm: "PKG_85_OWNER3", floor: 85, min: 3, base: OWNER_REFERENCE_POLICY },
+      { arm: "PKG_85", floor: 85, min: 2, base: SHADOW_PACKAGE_POLICY }, { arm: "PKG_80", floor: 80, min: 2, base: SHADOW_PACKAGE_POLICY },
+      { arm: "PKG_88", floor: 88, min: 2, base: SHADOW_PACKAGE_POLICY }, { arm: "PKG_85_OWNER3", floor: 85, min: 3, base: SHADOW_OWNER_REFERENCE_POLICY },
     ];
     let pkg85: { side: "UP" | "DOWN"; ask: number; size: number; spread: number; filled: boolean; intent: boolean } | null = null;
     for (const p of packages) {

@@ -26,7 +26,9 @@ import {
   type PricePoint,
   type Side,
 } from "./exit-arena";
-import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, FLOOR_SELECTIVE_V1, FLOOR_SELECTIVE_V2, type Component, type FloorPolicyVersion } from "./floor-policy";
+import { EXIT_CANDIDATES, exitCandidatesForEntry, FLOOR_V1, FLOOR_SELECTIVE_V1, FLOOR_SELECTIVE_V2,
+  FLOOR_SELECTIVE_V3, FLOOR_OWNER_ROLLBACK_V1, type Component, type FloorPolicyVersion } from "./floor-policy";
+import type { BookedDecisionState } from "./booked-decision";
 
 /**
  * The research version stamped on every observation.
@@ -52,7 +54,33 @@ export type SettledWindow = {
 };
 
 /** Read the active Champion, falling back to the composition that is the unchanged desk. */
-export async function activeChampion(): Promise<FloorPolicyVersion> {
+const knownPolicies = [FLOOR_V1, FLOOR_SELECTIVE_V1, FLOOR_SELECTIVE_V2, FLOOR_SELECTIVE_V3, FLOOR_OWNER_ROLLBACK_V1];
+
+/** A database label cannot silently change a frozen policy's composition. */
+function knownPolicy(raw: unknown): FloorPolicyVersion | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as FloorPolicyVersion;
+  const policy = knownPolicies.find(p => p.policy_id === row.policy_id);
+  if (!policy || Number(row.version) !== policy.version || row.signal_policy !== policy.signal_policy ||
+      row.entry_policy !== policy.entry_policy || row.exit_policy !== policy.exit_policy || row.risk_policy !== policy.risk_policy ||
+      !Number.isFinite(Date.parse(String(row.prospective_start_at))) || !Number.isFinite(Date.parse(String(row.created_at)))) return null;
+  return { ...policy, created_at: String(row.created_at), prospective_start_at: String(row.prospective_start_at), status: "CHAMPION" };
+}
+
+type PaidPolicy = Pick<BookedDecisionState, "entry_policy" | "floor_policy" | "prospective_start">;
+
+/** Capture at payment wins over a later Champion or rollback. Legacy entries
+ * have no capture and use the durable policy history at their actual paid time. */
+export async function activeChampion(entry?: PaidPolicy): Promise<FloorPolicyVersion> {
+  if (entry && (entry.entry_policy != null || entry.floor_policy != null || entry.prospective_start != null)) {
+    const policy = knownPolicies.find(p => p.entry_policy === entry.entry_policy && p.policy_id === entry.floor_policy);
+    const start = entry.prospective_start;
+    if (!policy || typeof start !== "number" || !Number.isSafeInteger(start) || start <= 0 || start % 900_000 !== 0 ||
+        start < Date.parse(policy.prospective_start_at)) {
+      throw new Error("unrecognized booked policy provenance");
+    }
+    return { ...policy, prospective_start_at: new Date(start).toISOString(), status: "CHAMPION" };
+  }
   try {
     const db = await getSql();
     const rows = await db<{
@@ -70,22 +98,11 @@ export async function activeChampion(): Promise<FloorPolicyVersion> {
         from desk_floor_policy where status = 'CHAMPION' limit 1
     `;
     const r = rows[0];
-    if (!r || r.policy_id !== FLOOR_SELECTIVE_V2.policy_id) return FLOOR_SELECTIVE_V2;
-    return {
-      policy_id: r.policy_id,
-      version: Number(r.version),
-      signal_policy: r.signal_policy,
-      entry_policy: r.entry_policy,
-      exit_policy: r.exit_policy,
-      risk_policy: r.risk_policy,
-      created_at: String(r.created_at),
-      prospective_start_at: String(r.prospective_start_at),
-      status: "CHAMPION",
-    };
+    return knownPolicy(r) ?? FLOOR_OWNER_ROLLBACK_V1;
   } catch {
     // The Champion must always be nameable. If it cannot be read, the answer is
     // the last known-good composition, never an improvised one.
-    return FLOOR_SELECTIVE_V2;
+    return FLOOR_OWNER_ROLLBACK_V1;
   }
 }
 
@@ -113,22 +130,21 @@ export async function recordExitArena(w: SettledWindow, champion: FloorPolicyVer
   if (!w.entry) return 0;
   if (!w.ticker || !(w.closeMs > 0)) return 0;
   const db = await getSql();
-  // A held pre-V2 fill keeps its historical policy. Never relabel it as a V2 result.
-  if (champion.policy_id === FLOOR_SELECTIVE_V2.policy_id && w.entry.t < Date.parse(champion.prospective_start_at)) {
+  // A recovered old fill belongs to the known policy that was in force when it
+  // paid, not the current Champion. Missing or inconsistent history writes no
+  // research evidence. This includes V3 fills settling after owner activation.
+  if (w.entry.t < Date.parse(champion.prospective_start_at)) {
     const [previous] = await db<FloorPolicyVersion>`
       select policy_id, version, signal_policy, entry_policy, exit_policy, risk_policy,
              created_at::text, prospective_start_at::text, status
       from desk_floor_policy
-      where policy_id in ('FLOOR_V1', 'FLOOR_SELECTIVE_V1')
+      where policy_id in ('FLOOR_V1', 'FLOOR_SELECTIVE_V1', 'FLOOR_SELECTIVE_V2', 'FLOOR_SELECTIVE_V3', 'FLOOR_OWNER_ROLLBACK_V1')
         and prospective_start_at <= ${new Date(w.entry.t).toISOString()}::timestamptz
       order by prospective_start_at desc limit 1
     `;
-    if (!previous) return 0; // Missing policy provenance cannot seed new research evidence.
-    champion = previous;
-  }
-  // A position opened before activation still belongs to the original entry policy.
-  if (champion.policy_id === FLOOR_SELECTIVE_V1.policy_id && w.entry.t < Date.parse(champion.prospective_start_at)) {
-    champion = FLOOR_V1;
+    const historical = knownPolicy(previous);
+    if (!historical) return 0;
+    champion = historical;
   }
 
   // A recovered older fill cannot seed a newly defined candidate's evidence.

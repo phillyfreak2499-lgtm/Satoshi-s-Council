@@ -80,7 +80,7 @@ async function fixture(run, { legacyClassifier = false, lateClockGuard = false }
     const cache = new Map();
     const load = (file) => {
       if (cache.has(file)) return cache.get(file);
-      assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts", "selector-attribution.server.ts", "selector-attribution.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
+      assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts", "selector-attribution.server.ts", "selector-attribution.ts", "floor-policy.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
       const exports = {}; cache.set(file, exports);
       let input = source(file);
       if (lateClockGuard && file.endsWith("shadow-lab.server.ts")) {

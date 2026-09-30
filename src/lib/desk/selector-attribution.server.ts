@@ -18,6 +18,7 @@
  * record; nothing here can throw into the observer, let alone the engine.
  */
 import type { Sql } from "@/lib/db";
+import { ENTRY_SELECTIVE_V3 } from "./floor-policy.ts";
 import {
   ATTRIBUTION_BAND_SECS, SELECTOR_ATTRIBUTION_VERSION, WINDOW_MS, attributionKey, blankTrack, blindEligibleRow, blindOpportunity, chairFillRow, chairState,
   contextFromFrame, noteTick, settleAttribution, sideQuote, windowRow, type AttributionRow, type ProductionAudit, type Side, type WindowTrack,
@@ -125,6 +126,8 @@ export type AttributionInput = {
   audit: ProductionAudit;
   ready: boolean | undefined;
   start: number | undefined;
+  /** Production policy identity; absent only on legacy fixtures. */
+  policy?: string;
   /** The observer session's own start: a market already open when this process began is never recorded (partial observation). */
   session_started_ms?: number;
 };
@@ -157,6 +160,8 @@ async function finalize(sql: Sql, t: AttributionTracker, track: WindowTrack, now
  * before the boundary is even read, so an idle observer touches no table.
  */
 export async function observeSelectorAttribution(sql: Sql, input: AttributionInput, t: AttributionTracker, now = Date.now()): Promise<void> {
+  // The caller settles existing rows separately before this collection step.
+  if (input.policy !== undefined && input.policy !== ENTRY_SELECTIVE_V3.id) return;
   const { snap, chair } = input;
   const secs = (snap.close_time - snap.as_of) / 1000;
   const key = `${snap.ticker}|${snap.close_time}`;

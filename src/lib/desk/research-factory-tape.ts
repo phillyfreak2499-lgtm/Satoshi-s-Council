@@ -87,6 +87,8 @@ export type TapeFrame = {
   /** Same-frame producer output; absent on older callers. Never admission evidence. */
   votes?: readonly Vote[];
   audit: Audit | null;
+  /** The entry policy named by the production frame; absent in historical callers. */
+  policy?: string;
   daily: ReturnType<typeof dailyAdmission> | null;
   call_log: readonly CallLogRow[];
 };
@@ -174,7 +176,7 @@ export type TapeRecord = {
   primary_blocker: WaitReason | null;
   blockers: WaitReason[];
   /** Production's own words, preserved verbatim (chair_wait is telemetry's chairWaitReason, the same string desk_chair_evals stores). */
-  raw: { chair_wait: string; failing_checks: Array<{ id: string; label: string | null }>; failing_chair_gates: Array<{ id: string; value: string }>; mode: string | null };
+  raw: { chair_wait: string; failing_checks: Array<{ id: string; label: string | null }>; failing_chair_gates: Array<{ id: string; value: string }>; mode: string | null; policy?: string };
   conditions: Condition[];
   /** Every measured value a condition can be graded against later. */
   values: Record<string, number | boolean | null>;
@@ -209,7 +211,9 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   const rawInputs = votingInputs?.filter((v) => dir(v.raw_lean ?? v.lean) != null);
   const producerInputs = votingInputs?.filter((v) => dir(v.lean) != null && !v.forced_sit);
   const rawSide = fin(chair.score) == null || chair.score === 0 ? null : chair.score > 0 ? "UP" : "DOWN";
-  const req = f.daily ? admissionRequirements(f.daily) : null;
+  // The audit is the decision-time mode; the published daily summary may be
+  // read after settlement changed that mode. Keep unknown requirements unknown.
+  const req = f.daily ? admissionRequirements({ ...f.daily, tightened: audit ? audit.mode === "tight" : f.daily.tightened }) : null;
   const p = SELECTIVE_PARAMS;
   const checks = new Map((audit?.checks ?? []).map((c) => [c.id, c]));
   const failing = (audit?.checks ?? []).filter((c) => c.pass === false);
@@ -255,7 +259,10 @@ export function classifyTape(f: TapeFrame): TapeRecord {
     profit_reserve_pass: checks.get("profit_reserve")?.pass ?? null,
     eligible: audit ? audit.eligible : null,
     positioned: audit ? audit.positioned : null,
+    complete_window_pass: checks.get("complete_window")?.pass ?? null,
+    time_pass: checks.get("time")?.pass ?? null,
   };
+  for (const gate of chair.gates ?? []) values[`chair:${gate.id}_pass`] = gate.pass;
 
   // The Chair's own WAIT reason, when it waits.
   let directionReason: WaitReason | null = null;
@@ -306,6 +313,7 @@ export function classifyTape(f: TapeFrame): TapeRecord {
       failing_checks: failing.map((c) => ({ id: c.id, label: c.label ?? null })),
       failing_chair_gates: hardGates.map((g) => ({ id: g.id, value: String(g.value ?? "") })),
       mode: audit?.mode ?? null,
+      ...(f.policy ? { policy: f.policy } : {}),
     },
     conditions: primary ? conditionsFor(primary, values, { req, sitTerm, barPre, bar: fin(chair.bar), vsBar: fin(chair.vs_bar) }) : [],
     values,
@@ -338,7 +346,7 @@ export function conditionsFor(r: WaitReason, v: Record<string, number | boolean 
     case "TEAM_FAIL": return [{ metric: "team_pass", op: "pass", current: v.team_pass as boolean | null, required: true, changeable_within_window: true }];
     case "SUPPORTER_FAIL": return [{ metric: "supporters", op: ">=", current: n("supporters"), required: c.req?.min_speaking ?? null, changeable_within_window: true, note: "healthy LIVE/FADED unfolded supporters on the side" }];
     case "FAMILY_DIVERSITY_FAIL": return [{ metric: "families", op: ">=", current: n("families"), required: c.req?.min_families ?? null, changeable_within_window: true }];
-    case "OPPOSITION_FAIL": return [{ metric: "opposing", op: "<=", current: n("opposing"), required: p.max_opposing, changeable_within_window: true }];
+    case "OPPOSITION_FAIL": return [{ metric: "opposing", op: "<=", current: n("opposing"), required: c.req?.max_opposing ?? null, changeable_within_window: true }];
     case "ENTRY_PRICE_FAIL": return [{ metric: "ask_cents", op: ">=", current: n("ask_cents"), required: p.floor_cents, changeable_within_window: true, note: "the side's ask reaches the production floor" }];
     case "QUOTE_FAIL": {
       const out: Condition[] = [];
@@ -347,10 +355,16 @@ export function conditionsFor(r: WaitReason, v: Record<string, number | boolean 
       if (n("ask_cents") != null && n("ask_cents")! >= 99) out.push({ metric: "ask_cents", op: "<", current: n("ask_cents"), required: 99, changeable_within_window: true });
       return out.length ? out : [{ metric: "quote_pass", op: "pass", current: v.quote_pass as boolean | null, required: true, changeable_within_window: true, note: "book validity" }];
     }
-    case "MODEL_EDGE_FAIL": return [{ metric: "model_edge_cents", op: ">=", current: n("model_edge_cents"), required: c.req?.min_edge_cents ?? null, changeable_within_window: true }];
+    case "MODEL_EDGE_FAIL": return [{ metric: "model_edge_cents", op: c.req?.edge_must_exceed_min ? ">" : ">=", current: n("model_edge_cents"), required: c.req?.min_edge_cents ?? null, changeable_within_window: true }];
     case "INDEX_EDGE_FAIL": return [{ metric: "index_margin_cents", op: ">", current: n("index_margin_cents"), required: c.req?.min_index_edge_cents ?? null, changeable_within_window: true }];
     case "CONFIRMATION_INCOMPLETE": return [{ metric: "confirmation_pass", op: "pass", current: false, required: true, changeable_within_window: true, note: `needs ${c.req?.confirmation_frames ?? "?"} frames over ${c.req?.confirmation_seconds ?? "?"} s; the production latch count is not published in the frame` }];
-    case "TIME_WINDOW_FAIL": return [{ metric: "secs_left", op: "in_range", current: n("secs_left"), required: [p.min_seconds_left, p.max_seconds_left], changeable_within_window: true, note: "clock-driven" }];
+    case "TIME_WINDOW_FAIL": {
+      if (v.complete_window_pass === false) return [{ metric: "complete_window_pass", op: "pass", current: false, required: true, changeable_within_window: false, note: "this market opened before the production policy's complete-window boundary" }];
+      if (v.time_pass !== false) {
+        for (const id of ["early", "late"]) if (v[`chair:${id}_pass`] === false) return [{ metric: `chair:${id}_pass`, op: "pass", current: false, required: true, changeable_within_window: true, note: "the current Chair's hard time gate must pass" }];
+      }
+      return [{ metric: "secs_left", op: "in_range", current: n("secs_left"), required: c.req ? [c.req.min_seconds_left, c.req.max_seconds_left] : null, changeable_within_window: true, note: "clock-driven" }];
+    }
     case "FEED_OR_DATA_HEALTH_FAIL": return [{ metric: "feeds_pass", op: "pass", current: v.feeds_pass as boolean | null, required: true, changeable_within_window: true }];
     case "DAILY_RISK_FAIL": return [{ metric: "daily_risk_pass", op: "pass", current: v.daily_risk_pass as boolean | null, required: true, changeable_within_window: false, note: "a daily risk lock does not change inside the window" }];
     default: return [];

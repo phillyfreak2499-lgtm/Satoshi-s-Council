@@ -31,6 +31,7 @@ import { runBotsWithEvaluatedCandidates } from "./bots";
 import { projectInactiveE1Recovery } from "./call-recovery-candidate";
 import { runChair } from "./chair";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents } from "./fee-engine.ts";
+import { ENTRY_SELECTIVE_V3 } from "./floor-policy.ts";
 import { NULL_FAV_GRACE_SECS, scheduledCheckpoint } from "./shadow-arms.ts";
 import { receiptKey, type ShadowReceipt } from "./shadow-lab.ts";
 import { armCalls, exactSideQuote, recordShadowReceipt, settleShadowReceipts } from "./shadow-lab.server.ts";
@@ -116,6 +117,9 @@ export async function midRecoveryLocksTick(now?: number): Promise<void> {
     }
     const { getServerFrame } = await import("./server-engine");
     const frame = await getServerFrame();
+    // These frozen V3 cohorts cannot mix observations from another production policy.
+    // Existing receipts were settled above; only new collection is paused.
+    if (frame.selective?.policy !== undefined && frame.selective.policy !== ENTRY_SELECTIVE_V3.id) return;
     if (!frame.snap || !frame.chair || frame.snap.demo || !frame.selective.ready) return;
     const { snap, chair, learner, settings, call_log, audit, start } = structuredClone({
       snap: frame.snap, chair: frame.chair, learner: frame.learner, settings: frame.settings, call_log: frame.call_log ?? [], audit: frame.selective.audit, start: frame.selective.start,

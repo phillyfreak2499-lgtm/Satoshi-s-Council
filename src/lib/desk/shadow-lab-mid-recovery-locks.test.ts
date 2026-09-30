@@ -379,11 +379,13 @@ test("the report reads only this experiment's arms, per arm, and never mixes in 
 /**
  * SHA-256 of the reviewed V1 experiment sources. The evaluator now names its
  * original V3 gate set explicitly so later Champion changes cannot relabel its
- * existing receipts; any further movement needs its own reviewed change.
+ * existing receipts; the recorder hash includes the reviewed post-settlement
+ * policy guard, which pauses new collection under a different Champion.
+ * Pure evaluator hashes and existing receipt revisions remain unchanged.
  */
 const V1_SOURCES: Record<string, string> = {
   "src/lib/desk/shadow-lab-mid-recovery.ts": "16793d8d23f15e37cb6edcca240d1b8bcbc9bc18725640c4f0258a0109e34726",
-  "src/lib/desk/shadow-lab-mid-recovery.server.ts": "3232f493f06475cef70741bedc7bb07459b8b87cc293d909a845abeec7628591",
+  "src/lib/desk/shadow-lab-mid-recovery.server.ts": "92aeb8d07549ba535c8c4e8c69c5af39ce168791ec41f8b3d4d98a04b1734789",
   "server/routes/research/mid-recovery.get.ts": "e8f8c239c1be36c00fcdfc3ae6820a4826f65eedfe35bbb071d6c79c50a8ba8d",
 };
 

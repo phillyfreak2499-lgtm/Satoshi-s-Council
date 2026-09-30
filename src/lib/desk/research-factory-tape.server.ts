@@ -56,6 +56,7 @@ export async function decisionTapeTick(now: number = Date.now()): Promise<TapeRe
     if (!frame.snap || !frame.chair || frame.snap.demo) return null;
     const f = structuredClone({
       snap: frame.snap, chair: frame.chair, votes: frame.votes, audit: (frame.selective?.audit ?? null) as Audit | null, daily: frame.selective?.daily ?? null,
+      policy: frame.selective?.policy,
       call_log: (frame.call_log ?? []).slice(0, 50),
     }) as TapeFrame;
     const snap = f.snap;

@@ -22,9 +22,26 @@ test("eras come from the frozen constants and do not overlap", () => {
   assert.equal(eraOf(Date.parse("2026-09-15T14:05:13Z")), "C1_selective_v1v2");
   assert.equal(eraOf(Date.parse("2026-09-17T12:09:31Z")), "C2_selective_v3");
   assert.equal(eraOf(Date.parse("2026-09-30T20:59:59Z")), "C2_selective_v3");
-  assert.equal(eraOf(Date.parse("2026-09-30T21:00:00Z")), "C3_owner_rollback_v1");
+  assert.equal(eraOf(Date.parse("2026-09-30T21:00:00Z")), "C2_selective_v3");
+  assert.equal(eraOf(Date.parse("2026-09-30T21:14:59Z")), "C2_selective_v3");
+  assert.equal(eraOf(Date.parse("2026-09-30T21:15:00Z")), "C3_owner_rollback_v1");
   for (let i = 1; i < ERAS.length; i += 1) assert.equal(ERAS[i]!.since, ERAS[i - 1]!.until);
   assert.equal(ERAS[0]!.quantity, "legacy_mixed");
+});
+
+test("activation close remains historical and delayed settlement cannot change its era", () => {
+  const oldWindow = hold("2026-09-30T21:00:00Z", 83, true, { graded_ms: Date.parse("2026-09-30T23:00:00Z") });
+  const firstOwnerWindow = row("2026-09-30T21:15:00Z");
+  assert.equal(classifyRow(oldWindow).era, "C2_selective_v3");
+  assert.equal(classifyRow(firstOwnerWindow).era, "C3_owner_rollback_v1");
+  const book = bookSummary([oldWindow, firstOwnerWindow], allScope(Date.parse("2026-10-01T00:00:00Z")));
+  assert.equal(book.by_era.find(e => e.era === "C2_selective_v3")?.windows, 1);
+  assert.equal(book.by_era.find(e => e.era === "C3_owner_rollback_v1")?.windows, 1);
+  const heldAcrossChange = hold("2026-09-30T21:15:00Z", 83, true, { entry_policy: "ENTRY_SELECTIVE_V3" });
+  assert.equal(classifyRow(heldAcrossChange).era, "C2_selective_v3", "recorded paid policy outranks a later close");
+  const scope = { ...allScope(Date.parse("2026-10-01T00:00:00Z")), eras: ["C2_selective_v3"] as const };
+  assert.equal(inScope(heldAcrossChange, scope), true);
+  assert.equal(bookSummary([heldAcrossChange, firstOwnerWindow], scope).windows, 1);
 });
 
 test("event classification separates legacy exits and scratches from HOLD settlements and never drops excluded rows", () => {
