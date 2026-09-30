@@ -44,6 +44,8 @@ function snap(over: Partial<Snapshot> = {}): Snapshot {
 const ctx = (over: Partial<RecoveryPilotContext> = {}): RecoveryPilotContext => ({
   calls: [],
   ready: true,
+  callNotificationRecipients: 1,
+  callNotificationAccepted24h: 1,
   start: NOW - 900_000,
   watch: null,
   ...over,
@@ -94,6 +96,18 @@ test("three same-side frames over eight seconds are required and rechecked at bo
   assert.equal(c.eligible, true);
   assert.equal(recoveryPilotBookOk(cSnap, { ...cCtx, watch: c.watch }, c), true);
   assert.equal(recoveryPilotBookOk(snap({ ...cSnap, yes_ask: 95 }), { ...cCtx, watch: c.watch }, c), false);
+});
+
+test("notification readiness fails closed before a pilot can advance", () => {
+  const noRecipient = recoveryPilotDecision(snap(), ctx({ callNotificationRecipients: 0 }));
+  assert.equal(noRecipient.eligible, false);
+  assert.equal(noRecipient.watch, null);
+  assert.match(noRecipient.reason ?? "", /eligible call-notification recipient/);
+
+  const noAcceptedTest = recoveryPilotDecision(snap(), ctx({ callNotificationAccepted24h: 0 }));
+  assert.equal(noAcceptedTest.eligible, false);
+  assert.equal(noAcceptedTest.watch, null);
+  assert.match(noAcceptedTest.reason ?? "", /provider-accepted call notification test/);
 });
 
 test("pilot rows are capped at three and the first settled pilot loss stops the day", () => {

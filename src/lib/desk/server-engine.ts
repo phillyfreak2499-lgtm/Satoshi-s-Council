@@ -750,7 +750,14 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
 async function noteRecoveryPilotCall(e: Eng, snap: Snapshot, decision: RecoveryPilotDecision) {
   if (!recoveryPilotEnabled()) return;
   if (hasPaperPosition(e.riskCalls, snap)) return;
-  const ctx = { calls: e.riskCalls, ready: e.riskReady, start: e.recoveryPilotStart, watch: e.recoveryPilotWatch };
+  const ctx = {
+    calls: e.riskCalls,
+    ready: e.riskReady,
+    callNotificationRecipients: e.alertCallSubs,
+    callNotificationAccepted24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+    start: e.recoveryPilotStart,
+    watch: e.recoveryPilotWatch,
+  };
   if (!recoveryPilotBookOk(snap, ctx, decision) || !decision.candidate) return;
   const { side, ask } = decision.candidate;
   const row: CallLogRow = {
@@ -1504,6 +1511,8 @@ async function tick(e: Eng) {
       const pilot = recoveryPilotDecision(snap, {
         calls: e.riskCalls,
         ready: e.riskReady,
+        callNotificationRecipients: e.alertCallSubs,
+        callNotificationAccepted24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
         start: e.recoveryPilotStart,
         watch: e.recoveryPilotWatch,
       });
@@ -2182,9 +2191,15 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
         call_notifications: {
           configured: e.alertCallSubs > 0,
           subscribers: e.alertCallSubs,
-          note: e.alertCallSubs > 0
-            ? "eligible subscribers present; delivery is still verified per send"
-            : "no eligible call-alert subscriber; do not rely on call notifications for rollout",
+          provider_accepted_24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+          recovery_pilot_ready:
+            e.alertCallSubs > 0 && (e.alertDelivery?.call_ready_accepted_24h ?? 0) > 0,
+          note:
+            e.alertCallSubs < 1
+              ? "no eligible call-alert subscriber; do not rely on call notifications for rollout"
+              : (e.alertDelivery?.call_ready_accepted_24h ?? 0) < 1
+                ? "eligible subscribers exist, but no recent provider-accepted call/test receipt proves the call channel"
+                : "an eligible call subscriber has recent provider acceptance; device display and human receipt are not guaranteed",
         },
         settlement_notifications: {
           configured: e.alertSettleSubs > 0,
@@ -2193,6 +2208,7 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
         delivery_evidence: {
           observed: e.alertDelivery?.last_attempted_at != null,
           accepted_24h: e.alertDelivery?.accepted_24h ?? 0,
+          call_ready_accepted_24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
           failed_24h: e.alertDelivery?.failed_24h ?? 0,
           gone_24h: e.alertDelivery?.gone_24h ?? 0,
           last_event_kind: e.alertDelivery?.last_event_kind ?? null,

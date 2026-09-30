@@ -36,6 +36,8 @@ export type RecoveryPilotWatch = {
 export type RecoveryPilotContext = {
   calls: CallLogRow[];
   ready: boolean;
+  callNotificationRecipients: number;
+  callNotificationAccepted24h: number;
   start: number;
   watch: RecoveryPilotWatch | null;
 };
@@ -101,6 +103,8 @@ export function recoveryPilotCandidate(snap: Snapshot): RecoveryPilotCandidate |
 
 function baseBlock(snap: Snapshot, ctx: RecoveryPilotContext): string | null {
   if (!ctx.ready) return "waiting for durable risk history";
+  if (ctx.callNotificationRecipients < 1) return "waiting for an eligible call-notification recipient";
+  if (ctx.callNotificationAccepted24h < 1) return "waiting for a provider-accepted call notification test";
   if (hasPaperPosition(ctx.calls, snap)) return "a paper position already exists for this window";
   if (snap.close_time - 900_000 < ctx.start) return "starts at the next complete market window";
   const all = dailyAdmission(ctx.calls, snap.as_of);
