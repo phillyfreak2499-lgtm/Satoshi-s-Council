@@ -8,12 +8,14 @@ with bounded as materialized (
    where close_time >= now() - interval '24 hours' and close_time <= now()
 ), coverage as (
   select ticker, close_time, count(*) tape_rows,
-         count(distinct build_sha) builds, bool_or(partial_window) partial,
+         count(distinct build_sha) builds,
+         count(*) filter (where nullif(build_sha, '') is null) unknown_build_rows,
+         bool_or(partial_window) partial,
          count(distinct checkpoint_secs) checkpoints
     from bounded group by ticker, close_time
 )
 select t.ticker, t.close_time, t.as_of, t.secs_left, t.checkpoint_secs,
-       t.build_sha, c.builds, c.partial, c.checkpoints, c.tape_rows,
+       t.build_sha, c.builds, c.unknown_build_rows, c.partial, c.checkpoints, c.tape_rows,
        c.tape_rows >= 80 as event_cap_reached,
        t.record->'e1_paper'->>'source' paper_source,
        t.record->'e1_paper'->>'authority' authority,
