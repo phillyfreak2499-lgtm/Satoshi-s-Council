@@ -69,7 +69,11 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
     try {
       const p = await setOwnerAlerts(on, key);
       setPrefs(p);
-      setMsg(on ? "watchdog on — a push here if no window grades for twenty minutes" : "watchdog off in this browser");
+      setMsg(
+        on
+          ? "owner alerts on — enable call alerts, then send a test to verify this browser's owner call channel"
+          : "owner alerts off in this browser",
+      );
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -114,18 +118,28 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
             />
           </label>
           {ownerMode ? (
-            <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">
-              <span>
-                <Tip k="settings.watchdog">Desk watchdog</Tip>{" "}
-                <span className="text-subtle">· owner only</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={owner}
-                disabled={busy || !ready || blocked || !prefs}
-                onChange={(e) => void applyOwner(e.target.checked)}
-              />
-            </label>
+            <div className="mb-2">
+              <label className="flex items-center justify-between gap-2 font-mono text-ui text-muted">
+                <span>
+                  Owner call channel + <Tip k="settings.watchdog">Desk watchdog</Tip>{" "}
+                  <span className="text-subtle">· owner only</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={owner}
+                  disabled={busy || !ready || blocked || !prefs}
+                  onChange={(e) => void applyOwner(e.target.checked)}
+                />
+              </label>
+              <div className="mt-1 font-mono text-micro text-subtle">
+                {owner
+                  ? onCall
+                    ? "Owner channel enabled. Send a test and confirm it arrives on this device. Provider acceptance alone does not confirm delivery or activate calls."
+                    : "Enable ‘When the chair books a call’ before testing the owner call channel."
+                  : "This browser is not registered as an owner channel. Enable the owner channel here before testing it for recovery readiness."}{" "}
+                Desk watchdog also alerts you if no window grades for twenty minutes.
+              </div>
+            </div>
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <button
@@ -136,7 +150,15 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
                 setBusy(true);
                 setMsg(null);
                 testPush()
-                  .then(() => setMsg("test sent — it should land in a moment"))
+                  .then(() =>
+                    setMsg(
+                      ownerMode
+                        ? owner && onCall
+                          ? "owner-channel test accepted — confirm it arrives on this device; this does not activate calls"
+                          : "test accepted — this browser is not an enabled owner call channel"
+                        : "test accepted — it should land in a moment",
+                    ),
+                  )
                   .catch((e) => setMsg(e instanceof Error ? e.message : String(e)))
                   .finally(() => setBusy(false));
               }}
