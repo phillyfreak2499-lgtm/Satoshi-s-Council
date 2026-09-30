@@ -552,6 +552,18 @@ export type Learner = {
   skills: Record<string, SkillCard>;
   /** One-time owner review of saved authority labels; does not reset evidence. */
   authority_review_version?: string;
+  /** OWNER_RESTORE_E1_PAIR_V1 marker (owner-restore.ts). Absent unless the owner
+   *  activated that inactive policy intervention; records the exact values it replaced. */
+  owner_restore?: {
+    version: string;
+    mode: "STATUS_ONLY" | "STATUS_AND_STRIKE_CALIBRATION";
+    state: "APPLIED" | "ROLLED_BACK";
+    applied_at: number;
+    upgraded_at?: number;
+    rolled_back_at?: number;
+    prior: { status: Record<string, SkillStatus>; debt: Record<string, number | null> };
+    applied: { status: Record<string, SkillStatus>; debt: Record<string, number | null> };
+  };
   knobs: Record<string, SeatKnobs>;
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;

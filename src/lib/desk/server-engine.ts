@@ -27,6 +27,7 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { queueStatusTransitions, skillStatusSnapshot } from "./status-transitions";
+import { applyOwnerRestore, ownerRestoreMode, type OwnerRestoreReceipt } from "./owner-restore";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
 import {
@@ -167,6 +168,9 @@ type Eng = {
   recoveryPilotWatch: RecoveryPilotWatch | null;
   recoveryPilotStart: number;
   lastAdmissionAudit: AdmissionAudit | null;
+  /** Last OWNER_RESTORE_E1_PAIR_V1 outcome at state load (default OFF). Read-only health evidence. */
+  ownerRestore: OwnerRestoreReceipt | null;
+  ownerRestorePending: boolean;
   selectiveStart: number;
   baselineCalls: CallLogRow[];
   lastCall: { ticker: string; close_time: number; lean: Lean } | null;
@@ -339,6 +343,8 @@ function freshEng(): Eng {
     recoveryPilotWatch: null,
     recoveryPilotStart: recoveryPilotStartAtBoot(Date.now(), recoveryPilotEnabled(), false, null),
     lastAdmissionAudit: null,
+    ownerRestore: null,
+    ownerRestorePending: false,
     selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
     baselineCalls: [],
     lastCall: null,
@@ -505,6 +511,40 @@ async function loadState(e: Eng) {
     e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
+    // Restore all history before attempting the one-time authority write.
+    // A candidate learner stays private until its full-state save is acknowledged;
+    // no timers or first tick run until loadState returns.
+    const ownerRestore = ownerRestoreMode();
+    if (ownerRestore !== "OFF") {
+      const originalLearner = e.learner;
+      try {
+        const candidate = structuredClone(originalLearner);
+        const result = applyOwnerRestore(candidate, ownerRestore, Date.now());
+        if (result.changed) {
+          e.ownerRestorePending = true;
+          e.learner = candidate;
+          if (await persistState(e, true)) {
+            e.ownerRestore = result;
+            queueStatusTransitions(skillStatusSnapshot(originalLearner), skillStatusSnapshot(candidate), "ownerRestore");
+          } else {
+            e.learner = originalLearner;
+            e.ownerRestore = { ...result, changed: false, status: [], debt: [],
+              outcome: ownerRestore === "ROLLBACK" ? "ROLLBACK_REFUSED" : "REFUSED",
+              reason: "owner restore save was not acknowledged; original learner retained" };
+          }
+        } else {
+          e.ownerRestore = result;
+        }
+      } catch (err) {
+        e.learner = originalLearner;
+        e.ownerRestore = { version: "OWNER_RESTORE_E1_PAIR_2026_09_30_V1", mode: ownerRestore,
+          outcome: ownerRestore === "ROLLBACK" ? "ROLLBACK_REFUSED" : "REFUSED", changed: false,
+          reason: "owner restore failed; original learner retained", status: [], debt: [] };
+        noteErr(e, "owner-restore", err instanceof Error ? err.message : String(err));
+      } finally {
+        e.ownerRestorePending = false;
+      }
+    }
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -2251,6 +2291,20 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       // horizon flip deep health. Old Sep-style scars remain visible without making
       // the recovered desk permanently 503.
       pending_windows: e.pending.map((p) => ({ ticker: p.ticker, close_time: p.close_time })),
+      // Inactive policy intervention (owner-restore.ts): this boot's receipt and
+      // the persisted marker, so an applied restore stays visible after the env is cleared.
+      owner_restore: {
+        pending: e.ownerRestorePending,
+        boot: e.ownerRestore
+          ? { outcome: e.ownerRestore.outcome, mode: e.ownerRestore.mode, reason: e.ownerRestore.reason,
+              status: e.ownerRestore.status, debt: e.ownerRestore.debt }
+          : null,
+        marker: !e.ownerRestorePending && e.learner.owner_restore
+          ? { version: e.learner.owner_restore.version, mode: e.learner.owner_restore.mode, state: e.learner.owner_restore.state,
+              applied_at: e.learner.owner_restore.applied_at, upgraded_at: e.learner.owner_restore.upgraded_at ?? null,
+              rolled_back_at: e.learner.owner_restore.rolled_back_at ?? null }
+          : null,
+      },
       integrity: {
         ok: recentIdentityFaults === 0,
         recent_identity_faults: recentIdentityFaults,
