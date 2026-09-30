@@ -101,6 +101,7 @@ export async function subscribePush(input: SubInput): Promise<PushResult> {
     insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, ua)
     values (${endpoint}, ${p256dh}, ${auth}, ${token}, ${on_call}, ${on_settle}, ${ua})
     on conflict (endpoint) do update set
+      owner = desk_push_subs.owner and desk_push_subs.p256dh = excluded.p256dh and desk_push_subs.auth = excluded.auth,
       p256dh = excluded.p256dh, auth = excluded.auth, token = coalesce(excluded.token, desk_push_subs.token),
       on_call = excluded.on_call, on_settle = excluded.on_settle, ua = excluded.ua,
       last_seen = now(), fails = 0
