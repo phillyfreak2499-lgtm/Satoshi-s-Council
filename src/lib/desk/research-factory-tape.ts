@@ -24,7 +24,7 @@ import type { dailyAdmission } from "./selective-entry.ts";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
 import { chairWaitReason } from "./telemetry.ts";
-import type { CallLogRow, ChairResult, Snapshot } from "./types";
+import type { CallLogRow, ChairResult, Snapshot, Vote } from "./types";
 import { onGrid, tickerAgrees } from "./window-identity.ts";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,8 @@ export type Audit = { checks: readonly AuditCheck[]; positioned: boolean; eligib
 export type TapeFrame = {
   snap: Snapshot;
   chair: ChairResult;
+  /** Same-frame producer output; absent on older callers. Never admission evidence. */
+  votes?: readonly Vote[];
   audit: Audit | null;
   daily: ReturnType<typeof dailyAdmission> | null;
   call_log: readonly CallLogRow[];
@@ -146,6 +148,7 @@ export type TapeRecord = {
     raw_side: "UP" | "DOWN" | null;
     score: number | null; vs_bar: number | null; bar: number | null; sit_mass: number | null; sit_term: number | null; dir_mass: number | null;
     aggressiveness: number | null; directional_seats: string[]; supporters: string[]; families: string[]; opposing: number | null;
+    raw_directional_seats: string[] | null; producer_directional_seats: string[] | null;
     /** The bar the Chair's own breakdown gives without its sit-mass term (clamped at 0.24). A LEVER for survival analysis, never a graded condition. */
     bar_without_sit: number | null;
   };
@@ -163,6 +166,11 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   const side = dir(chair.lean);
   const rows = Array.isArray(chair.rows) ? chair.rows : [];
   const dirRows = rows.filter((r) => (r.lean === "UP" || r.lean === "DOWN") && !r.forced_sit);
+  // Guard/context seats are not research voters. Preserve raw and post-producer
+  // direction separately from Chair-admitted direction; neither grants authority.
+  const votingInputs = f.votes?.filter((v) => !["WARDEN", "ORBIT", "WIRE"].includes(v.seat));
+  const rawInputs = votingInputs?.filter((v) => dir(v.raw_lean ?? v.lean) != null);
+  const producerInputs = votingInputs?.filter((v) => dir(v.lean) != null && !v.forced_sit);
   const rawSide = fin(chair.score) == null || chair.score === 0 ? null : chair.score > 0 ? "UP" : "DOWN";
   const req = f.daily ? admissionRequirements(f.daily) : null;
   const p = SELECTIVE_PARAMS;
@@ -186,6 +194,8 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   // Values every later frame is graded against (null where production did not measure).
   const values: Record<string, number | boolean | null> = {
     directional_seats: dirRows.length,
+    raw_directional_seats: rawInputs?.length ?? null,
+    producer_directional_seats: producerInputs?.length ?? null,
     dir_mass: fin(chair.dir_mass),
     vs_bar_minus_bar: fin(chair.vs_bar) != null && fin(chair.bar) != null ? chair.vs_bar - chair.bar : null,
     chair_directional: side != null,
@@ -213,7 +223,7 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   // The Chair's own WAIT reason, when it waits.
   let directionReason: WaitReason | null = null;
   if (!side) {
-    if (dirRows.length === 0) directionReason = "NO_RESEARCH_READ";
+    if (dirRows.length === 0) directionReason = producerInputs?.length ? "STATUS_OR_AUTHORITY_SUPPRESSED" : "NO_RESEARCH_READ";
     else if (!(fin(chair.dir_mass) != null && chair.dir_mass > 0)) directionReason = "STATUS_OR_AUTHORITY_SUPPRESSED";
     else if (hardGates.some((g) => g.id !== "bar")) directionReason = CHAIR_GATE_REASON[hardGates.find((g) => g.id !== "bar")!.id] ?? "OTHER_EXPLICIT";
     else if ((chair.gates ?? []).some((g) => g.id === "top3" && !g.pass)) directionReason = "DIRECTION_CONFLICT";
@@ -265,6 +275,8 @@ export function classifyTape(f: TapeFrame): TapeRecord {
     evidence: {
       side, raw_side: rawSide, score: fin(chair.score), vs_bar: fin(chair.vs_bar), bar: fin(chair.bar), sit_mass: fin(chair.sit_mass), sit_term: sitTerm, dir_mass: fin(chair.dir_mass),
       aggressiveness: fin(chair.aggressiveness), directional_seats: dirRows.map((r) => r.seat), supporters, families, opposing,
+      raw_directional_seats: rawInputs?.map((v) => v.seat) ?? null,
+      producer_directional_seats: producerInputs?.map((v) => v.seat) ?? null,
       bar_without_sit: sitTerm != null && barPre != null ? Math.min(0.72, Math.max(0.24, barPre - sitTerm)) : null,
     },
     market: {
