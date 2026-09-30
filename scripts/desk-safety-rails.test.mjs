@@ -2663,6 +2663,11 @@ test("public Settings hides shared-desk controls until the owner key is verified
     /\{ownerMode \? \([\s\S]*Desk watchdog[\s\S]*\) : null\}/,
     "the owner watchdog stays inside verified owner mode",
   );
+  assert.match(alerts, /Owner call channel \+/, "owner-channel purpose is visible beside watchdog");
+  assert.match(alerts, /This browser is not registered as an owner channel/, "non-owner browsers explain the missing owner channel");
+  assert.match(alerts, /Provider acceptance alone does not confirm delivery or activate calls/, "accepted tests never claim delivery or activation");
+  assert.match(alerts, /owner && onCall/, "test feedback distinguishes an enabled owner call channel");
+  assert.match(alerts, /await setOwnerAlerts\(on, key\)/, "owner enrollment retains authenticated server action");
 });
 
 test("call-notification readiness is independently visible and never gates canonical Chair booking", () => {
