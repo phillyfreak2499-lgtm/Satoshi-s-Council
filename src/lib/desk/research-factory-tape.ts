@@ -254,7 +254,7 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   const pass = (id: string) => checks.get(id)?.pass === true;
   const precond = ["risk_history", "daily_risk", "complete_window", "time", "feeds"].every(pass);
   const reached: boolean[] = [
-    true, dirRows.length > 0, side != null, pass("team"), pass("supporters"), pass("families"), pass("opposition"), pass("quote"),
+    true, dirRows.length > 0 || (producerInputs?.length ?? 0) > 0, side != null, pass("team"), pass("supporters"), pass("families"), pass("opposition"), pass("quote"),
     precond && pass("model_edge") && pass("profit_reserve"), pass("index_fresh") && pass("index_edge"), pass("confirmation"), qualified || booked, booked,
   ];
   let stageIndex = 0;

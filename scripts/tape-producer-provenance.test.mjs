@@ -52,6 +52,7 @@ test("real Chair authority suppression retains distinct producer and raw tape ev
   const before = JSON.stringify({ votes, learner, snap, chair });
   const recorded = classifyTape(frame);
   assert.equal(recorded.primary_blocker, "STATUS_OR_AUTHORITY_SUPPRESSED");
+  assert.equal(recorded.stage, "CANDIDATE", "an observed producer side reached candidate, without admitted direction");
   assert.equal(recorded.values.directional_seats, 0);
   assert.equal(recorded.values.raw_directional_seats, 1);
   assert.equal(recorded.values.producer_directional_seats, 1);
