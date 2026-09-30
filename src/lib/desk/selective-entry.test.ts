@@ -124,9 +124,8 @@ test("risk settlement needs exact window identity and never replaces a known res
   assert.equal(settled[0]!.settle, 0);
   assert.equal(settleRiskCalls(settled, r.ticker, r.close_time, "UP")[0]!.settle, 0);
 });
-test("one seat, disagreement, folded or uncalibrated seats cannot manufacture a team", () => {
+test("one seat, folded or uncalibrated rows cannot manufacture the current pay-time team", () => {
   for (const c of [chair({ quorum: { up: 1, down: 0, wait: 17 } }),
-    chair({ quorum: { up: 3, down: 1, wait: 14 } }),
     chair({ rows: chair().rows.map(r => ({ ...r, folded: true })) }),
     chair({ rows: chair().rows.map(r => ({ ...r, status: "UNCALIBRATED" })) }),
     chair({ rows: [chair().rows[0]!, chair().rows[0]!, chair().rows[0]!] })]) {
@@ -143,15 +142,15 @@ test("duplicate, zero-weight, forced-sit, stale, and non-authoritative rows cann
     { ...chair().rows[2]!, forced_sit: true },
     { ...chair().rows[1]!, seat: "DRIFT" as SeatId, status: "INVERT" as const },
     { ...chair().rows[1]!, seat: "CHAIN" as SeatId, health: "STALE" as const }];
-  assert.match(selectiveBlock(snap(), chair({ rows }), ctx())!, /two healthy supporters/);
+  assert.match(selectiveBlock(snap(), chair({ rows }), ctx())!, /two-seat Chair team/);
 });
 test("a genuinely live FADED representative retains supporter authority", () => {
   const rows = chair().rows.slice(0, 2).map((r, i) => ({ ...r, status: i === 0 ? "FADED" as const : "LIVE" as const, weight: 0.02 }));
   assert.equal(selectiveBlock(snap(), chair({ rows }), ctx()), null);
 });
-test("three correlated candle seats are only one evidence group", () => {
+test("normal rollback no longer adds a distinct-family veto beyond the Chair team", () => {
   const rows = (["WICK", "DRIFT", "PULSE"] as SeatId[]).map(seat => ({ ...chair().rows[0]!, seat }));
-  assert.match(selectiveBlock(snap(), chair({ rows }), ctx())!, /two evidence groups/);
+  assert.equal(selectiveBlock(snap(), chair({ rows }), ctx()), null);
 });
 test("current failed gates block a sticky UP even when its score remains high", () => {
   assert.notEqual(selectiveBlock(snap(), chair({ hard_fail: true }), ctx()), null);
@@ -163,11 +162,13 @@ test("paper team guard honors the Chair's own bar gate instead of recomputing ra
   assert.equal(paperBookTeamOk(chair({ score: 0.49, bar: 0.54, gates: [passed] }), "UP"), true);
   assert.equal(paperBookTeamOk(chair({ score: 0.80, bar: 0.54, gates: [failed] }), "UP"), false);
 });
-test("no opening chase or final-three-minute entry; remaining time comes from the clock", () => {
-  for (const seconds of [601, 179, 86, 0, -1, NaN]) {
+test("normal rollback uses the Chair's 2.2–12 minute gates instead of a second 3–10 minute band", () => {
+  for (const seconds of [0, -1, NaN, 721]) {
     assert.notEqual(selectiveBlock(snap({ close_time: now + seconds * 1000 }), chair(), ctx()), null);
   }
-  assert.equal(selectiveBlock(snap({ close_time: now + 180_000 }), chair(), ctx()), null);
+  for (const seconds of [601, 180, 179, 86, 1]) {
+    assert.equal(selectiveBlock(snap({ close_time: now + seconds * 1000 }), chair(), ctx()), null);
+  }
   assert.match(selectiveBlock(snap(), chair(), ctx({ start: now }))!, /complete market window/);
 });
 test("stale receipt, unhealthy spot, missing ask, crossed book, spread and empty size fail closed", () => {
@@ -179,37 +180,37 @@ test("stale receipt, unhealthy spot, missing ask, crossed book, spread and empty
   ];
   for (const s of bad) assert.notEqual(selectiveBlock(snap(s), chair(), ctx()), null, JSON.stringify(s));
 });
-test("main-model margin and BRTI margin are distinct; a stale or missing index never falls back to spot", () => {
-  for (const s of [{ edge_up: 2.99 }, { edge_up: NaN }, { lab_fair_yes: 84 }, { lab_fair_yes: null },
-    { lab_fair_yes: NaN }, { lab_age_s: 6 }, { lab_age_s: -1 }, { lab_fair_yes: 77.7 }]) {
+test("normal rollback requires positive main edge and removes the settlement-index veto", () => {
+  for (const s of [{ edge_up: 0 }, { edge_up: -1 }, { edge_up: NaN }]) {
     assert.notEqual(selectiveBlock(snap(s), chair(), ctx()), null);
   }
-  assert.equal(selectiveBlock(snap({ edge_up: 3, lab_fair_yes: 84.1 }), chair(), ctx()), null);
+  for (const s of [{ edge_up: 0.01 }, { edge_up: 2.99 }, { lab_fair_yes: 84 }, { lab_fair_yes: null },
+    { lab_fair_yes: NaN }, { lab_age_s: 6 }, { lab_age_s: -1 }, { lab_fair_yes: 77.7 }]) {
+    assert.equal(selectiveBlock(snap(s), chair(), ctx()), null);
+  }
 });
-test("DOWN uses its own ask, YES resting size, own edge and complementary index probability", () => {
+test("captured 83c opportunity is no longer vetoed solely by its negative index margin", () => {
+  assert.equal(selectiveBlock(snap({ yes_ask: 83, yes_bid: 82, no_ask: 18, no_bid: 17,
+    edge_up: 4.600736, lab_fair_yes: 83.3 }), chair(), ctx()), null);
+});
+test("DOWN uses its own ask, YES resting size and own positive main edge", () => {
   const c = chair({ lean: "DOWN", score: -0.8, quorum: { up: 0, down: 3, wait: 15 },
     rows: chair().rows.map(r => ({ ...r, lean: "DOWN" })) });
   const s = snap({ no_ask: 82, no_bid: 81, yes_ask: 19, yes_bid: 18, edge_down: 6, lab_fair_yes: 10 });
   assert.equal(selectiveBlock(s, c, ctx()), null);
   assert.notEqual(selectiveBlock({ ...s, yes_bid_size: 0 }, c, ctx()), null);
-  assert.notEqual(selectiveBlock({ ...s, lab_fair_yes: 90 }, c, ctx()), null);
+  assert.equal(selectiveBlock({ ...s, lab_fair_yes: 90 }, c, ctx()), null);
+  assert.notEqual(selectiveBlock({ ...s, edge_down: 0 }, c, ctx()), null);
 });
-test("confirmation gates paper entry without rewriting the Chair's directional read", () => {
-  let context = ctx();
-  for (const elapsed of [0, 0, 4000]) {
-    const s = snap({ as_of: now + elapsed });
-    const result = selectiveChair(s, chair(), context);
-    assert.equal(result.chair.lean, "UP");
-    assert.equal(result.chair.gates.find(g => g.id === "selective")?.pass, false);
-    context = { ...context, watch: result.watch };
-  }
-  const s = snap({ as_of: now + 8000, obs: { ...snap().obs, receipt_ts: now + 7000 } });
+test("normal rollback admits the first fully revalidated frame without rewriting the Chair read", () => {
+  const context = ctx();
+  const s = snap();
   const admitted = selectiveChair(s, chair(), context);
   assert.equal(admitted.chair.lean, "UP");
   assert.equal(admitted.chair.gates.find(g => g.id === "selective")?.pass, true);
   assert.equal(admitted.chair.gates.find(g => g.id === "selective")?.hard, false);
   assert.equal(selectiveBookOk(s, admitted.chair, { ...context, watch: admitted.watch }), true);
-  assert.equal(selectiveBookOk({ ...s, lab_fair_yes: 80 }, admitted.chair, { ...context, watch: admitted.watch }), false);
+  assert.equal(selectiveBookOk({ ...s, edge_up: 0 }, admitted.chair, { ...context, watch: admitted.watch }), false);
   assert.equal(selectiveChair(s, chair({ lean: "WAIT" }), context).watch, null);
 });
 test("entry restrictions never exit or reopen an existing paper position", () => {
@@ -251,10 +252,10 @@ test("actual booking path refuses the single-seat regression with positive model
   assert.equal(e.callLog.length, 0); assert.equal(e.riskCalls.length, 0);
   assert.deepEqual(Object.keys(e.shadowFills), []); assert.deepEqual(events, []);
 });
-test("actual booking path rejects a deteriorated index quote after confirmation", async () => {
+test("actual booking path ignores the rolled-back index veto in normal mode", async () => {
   const { api, events } = bookingHarness(); const e = engine();
   await api.noteCall(e, snap({ lab_fair_yes: 80 }), chair(), []);
-  assert.equal(e.callLog.length, 0); assert.deepEqual(events, []);
+  assert.equal(e.callLog.length, 1); assert.deepEqual(events, ["saved", "notified"]);
 });
 test("actual booking records and saves once before notification; clear display cannot reopen the position", async () => {
   const { api, events } = bookingHarness(); const e = engine(); const s = snap();

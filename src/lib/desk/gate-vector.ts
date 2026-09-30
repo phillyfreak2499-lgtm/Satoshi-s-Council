@@ -12,10 +12,9 @@
  * the Chair rows under both the deployed policy and the owner's reference
  * policy. It decides nothing.
  *
- * TWO POLICIES, NAMED. The deployed Champion (ENTRY_SELECTIVE_V3) requires two
- * healthy supporters from two evidence groups. The owner's stated admission
- * requires three from two. Both are evaluated side by side; neither is relabelled
- * as the other.
+ * TWO POLICIES, NAMED. The deployed Champion is the prospective owner rollback.
+ * The reference remains the original September 15 three-supporter selective
+ * admission. Both are evaluated side by side; neither is relabelled as the other.
  *
  * Pure module: no clock, no state, no database, no writes.
  */
@@ -28,7 +27,10 @@ import { admissionRequirements, dailyAdmission, hasPaperPosition, profitRiskBloc
 import type { ChairResult, SeatId, SeatRow, Snapshot } from "./types";
 
 /** The frozen params with their numeric literals widened, so a reference policy can differ in one number. */
-export type AdmissionParams = { readonly [K in keyof typeof SELECTIVE_PARAMS]: (typeof SELECTIVE_PARAMS)[K] extends number ? number : (typeof SELECTIVE_PARAMS)[K] };
+export type AdmissionParams = { readonly [K in keyof typeof SELECTIVE_PARAMS]:
+  (typeof SELECTIVE_PARAMS)[K] extends number ? number :
+  (typeof SELECTIVE_PARAMS)[K] extends boolean ? boolean : (typeof SELECTIVE_PARAMS)[K]
+};
 
 export type AdmissionPolicy = {
   id: string;
@@ -40,7 +42,7 @@ export type AdmissionPolicy = {
 
 export const DEPLOYED_POLICY: AdmissionPolicy = Object.freeze({
   id: SELECTIVE_ENTRY_ID,
-  label: "deployed Champion: two healthy supporters from two evidence groups",
+  label: "deployed Champion: owner rollback with current safety rails",
   kind: "deployed",
   params: SELECTIVE_PARAMS,
 });
@@ -50,7 +52,13 @@ export const OWNER_REFERENCE_POLICY: AdmissionPolicy = Object.freeze({
   id: "OWNER_REFERENCE_ADMISSION_2026_09_15",
   label: "owner reference: three healthy supporters from two evidence groups",
   kind: "owner_reference",
-  params: Object.freeze({ ...SELECTIVE_PARAMS, min_speaking: 3 }),
+  params: Object.freeze({ ...SELECTIVE_PARAMS,
+    min_speaking: 3, min_families: 2, max_opposing: 0,
+    min_seconds_left: 180, max_seconds_left: 600,
+    min_edge_cents: 3, edge_must_exceed_min: false,
+    require_index_edge: true,
+    confirmation_seconds: 8, confirmation_frames: 3,
+  }),
 });
 
 export type GateCheck = {
@@ -105,7 +113,7 @@ export type ReachableQuorum = {
 export function reachableQuorum(chair: Pick<ChairResult, "rows" | "quorum">, side: "UP" | "DOWN", policy: AdmissionPolicy, mode: "normal" | "tight"): ReachableQuorum {
   const p = policy.params;
   const required = mode === "tight"
-    ? { supporters: p.tight_min_speaking, families: p.tight_min_families, max_opposing: p.max_opposing }
+    ? { supporters: p.tight_min_speaking, families: p.tight_min_families, max_opposing: p.tight_max_opposing }
     : { supporters: p.min_speaking, families: p.min_families, max_opposing: p.max_opposing };
   const rows = supporterRows(chair, side);
   const supporters = [...new Set(rows.map((r) => r.seat))];
@@ -148,9 +156,18 @@ export function gateVector(snap: Snapshot, chair: ChairResult, ctx: SelectiveCon
   const daily = dailyAdmission(ctx.calls, snap.as_of);
   const mode: "normal" | "tight" = daily.tightened ? "tight" : "normal";
   const required = policy.kind === "deployed" ? admissionRequirements(daily) : (daily.tightened ? {
-    min_speaking: p.tight_min_speaking, min_families: p.tight_min_families, min_edge_cents: p.tight_min_edge_cents,
-    min_index_edge_cents: p.tight_min_index_edge_cents, confirmation_seconds: p.tight_confirmation_seconds, confirmation_frames: p.tight_confirmation_frames,
-  } : p);
+    min_speaking: p.tight_min_speaking, min_families: p.tight_min_families, max_opposing: p.tight_max_opposing,
+    min_seconds_left: p.tight_min_seconds_left, max_seconds_left: p.tight_max_seconds_left,
+    min_edge_cents: p.tight_min_edge_cents, edge_must_exceed_min: p.tight_edge_must_exceed_min,
+    require_index_edge: p.tight_require_index_edge, min_index_edge_cents: p.tight_min_index_edge_cents,
+    confirmation_seconds: p.tight_confirmation_seconds, confirmation_frames: p.tight_confirmation_frames,
+  } : {
+    min_speaking: p.min_speaking, min_families: p.min_families, max_opposing: p.max_opposing,
+    min_seconds_left: p.min_seconds_left, max_seconds_left: p.max_seconds_left,
+    min_edge_cents: p.min_edge_cents, edge_must_exceed_min: p.edge_must_exceed_min,
+    require_index_edge: p.require_index_edge, min_index_edge_cents: 0,
+    confirmation_seconds: p.confirmation_seconds, confirmation_frames: p.confirmation_frames,
+  });
   const side = chair.lean === "UP" || chair.lean === "DOWN" ? chair.lean : null;
   const rq = side ? reachableQuorum(chair, side, policy, mode) : null;
   const ask = side === "UP" ? snap.yes_ask : side === "DOWN" ? snap.no_ask : NaN;
@@ -178,14 +195,15 @@ export function gateVector(snap: Snapshot, chair: ChairResult, ctx: SelectiveCon
       side == null ? "no side" : `quorum ${chair.quorum.up}/${chair.quorum.down} · hard fails ${chair.gates.filter((g) => g.hard && !g.pass).map((g) => g.id).join(",") || "none"}`),
     c("supporters", `at least ${required.min_speaking} healthy supporters`, rq == null ? null : rq.supporters.length >= required.min_speaking, rq ? `${rq.supporters.length}: ${rq.supporters.join("+") || "none"} · folded-out ${rq.folded_excluded.join("+") || "none"}` : "no side"),
     c("families", `at least ${required.min_families} evidence groups`, rq == null ? null : rq.families.length >= required.min_families, rq ? rq.families.join("+") || "none" : "no side"),
-    c("opposition", "no opposing vote", rq == null ? null : rq.opposition <= p.max_opposing, rq ? String(rq.opposition) : "no side"),
-    c("time", "3–10 minutes remaining", Number.isFinite(seconds) && seconds >= p.min_seconds_left && seconds <= p.max_seconds_left, `${seconds.toFixed(0)}s`),
+    c("opposition", required.max_opposing === 0 ? "no opposing vote" : "separate opposition veto rolled back", rq == null ? null : rq.opposition <= required.max_opposing, rq ? String(rq.opposition) : "no side"),
+    c("time", required.min_seconds_left === 180 && required.max_seconds_left === 600 ? "3–10 minutes remaining" : "live pre-close Chair window", Number.isFinite(seconds) && seconds >= required.min_seconds_left && seconds <= required.max_seconds_left, `${seconds.toFixed(0)}s`),
     c("feeds", "fresh, consistent feeds", feedsOk, `spot ${snap.health.spot} ${snap.spot_age_s}s · kalshi ${snap.health.kalshi} · receipt ${Number.isFinite(receiptAge) ? receiptAge.toFixed(1) : "?"}s · gap ${snap.obs?.gap}`),
     c("quote", `${p.floor_cents}¢-plus ask, spread ≤ ${p.max_spread_cents}¢, resting size`, side == null ? null : quoteOk, side ? `ask ${ask} bid ${bid} touch ${touch} · yes ${snap.yes_ask} no ${snap.no_ask}` : "no side"),
     c("profit_reserve", "profit protection", side == null ? null : !profitRiskBlock(daily, ask), side ? (profitRiskBlock(daily, ask) ?? "ok") : "no side"),
-    c("model_edge", `at least ${required.min_edge_cents}¢ main-model edge after fee`, side == null ? null : Number.isFinite(edge) && edge >= required.min_edge_cents, side ? `${Number.isFinite(edge) ? edge.toFixed(1) : "?"}¢` : "no side"),
-    c("index_fresh", "fresh settlement-index estimate", freshIndex, `fair ${fair ?? "?"} age ${snap.lab_age_s}s`),
-    c("index_edge", `settlement-index margin > ${required.min_index_edge_cents}¢`, side == null || !freshIndex ? null : indexEdge > required.min_index_edge_cents, Number.isFinite(indexEdge) ? `${indexEdge.toFixed(1)}¢` : "no fresh index"),
+    c("model_edge", required.edge_must_exceed_min ? "positive main-model edge after fee" : `at least ${required.min_edge_cents}¢ main-model edge after fee`, side == null ? null : Number.isFinite(edge) &&
+      (required.edge_must_exceed_min ? edge > required.min_edge_cents : edge >= required.min_edge_cents), side ? `${Number.isFinite(edge) ? edge.toFixed(1) : "?"}¢` : "no side"),
+    c("index_fresh", required.require_index_edge ? "fresh settlement-index estimate" : "settlement-index veto rolled back in normal mode", required.require_index_edge ? freshIndex : true, `fair ${fair ?? "?"} age ${snap.lab_age_s}s`),
+    c("index_edge", required.require_index_edge ? `settlement-index margin > ${required.min_index_edge_cents}¢` : "settlement-index veto rolled back in normal mode", !required.require_index_edge ? true : side == null || !freshIndex ? null : indexEdge > required.min_index_edge_cents, Number.isFinite(indexEdge) ? `${indexEdge.toFixed(1)}¢` : "no fresh index"),
     c("confirmation", `${required.confirmation_frames} genuine observations over ≥ ${required.confirmation_seconds}s`,
       side == null ? null : !!w && w.mode === mode && w.key === `${snap.ticker}|${snap.close_time}` && w.side === side && w.last === snap.as_of &&
         w.frames >= required.confirmation_frames && snap.as_of - w.since >= required.confirmation_seconds * 1000,

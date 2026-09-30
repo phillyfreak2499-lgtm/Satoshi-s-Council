@@ -19,7 +19,7 @@
  * Pure module: no clock, no state, no database. Times are epoch milliseconds.
  */
 import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_SINCE } from "./book-floor.ts";
-import { SELECTIVE_FROZEN_AT, SELECTIVE_V3_FROZEN_AT } from "./floor-policy.ts";
+import { OWNER_ROLLBACK_V1_FROZEN_AT, SELECTIVE_FROZEN_AT, SELECTIVE_V3_FROZEN_AT } from "./floor-policy.ts";
 import { DEFAULT_FEE_ENGINE, allInCostCents, feeFingerprint, holdNetCents, realAskCents, type FeeEngineId } from "./fee-engine.ts";
 
 export const ECONOMICS_BOOK_VERSION = "ECONOMICS_BOOK_V1";
@@ -31,7 +31,7 @@ export const ECONOMICS_BOOK_VERSION = "ECONOMICS_BOOK_V1";
 /** Which book a row belongs to. Never pooled. */
 export type LedgerKind = "main_paper" | "shadow_70" | "arena" | "research";
 
-export type EraId = "A0_pre_floor" | "A1_floor70" | "B_floor80_trial" | "C1_selective_v1v2" | "C2_selective_v3";
+export type EraId = "A0_pre_floor" | "A1_floor70" | "B_floor80_trial" | "C1_selective_v1v2" | "C2_selective_v3" | "C3_owner_rollback_v1";
 
 export type EraSpec = {
   id: EraId;
@@ -57,7 +57,8 @@ export const ERAS: readonly EraSpec[] = Object.freeze([
   { id: "A1_floor70", since: CHAIR_FLOOR_SINCE_ISO, until: FLOOR_LIVE_SINCE, entry_policy: "70¢ floor", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "the 70¢ floor, one contract held to settlement" },
   { id: "B_floor80_trial", since: FLOOR_LIVE_SINCE, until: SELECTIVE_FROZEN_AT, entry_policy: "ENTRY_80_V1", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "the 80¢ trial with the 70¢ shadow book on the same windows" },
   { id: "C1_selective_v1v2", since: SELECTIVE_FROZEN_AT, until: SELECTIVE_V3_FROZEN_AT, entry_policy: "ENTRY_SELECTIVE_V1/V2", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "three-supporter quorum; zero fills" },
-  { id: "C2_selective_v3", since: SELECTIVE_V3_FROZEN_AT, until: null, entry_policy: "ENTRY_SELECTIVE_V3", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "two-supporter quorum; the current Champion" },
+  { id: "C2_selective_v3", since: SELECTIVE_V3_FROZEN_AT, until: OWNER_ROLLBACK_V1_FROZEN_AT, entry_policy: "ENTRY_SELECTIVE_V3", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "post-loss two-supporter selective policy" },
+  { id: "C3_owner_rollback_v1", since: OWNER_ROLLBACK_V1_FROZEN_AT, until: null, entry_policy: "ENTRY_OWNER_ROLLBACK_V1", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "prospective owner rollback of the post-loss normal-mode narrowing with current booking safety rails" },
 ]);
 
 export function eraOf(closeMs: number): EraId {
@@ -66,7 +67,7 @@ export function eraOf(closeMs: number): EraId {
     const until = e.until ? Date.parse(e.until) : Infinity;
     if (closeMs >= since && closeMs < until) return e.id;
   }
-  return "C2_selective_v3";
+  return "C3_owner_rollback_v1";
 }
 
 // ---------------------------------------------------------------------------

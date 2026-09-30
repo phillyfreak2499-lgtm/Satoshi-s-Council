@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_SINCE } from "./book-floor.ts";
-import { SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_V3_FROZEN_AT, ENTRY_SELECTIVE_V3, fingerprint } from "./floor-policy.ts";
+import { SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_V3_FROZEN_AT, OWNER_ROLLBACK_V1_FROZEN_AT, ENTRY_OWNER_ROLLBACK_V1, fingerprint } from "./floor-policy.ts";
 import { DEFAULT_FEE_ENGINE, feeFingerprint, type FeeEngineId } from "./fee-engine.ts";
 import {
   ECONOMICS_BOOK_VERSION, allScope, bookSummary, chicagoDayOf, chicagoDaysScope, completedWeekScope, diffSurfaces, rollingHoursScope,
@@ -144,7 +144,7 @@ export async function reconcileBook(opts: { asOfIso: string; sinceIso?: string; 
   const eras: BookSummary[] = [
     sinceScope("era_A0_pre_floor", since, asOfMs), sinceScope("era_A1_floor70", CHAIR_FLOOR_SINCE_ISO, asOfMs),
     sinceScope("era_B_floor80_trial", FLOOR_LIVE_SINCE, asOfMs), sinceScope("era_C1_selective_v1v2", SELECTIVE_FROZEN_AT, asOfMs),
-    sinceScope("era_C2_selective_v3", SELECTIVE_V3_FROZEN_AT, asOfMs),
+    sinceScope("era_C2_selective_v3", SELECTIVE_V3_FROZEN_AT, asOfMs), sinceScope("era_C3_owner_rollback_v1", OWNER_ROLLBACK_V1_FROZEN_AT, asOfMs),
   ].map((s, i, all) => bookSummary(rows, { ...s, end_ms: all[i + 1]?.start_ms ?? asOfMs + 1 }, engine));
 
   const rolling = rollingHoursScope(asOfMs, 168);
@@ -160,7 +160,7 @@ export async function reconcileBook(opts: { asOfIso: string; sinceIso?: string; 
     since,
     source_sha: opts.sourceSha ?? process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? "UNKNOWN",
     fee_fingerprint: feeFingerprint(engine),
-    policy_fingerprint: fingerprint(ENTRY_SELECTIVE_V3),
+    policy_fingerprint: fingerprint(ENTRY_OWNER_ROLLBACK_V1),
     champion_entry_policy: SELECTIVE_ENTRY_ID,
     ledger_query_sha256: sha(LEDGER_QUERY),
     reference_query_sha256: sha(REFERENCE_QUERY),

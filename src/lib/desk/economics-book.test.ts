@@ -21,6 +21,8 @@ test("eras come from the frozen constants and do not overlap", () => {
   assert.equal(eraOf(Date.parse("2026-09-10T23:00:00Z")), "B_floor80_trial");
   assert.equal(eraOf(Date.parse("2026-09-15T14:05:13Z")), "C1_selective_v1v2");
   assert.equal(eraOf(Date.parse("2026-09-17T12:09:31Z")), "C2_selective_v3");
+  assert.equal(eraOf(Date.parse("2026-09-30T20:59:59Z")), "C2_selective_v3");
+  assert.equal(eraOf(Date.parse("2026-09-30T21:00:00Z")), "C3_owner_rollback_v1");
   for (let i = 1; i < ERAS.length; i += 1) assert.equal(ERAS[i]!.since, ERAS[i - 1]!.until);
   assert.equal(ERAS[0]!.quantity, "legacy_mixed");
 });
