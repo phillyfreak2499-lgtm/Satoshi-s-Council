@@ -28,11 +28,12 @@ const confirmed = (s: Snapshot): SelectiveContext => ctx({ watch: { key: `${s.ti
 
 const threeFamilies = [seatRow("STREAK", "UP"), seatRow("CHAIN", "UP"), seatRow("STRIKE", "UP"), seatRow("WICK", "WAIT"), seatRow("TAPE", "WAIT")];
 
-test("the two policies are named and differ only in the supporter count", () => {
+test("the deployed rollback and historical owner reference stay explicitly distinct", () => {
   assert.equal(DEPLOYED_POLICY.params.min_speaking, 2);
   assert.equal(OWNER_REFERENCE_POLICY.params.min_speaking, 3);
   assert.equal(DEPLOYED_POLICY.params, SELECTIVE_PARAMS);
-  assert.deepEqual({ ...OWNER_REFERENCE_POLICY.params, min_speaking: 2 }, { ...SELECTIVE_PARAMS });
+  assert.equal(DEPLOYED_POLICY.params.require_index_edge, false);
+  assert.equal(OWNER_REFERENCE_POLICY.params.require_index_edge, true);
 });
 
 test("a synthetic fully qualified case passes every gate under BOTH policies (no gate is permanently false)", () => {
@@ -103,7 +104,7 @@ test("admission, gate diagnostics, and audit reject every invalid weight shape",
   const context = confirmed(snap());
   const q = reachableQuorum(c, "UP", DEPLOYED_POLICY, "normal");
   assert.deepEqual(q.supporters, ["STRIKE"], "only the positive numeric FADED row counts");
-  assert.match(selectiveBlock(snap(), c, context)!, /two healthy supporters/);
+  assert.match(selectiveBlock(snap(), c, context)!, /two-seat Chair team/);
   assert.equal(gateVector(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, false);
   assert.equal(auditAdmission(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, false);
 });
@@ -120,7 +121,7 @@ test("admission, gate diagnostics, and audit accept positive LIVE and FADED weig
   assert.equal(auditAdmission(snap(), c, context).checks.find((check) => check.id === "supporters")?.pass, true);
 });
 
-test("pit crew and CLOCK never count; forced sits are authority exclusions; opposition blocks", () => {
+test("pit crew and CLOCK never count; forced sits are authority exclusions; the team guard still blocks", () => {
   const rows = [seatRow("STREAK", "UP"), seatRow("ORBIT", "UP"), seatRow("CLOCK", "UP"), seatRow("CASCADE", "WAIT", { forced_sit: true }), seatRow("TAPE", "DOWN")];
   const q = reachableQuorum(chair(rows), "UP", DEPLOYED_POLICY, "normal");
   assert.deepEqual(q.supporters, ["STREAK"]);
@@ -128,7 +129,7 @@ test("pit crew and CLOCK never count; forced sits are authority exclusions; oppo
   assert.deepEqual(q.authority_excluded, ["CASCADE"]);
   assert.equal(q.opposition, 1);
   assert.equal(q.reachable, false);
-  assert.deepEqual(q.deficit, { supporters: 1, families: 1, opposition: 1 });
+  assert.deepEqual(q.deficit, { supporters: 1, families: 0, opposition: 0 });
 });
 
 test("uncalibrated and stale seats are status exclusions; tight mode raises the bar to 4 from 3", () => {
@@ -142,12 +143,12 @@ test("uncalibrated and stale seats are status exclusions; tight mode raises the 
   assert.equal(tight.reachable, false);
 });
 
-test("maxReachableQuorum reports the closer side on a WAIT table", () => {
+test("maxReachableQuorum reports the closer side while the independent team guard remains binding", () => {
   const rows = [seatRow("STREAK", "DOWN"), seatRow("CHAIN", "DOWN"), seatRow("STRIKE", "UP")];
   const m = maxReachableQuorum(chair(rows, { lean: "WAIT" }), DEPLOYED_POLICY, "normal");
   assert.equal(m.best.side, "DOWN");
-  assert.equal(m.best.reachable, false, "opposition of one blocks even a two-family DOWN");
-  assert.equal(m.best.deficit.opposition, 1);
+  assert.equal(m.best.reachable, true, "rollback quorum itself permits a strict-majority table");
+  assert.equal(m.best.deficit.opposition, 0);
 });
 
 test("stale quotes, missing size, an ask under the floor and a chalk book each fail their own check, not a generic one", () => {
@@ -155,14 +156,13 @@ test("stale quotes, missing size, an ask under the floor and a chalk book each f
   const c = chair(threeFamilies);
   assert.deepEqual(gateVector(snap({ yes_ask: 79, yes_bid: 78 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["quote"]);
   assert.deepEqual(gateVector(snap({ no_bid_size: 0 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["quote"]);
-  // Chalk fails the quote check AND the index margin independently: both are reported, not the first only.
-  assert.deepEqual(gateVector(snap({ yes_ask: 99, yes_bid: 98 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["quote", "index_edge"]);
+  assert.deepEqual(gateVector(snap({ yes_ask: 99, yes_bid: 98 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["quote"]);
   assert.deepEqual(gateVector(snap({ spot_age_s: 20 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["feeds"]);
-  assert.deepEqual(gateVector(snap({ edge_up: 2 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["model_edge"]);
-  assert.deepEqual(gateVector(snap({ lab_fair_yes: 85 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["index_edge"]);
-  assert.deepEqual(gateVector(snap({ lab_age_s: 9 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["index_fresh"]);
+  assert.deepEqual(gateVector(snap({ edge_up: 0 }), c, confirmed(s), DEPLOYED_POLICY).failed, ["model_edge"]);
+  assert.deepEqual(gateVector(snap({ lab_fair_yes: 85 }), c, confirmed(s), DEPLOYED_POLICY).failed, []);
+  assert.deepEqual(gateVector(snap({ lab_age_s: 9 }), c, confirmed(s), DEPLOYED_POLICY).failed, []);
   const late = snap({ close_time: now + 120_000 });
-  assert.deepEqual(gateVector(late, c, confirmed(late), DEPLOYED_POLICY).failed, ["time"]);
+  assert.deepEqual(gateVector(late, c, confirmed(late), DEPLOYED_POLICY).failed, []);
   const unconfirmed = gateVector(s, c, ctx(), DEPLOYED_POLICY);
   assert.deepEqual(unconfirmed.failed, ["confirmation"]);
   assert.equal(unconfirmed.eligible_ignoring_confirmation, true);

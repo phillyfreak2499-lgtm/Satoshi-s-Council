@@ -156,7 +156,7 @@ test("structural: INDEX regime hold (pocket < 24) or an uncalibrated seat leaves
   assert.match(r2.seats.find((s) => s.seat === "DRIFT").blockers.join(" "), /UNCALIBRATED/);
 });
 
-test("SYNTHETIC replay: real runBots → Chair → entry mode → confirmation → noteCall books once after 3 frames / 8 s; labelled synthetic, no witness", async () => {
+test("SYNTHETIC replay: real runBots → Chair → owner rollback entry → noteCall books once on the first revalidated frame; labelled synthetic, no witness", async () => {
   const m = await setup();
   const L = rosterLearner(m);
   const inp = synthetic(m, L, frames(m, L));
@@ -167,9 +167,9 @@ test("SYNTHETIC replay: real runBots → Chair → entry mode → confirmation �
   assert.equal(res.witness, null, "a synthetic booking is never a witness");
   assert.equal(res.mechanical.result, "BOOKED");
   assert.equal(JSON.stringify(inp.state), before, "the input state is never mutated");
-  assert.deepEqual(res.frames.map((f) => f.stage), ["awaiting_confirmation", "awaiting_confirmation", "booked", "already_positioned"]);
+  assert.deepEqual(res.frames.map((f) => f.stage), ["booked", "already_positioned", "already_positioned", "already_positioned"]);
   assert.deepEqual(res.frames[0].heard_directional.map((d) => `${d.seat}:${d.card}`).sort(), ["DRIFT:DRIFT.aligned_3h", "INDEX:INDEX.settle_fair"]);
-  assert.equal(res.mechanical.booking.as_of, res.frames[0].as_of + 8_000);
+  assert.equal(res.mechanical.booking.as_of, res.frames[0].as_of);
 });
 
 test("SYNTHETIC contradiction: |ret15| 0.30% is below DRIFT's speak bar (≈0.412% in MID) — one family heard, no booking", async () => {
@@ -193,7 +193,7 @@ test("SYNTHETIC contradiction: settlement-index fair 86 at an 85¢ ask is under 
   for (const f of res.frames) assert.deepEqual(f.heard_directional.map((d) => d.seat), ["DRIFT"]);
 });
 
-// Frames from 620 s left: coverage starts before the band, booking at 592 s.
+// Frames from 620 s left: owner rollback can book the first fully revalidated frame.
 const COVERED = { startSecsLeft: 620, count: 9 };
 
 test("classification: every current-state requirement met + parity-clean recorded frames → REACHABLE (gate logic only)", async () => {
@@ -202,7 +202,7 @@ test("classification: every current-state requirement met + parity-clean recorde
   const res = await m.harness.runReachability(await withRecorded(m, primaryShaped(m, L, frames(m, L, COVERED))), vite);
   assert.equal(res.evidence_class, "CURRENT_STATE");
   assert.equal(res.verdict, "REACHABLE", res.verdict_basis);
-  assert.equal(res.witness.secs_left, 592);
+  assert.equal(res.witness.secs_left, 620);
   assert.deepEqual(res.windows[0].diagnostic_reasons, []);
   assert.equal(res.windows[0].parity_mismatch_frames, 0);
 });
@@ -260,19 +260,18 @@ test("parity: frames without recorded production votes/chair cannot witness", as
   assert.match(res.verdict_basis, /lack recorded production votes\/chair/);
 });
 
-test("continuity: coverage starting inside the band, a >10 s gap, or a build change each downgrade", async () => {
+test("single-frame rollback needs no pre-band or latch continuity; build changes still downgrade", async () => {
   const m = await setup();
   const L = rosterLearner(m);
   const late = await m.harness.runReachability(await withRecorded(m, primaryShaped(m, L, frames(m, L))), vite);
-  assert.match(late.verdict_basis, /coverage starts inside the entry band/);
+  assert.equal(late.verdict, "REACHABLE");
   const long = frames(m, L, { startSecsLeft: 640, count: 14 });
   const holed = [long[0], ...long.slice(5)]; // 640 s → 620 s: a 20 s hole before the band; booking still at 592 s
   const gappy = await m.harness.runReachability(await withRecorded(m, primaryShaped(m, L, holed)), vite);
   assert.equal(gappy.mechanical.result, "BOOKED");
-  assert.equal(gappy.verdict, "UNDETERMINED");
-  assert.match(gappy.verdict_basis, /exceeds the 10s latch limit/);
+  assert.equal(gappy.verdict, "REACHABLE");
   const mixed = frames(m, L, COVERED);
-  mixed[7] = { ...mixed[7], build_sha: "0".repeat(40) };
+  mixed[0] = { ...mixed[0], build_sha: "0".repeat(40) };
   const built = await m.harness.runReachability(await withRecorded(m, primaryShaped(m, L, mixed)), vite);
   assert.match(built.verdict_basis, /differ from source.build_sha/);
 });

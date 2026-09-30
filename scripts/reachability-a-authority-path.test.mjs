@@ -115,7 +115,7 @@ test("no mechanical regression: the Sep-18 authority state still books the last-
   const m = await load(t);
   const L = learnerOf(m, { live: ["STREAK.continue_young", "STRIKE.itm_time"], calibrated: ["STREAK", "STRIKE"] });
   const r = await run(m, L, { close: CLOSE_LAST_FILL, secs: 484.9, market: LAST_FILL, speakers: ["STREAK", "STRIKE"], conf: 61 });
-  assert.deepEqual(r.frames.map((f) => f.booked), [false, false, true], "books once, after three frames over eight seconds");
+  assert.deepEqual(r.frames.map((f) => f.booked), [true, false, false], "owner rollback books the first fully revalidated frame once");
   assert.equal(r.calls.length, 1);
   assert.equal(r.calls[0].lean, "UP");
   assert.equal(r.calls[0].cents, 81);
@@ -135,7 +135,7 @@ test("status alone is not enough: debt = seat_n leaves the seats UNCALIBRATED an
   const r = await run(m, L, { close: CLOSE_LAST_FILL, secs: 484.9, market: LAST_FILL, speakers: ["STREAK", "STRIKE"], conf: 61 });
   assert.ok(r.frames.every((f) => !f.booked));
   assert.ok(r.frames.every((f) => f.rows.every((row) => row.status === "UNCALIBRATED")));
-  assert.match(r.frames[2].selective, /needs two healthy supporters from two evidence groups/);
+  assert.match(r.frames[2].selective, /two-seat Chair team/);
 });
 
 test("P1 caveat is pinned: the last-fill pair is two production families but one corrected-E1 family", async (t) => {
@@ -167,7 +167,7 @@ test("OWNER_RESTORE_E1_PAIR_V1 (inactive by default) reaches a MID booking only 
   assert.equal(m.restore.applyOwnerRestore(both, "STATUS_AND_STRIKE_CALIBRATION", Date.now()).outcome, "APPLIED");
   assert.equal(both.skills["STREAK.continue_young"].status, "SHADOW");
   const rBoth = await run(m, both, { close: CLOSE_LAST_FILL, secs: 484.9, market: LAST_FILL, speakers: ["STRIKE", "CHAIN"], conf: 61 });
-  assert.deepEqual(rBoth.frames.map((f) => f.booked), [false, false, true], "all unchanged checks still run, including 3 frames over 8 s");
+  assert.deepEqual(rBoth.frames.map((f) => f.booked), [true, false, false], "all unchanged booking-boundary checks still run on the first eligible frame");
 });
 
 test("the restored pair still cannot book the 236 s witness: time factor 0.72 caps the Chair below its bar", async (t) => {

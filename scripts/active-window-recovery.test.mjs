@@ -91,7 +91,9 @@ function harness(options = {}) {
     return [];
   };
   const context = vm.createContext({
-    ...reliability, ...active, Date, JSON, Promise, structuredClone, SELECTIVE_ENTRY_ID: 'ENTRY_SELECTIVE_V2',
+    ...reliability, ...active, Date, JSON, Promise, structuredClone,
+    SELECTIVE_ENTRY_ID: 'ENTRY_OWNER_ROLLBACK_V1',
+    OWNER_ROLLBACK_V1_FROZEN_AT: '2026-09-30T21:00:00.000Z',
     recoveryPilotEnabled: () => false,
     applyOwnerRestore: ownerRestore.applyOwnerRestore,
     ownerRestoreMode: () => ownerRestore.ownerRestoreMode({ OWNER_RESTORE_E1_PAIR_V1: options.ownerRestoreMode }),
@@ -278,9 +280,12 @@ test('owner restore saves only after complete recovery and queues transitions on
       assert.equal(state.learner.seat_calib_debt.STRIKE, 190);
       assert.equal(state.learner.owner_restore.state, 'APPLIED');
       // A boot-time save must retain everything restored after the learner.
-      for (const key of ['call_log', 'risk_calls', 'risk_history_valid', 'baseline_calls', 'selective_start', 'selective_policy', 'settings', 'last_call', 'v2', 'last_ledger_ok_at', 'ledger_queue', 'shadow_fills', 'entry_state', 'pending', 'identity_faults', 'graded_keys', 'active_window', 'ledger_recon_baseline', 'readiness_alerted']) {
+      for (const key of ['call_log', 'risk_calls', 'risk_history_valid', 'baseline_calls', 'settings', 'last_call', 'v2', 'last_ledger_ok_at', 'ledger_queue', 'shadow_fills', 'entry_state', 'pending', 'identity_faults', 'graded_keys', 'active_window', 'ledger_recon_baseline', 'readiness_alerted']) {
         assert.deepEqual(state[key], original[key], `automatic save preserves ${key}`);
       }
+      assert.equal(state.selective_policy, 'ENTRY_OWNER_ROLLBACK_V1');
+      assert.equal(state.selective_start, e.selectiveStart,
+        'a distinct admission version receives its prospective boundary during the same durable save');
       assert.equal(h.transitions.length, 0, 'no authority transition is advertised before the save completes');
       await blocked;
     },

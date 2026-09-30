@@ -32,7 +32,7 @@ import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
 import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
 import {
   dailyAdmission, hasPaperPosition, paperSummary, restoreRiskCalls, selectiveBookOk, selectiveChair,
-  settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, type EntryWatch,
+  settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, OWNER_ROLLBACK_V1_FROZEN_AT, type EntryWatch,
 } from "./selective-entry";
 import {
   RECOVERY_PILOT_SOURCE,
@@ -345,7 +345,10 @@ function freshEng(): Eng {
     lastAdmissionAudit: null,
     ownerRestore: null,
     ownerRestorePending: false,
-    selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
+    selectiveStart: Math.max(
+      Math.ceil(Date.now() / 900_000) * 900_000,
+      Date.parse(OWNER_ROLLBACK_V1_FROZEN_AT),
+    ),
     baselineCalls: [],
     lastCall: null,
     prevSnap: null,

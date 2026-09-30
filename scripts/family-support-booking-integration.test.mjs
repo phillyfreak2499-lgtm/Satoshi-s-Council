@@ -39,7 +39,7 @@ const vote = (seat) => ({
   invalidate_if: "", health: "LIVE", feed_age_s: 1, eyes: "", phase: "MID",
 });
 
-test("real Chair family fold confirms once and persists one paper position", async (t) => {
+test("real Chair family fold books the first revalidated rollback frame and persists one paper position", async (t) => {
   const { createServer } = await import("vite");
   const vite = await createServer({ envDir: false, server: { middlewareMode: true }, appType: "custom" });
   t.after(() => vite.close());
@@ -76,7 +76,7 @@ test("real Chair family fold confirms once and persists one paper position", asy
     assert.equal(family.filter((row) => row.folded).length, 1);
     const chair = __entryIntegration.applyEntryMode(e, snap, rawChair);
     await __entryIntegration.noteCall(e, snap, chair, votes);
-    assert.equal(e.riskCalls.length, elapsed < 8_000 ? 0 : 1, "booking waits for three frames over eight seconds");
+    assert.equal(e.riskCalls.length, 1, "owner rollback books once on the first fully revalidated frame");
   }
 
   const confirmedSnap = snapshot(now + 8_000);

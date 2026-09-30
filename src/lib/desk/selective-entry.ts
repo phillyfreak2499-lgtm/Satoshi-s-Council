@@ -6,7 +6,7 @@ import { eligibleSupportRows } from "./support-eligibility.ts";
 import type { CallLogRow, ChairResult, Snapshot } from "./types";
 
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
-export { SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_PARAMS } from "./floor-policy.ts";
+export { OWNER_ROLLBACK_V1_FROZEN_AT, SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_PARAMS } from "./floor-policy.ts";
 
 const dayFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SELECTIVE_PARAMS.timezone, year: "numeric", month: "2-digit", day: "2-digit",
@@ -83,9 +83,18 @@ export function admissionRequirements(daily: ReturnType<typeof dailyAdmission>) 
   const p = SELECTIVE_PARAMS;
   return daily.tightened ? {
     min_speaking: p.tight_min_speaking, min_families: p.tight_min_families,
-    min_edge_cents: p.tight_min_edge_cents, min_index_edge_cents: p.tight_min_index_edge_cents,
+    max_opposing: p.tight_max_opposing,
+    min_seconds_left: p.tight_min_seconds_left, max_seconds_left: p.tight_max_seconds_left,
+    min_edge_cents: p.tight_min_edge_cents, edge_must_exceed_min: p.tight_edge_must_exceed_min,
+    require_index_edge: p.tight_require_index_edge, min_index_edge_cents: p.tight_min_index_edge_cents,
     confirmation_seconds: p.tight_confirmation_seconds, confirmation_frames: p.tight_confirmation_frames,
-  } : p;
+  } : {
+    min_speaking: p.min_speaking, min_families: p.min_families, max_opposing: p.max_opposing,
+    min_seconds_left: p.min_seconds_left, max_seconds_left: p.max_seconds_left,
+    min_edge_cents: p.min_edge_cents, edge_must_exceed_min: p.edge_must_exceed_min,
+    require_index_edge: p.require_index_edge, min_index_edge_cents: 0,
+    confirmation_seconds: p.confirmation_seconds, confirmation_frames: p.confirmation_frames,
+  };
 }
 
 export function profitRiskBlock(daily: ReturnType<typeof dailyAdmission>, ask: number): string | null {
@@ -123,13 +132,14 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   const rows = eligibleSupportRows(chair, side);
   const supporters = new Set(rows.map(r => r.seat));
   const families = new Set(rows.map(r => EVIDENCE_OF[r.seat]));
-  if (supporters.size < required.min_speaking || families.size < required.min_families || against > p.max_opposing) {
+  if (supporters.size < required.min_speaking || families.size < required.min_families || against > required.max_opposing) {
     return daily.tightened ? "tighter mode: needs four healthy supporters from three evidence groups, with no opposing vote"
-      : "needs two healthy supporters from two evidence groups, with no opposing vote";
+      : "needs the current two-seat Chair team to remain on the floor";
   }
   const seconds = (snap.close_time - snap.as_of) / 1000;
-  if (!Number.isFinite(seconds) || seconds < p.min_seconds_left || seconds > p.max_seconds_left) {
-    return "new calls require 3–10 minutes remaining";
+  if (!Number.isFinite(seconds) || seconds < required.min_seconds_left || seconds > required.max_seconds_left) {
+    return daily.tightened ? "tighter mode: new calls require 3–10 minutes remaining"
+      : "new calls require a live pre-close market window";
   }
   const receiptAge = (snap.as_of - snap.obs?.receipt_ts) / 1000;
   if (!snap.health.spot_ok || !snap.health.kalshi_ok || snap.health.spot !== "LIVE" || snap.health.kalshi !== "LIVE" ||
@@ -148,7 +158,11 @@ export function selectiveBlock(snap: Snapshot, chair: ChairResult, ctx: Selectiv
   const edge = side === "UP" ? snap.edge_up : snap.edge_down;
   const riskReason = profitRiskBlock(daily, ask);
   if (riskReason) return riskReason;
-  if (!Number.isFinite(edge) || edge < required.min_edge_cents) return `needs at least ${required.min_edge_cents}¢ of model edge after fees`;
+  if (!Number.isFinite(edge) || (required.edge_must_exceed_min ? edge <= required.min_edge_cents : edge < required.min_edge_cents)) {
+    return required.edge_must_exceed_min ? "needs positive model edge after fees"
+      : `needs at least ${required.min_edge_cents}¢ of model edge after fees`;
+  }
+  if (!required.require_index_edge) return null;
   const fair = snap.lab_fair_yes;
   if (fair == null || !Number.isFinite(fair) || fair < 0 || fair > 100 ||
       !Number.isFinite(snap.lab_age_s) || snap.lab_age_s < 0 || snap.lab_age_s > p.max_index_age_s) {
@@ -184,8 +198,9 @@ export function selectiveChair(snap: Snapshot, chair: ChairResult, ctx: Selectiv
         : "waiting for three confirming observations over at least eight seconds";
     }
   }
-  const gate = { id: "selective", label: daily.tightened ? "Paper entry · tighter mode after −100¢" : "Paper entry · selective mode", hard: false, pass: !reason,
-    value: reason ?? "current team, both models, feeds and daily risk checks passed" };
+  const gate = { id: "selective", label: daily.tightened ? "Paper entry · tighter mode after −100¢" : "Paper entry · owner rollback V1", hard: false, pass: !reason,
+    value: reason ?? (daily.tightened ? "current team, both models, feeds and daily risk checks passed"
+      : "current Chair/team, positive edge, executable quote and daily risk checks passed") };
   const gates = [...chair.gates.filter(g => g.id !== "selective"), gate];
   return { watch, chair: { ...chair, gates } };
 }

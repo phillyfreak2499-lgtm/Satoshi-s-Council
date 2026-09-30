@@ -458,8 +458,9 @@ export function frameIdentity(snap: Pick<Snapshot, "ticker" | "close_time" | "as
   return { ok: true, reason: null };
 }
 
-/** Longest gap tolerated between consecutive frames of a witness window: the confirmation latch's own limit (selective-entry.ts). */
-export const MAX_WITNESS_GAP_MS = 10_000;
+/** Longest gap tolerated by the active normal-mode confirmation latch. A
+ * single-frame policy has no inter-frame latch whose continuity can be lost. */
+export const MAX_WITNESS_GAP_MS = SELECTIVE_PARAMS.confirmation_frames > 1 ? 10_000 : Infinity;
 
 export type WindowEvidence = {
   key: string;
@@ -484,8 +485,13 @@ export function judgeWindow(w: Omit<WindowEvidence, "diagnostic_reasons">, prov:
   if (!prov.current_state_ok) why.push(`evidence class ${prov.evidence_class}`);
   if (w.identity_rejected.length) why.push(`identity-incomplete: ${w.identity_rejected.length} frame(s) with mismatched ticker/close for this close_time`);
   if (w.state_fidelity === "none") why.push("no per-window primary state: the learner was not graded across the preceding rollover");
-  if (w.first_secs_left == null || !(w.first_secs_left > SELECTIVE_PARAMS.max_seconds_left)) why.push("coverage starts inside the entry band: confirmation/stick state before capture is unknown");
-  if (w.max_gap_ms > MAX_WITNESS_GAP_MS) why.push(`frame gap ${Math.round(w.max_gap_ms / 1000)}s exceeds the ${MAX_WITNESS_GAP_MS / 1000}s latch limit`);
+  if ((SELECTIVE_PARAMS.confirmation_frames > 1 || SELECTIVE_PARAMS.confirmation_seconds > 0) &&
+      (w.first_secs_left == null || !(w.first_secs_left > SELECTIVE_PARAMS.max_seconds_left))) {
+    why.push("coverage starts inside the entry band: confirmation/stick state before capture is unknown");
+  }
+  if (Number.isFinite(MAX_WITNESS_GAP_MS) && w.max_gap_ms > MAX_WITNESS_GAP_MS) {
+    why.push(`frame gap ${Math.round(w.max_gap_ms / 1000)}s exceeds the ${MAX_WITNESS_GAP_MS / 1000}s latch limit`);
+  }
   if (!SHA40.test(String(sourceBuild ?? "").toLowerCase())) why.push("no deployed build to compare frames against");
   if (w.build_mismatch_frames) why.push(`${w.build_mismatch_frames} frame(s) lack build_sha or differ from source.build_sha`);
   if (w.parity_missing_frames) why.push(`${w.parity_missing_frames} frame(s) lack recorded production votes/chair`);
