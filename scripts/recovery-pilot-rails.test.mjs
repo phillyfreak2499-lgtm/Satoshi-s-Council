@@ -23,6 +23,12 @@ test("recovery pilot is explicit, bounded, source-labelled and outside the Chair
     "activation state is persisted with the boundary");
   assert.match(engine, /await noteCall[\s\S]*recoveryPilotDecision[\s\S]*noteRecoveryPilotCall/,
     "the canonical Chair book gets first refusal");
+  assert.match(pilot, /callNotificationRecipients < 1/,
+    "the pilot cannot advance without an eligible call-notification recipient");
+  assert.match(pilot, /callNotificationAccepted24h < 1/,
+    "the pilot cannot advance without recent provider acceptance for the call channel");
+  assert.match(engine, /catch \{[\s\S]*e\.alertCallSubs = 0;[\s\S]*e\.alertDelivery = null;/,
+    "a failed readiness refresh clears cached pilot notification authority");
   assert.match(migration, /and entry_source is null[\s\S]*and entry_lean in/,
     "pilot fills cannot enter the booked-Chair mirror");
   assert.doesNotMatch(pilot + engine, /submitOrder|placeOrder|privateKey|wallet/i,

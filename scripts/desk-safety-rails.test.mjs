@@ -2665,10 +2665,10 @@ test("public Settings hides shared-desk controls until the owner key is verified
   );
 });
 
-test("call-notification readiness is independently visible and never gates booking", () => {
+test("call-notification readiness is independently visible and never gates canonical Chair booking", () => {
   const engine = read("src/lib/desk/server-engine.ts");
   const push = read("src/lib/desk/push.server.ts");
-  const noteCall = between(engine, "async function noteCall(", "function settleCallLog(");
+  const noteCall = between(engine, "async function noteCall(", "/**\n * Publish the bounded recovery pilot");
   const health = between(engine, "export async function getHealth(", "/** The shared brain's latest snapshot");
 
   assert.match(push, /export async function pushRecipientCounts/,
@@ -2677,8 +2677,10 @@ test("call-notification readiness is independently visible and never gates booki
     "failed subscriptions are excluded from call readiness");
   assert.match(health, /call_notifications:[\s\S]*configured: e\.alertCallSubs > 0/,
     "deep health names whether call alerts have any eligible recipient");
+  assert.match(health, /recovery_pilot_ready:[\s\S]*e\.alertCallSubs > 0[\s\S]*call_ready_accepted_24h/,
+    "deep health names the pilot's subscriber-plus-provider-acceptance interlock");
   assert.match(health, /do not rely on call notifications for rollout/,
     "zero-recipient readiness fails honestly");
   assert.doesNotMatch(noteCall, /alertCallSubs|pushRecipientCounts/,
-    "notification readiness is observability only and cannot create or gate a booking");
+    "notification readiness cannot create or gate a canonical Chair booking");
 });

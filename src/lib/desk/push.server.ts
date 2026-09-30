@@ -266,17 +266,26 @@ export async function pushDeliverySummary(): Promise<PushDeliverySummary> {
       limit 1
     )
     select
-      count(*) filter (where outcome = 'accepted' and attempted_at >= now() - interval '24 hours')::int as accepted_24h,
-      count(*) filter (where outcome = 'failed' and attempted_at >= now() - interval '24 hours')::int as failed_24h,
-      count(*) filter (where outcome = 'gone' and attempted_at >= now() - interval '24 hours')::int as gone_24h,
+      count(*) filter (where r.outcome = 'accepted' and r.attempted_at >= now() - interval '24 hours')::int as accepted_24h,
+      count(*) filter (
+        where r.outcome = 'accepted'
+          and r.event_kind in ('call', 'test')
+          and r.attempted_at >= now() - interval '24 hours'
+          and exists (
+            select 1 from desk_push_subs s
+            where s.id = r.subscription_id and s.on_call and s.fails < ${MAX_FAILS}
+          )
+      )::int as call_ready_accepted_24h,
+      count(*) filter (where r.outcome = 'failed' and r.attempted_at >= now() - interval '24 hours')::int as failed_24h,
+      count(*) filter (where r.outcome = 'gone' and r.attempted_at >= now() - interval '24 hours')::int as gone_24h,
       (select event_kind from latest) as last_event_kind,
       (select event_key from latest) as last_event_key,
       (select outcome from latest) as last_outcome,
       (select attempted_at::text from latest) as last_attempted_at
-    from desk_push_delivery_receipts
+    from desk_push_delivery_receipts r
   `;
   return rows[0] ?? {
-    accepted_24h: 0, failed_24h: 0, gone_24h: 0,
+    accepted_24h: 0, call_ready_accepted_24h: 0, failed_24h: 0, gone_24h: 0,
     last_event_kind: null, last_event_key: null, last_outcome: null, last_attempted_at: null,
   };
 }

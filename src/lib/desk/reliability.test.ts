@@ -380,7 +380,7 @@ test("push receipts are bounded, omit secrets and distinguish provider acceptanc
   assert.equal(receipt.build_sha.length, 80);
   assert.equal("endpoint" in receipt, false);
   assert.match(pushDeliveryNote({
-    accepted_24h: 1, failed_24h: 0, gone_24h: 0,
+    accepted_24h: 1, call_ready_accepted_24h: 1, failed_24h: 0, gone_24h: 0,
     last_event_kind: "call", last_event_key: "KX", last_outcome: "accepted",
     last_attempted_at: receipt.attempted_at,
   }), /human receipt are not guaranteed/);
@@ -389,7 +389,7 @@ test("push receipts are bounded, omit secrets and distinguish provider acceptanc
 test("push delivery status is explicit before evidence and after failure", () => {
   assert.match(pushDeliveryNote(null), /no durable push attempt receipt/);
   assert.match(pushDeliveryNote({
-    accepted_24h: 0, failed_24h: 1, gone_24h: 0,
+    accepted_24h: 0, call_ready_accepted_24h: 0, failed_24h: 1, gone_24h: 0,
     last_event_kind: "watchdog", last_event_key: "grade-stale", last_outcome: "failed",
     last_attempted_at: new Date(NOW).toISOString(),
   }), /failed before provider acceptance/);
