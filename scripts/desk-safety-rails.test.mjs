@@ -2675,6 +2675,8 @@ test("call-notification readiness is independently visible and never gates canon
     "push readiness counts the same bounded recipient population as fanout");
   assert.match(push, /on_call and fails < \$\{MAX_FAILS\}/,
     "failed subscriptions are excluded from call readiness");
+  assert.match(push, /where s\.id = r\.subscription_id and s\.owner and s\.on_call and s\.fails < \$\{MAX_FAILS\}/,
+    "anonymous accepted tests cannot satisfy owner notification readiness");
   assert.match(push, /async function applyDeliveryBookkeeping[\s\S]*last_sent = now\(\), fails = 0/,
     "provider acceptance repairs stale subscription failures");
   const testPush = between(push, "export async function testPush(", "export const __test");
@@ -2685,7 +2687,9 @@ test("call-notification readiness is independently visible and never gates canon
   assert.match(health, /call_notifications:[\s\S]*configured: e\.alertCallSubs > 0/,
     "deep health names whether call alerts have any eligible recipient");
   assert.match(health, /recovery_pilot_ready:[\s\S]*e\.alertCallSubs > 0[\s\S]*call_ready_accepted_24h/,
-    "deep health names the pilot's subscriber-plus-provider-acceptance interlock");
+    "deep health names the pilot's subscriber-plus-owner-provider-acceptance interlock");
+  assert.match(health, /provider-accepted owner call\/test receipt proves the owner channel/,
+    "public readiness copy states that the owner channel is the required evidence");
   assert.match(health, /do not rely on call notifications for rollout/,
     "zero-recipient readiness fails honestly");
   assert.doesNotMatch(noteCall, /alertCallSubs|pushRecipientCounts/,

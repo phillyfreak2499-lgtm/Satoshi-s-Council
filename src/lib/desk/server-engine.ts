@@ -2201,8 +2201,8 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
             e.alertCallSubs < 1
               ? "no eligible call-alert subscriber; do not rely on call notifications for rollout"
               : (e.alertDelivery?.call_ready_accepted_24h ?? 0) < 1
-                ? "eligible subscribers exist, but no recent provider-accepted call/test receipt proves the call channel"
-                : "an eligible call subscriber has recent provider acceptance; device display and human receipt are not guaranteed",
+                ? "eligible subscribers exist, but no recent provider-accepted owner call/test receipt proves the owner channel"
+                : "an eligible owner call subscriber has recent provider acceptance; device display and human receipt are not guaranteed",
         },
         settlement_notifications: {
           configured: e.alertSettleSubs > 0,
