@@ -192,6 +192,23 @@ async function recordReceipt(
   `;
 }
 
+/** Keep subscription eligibility aligned with the provider outcome. The
+ * public test path uses the same bookkeeping as a real fanout so a recovered
+ * browser cannot accept a test while remaining excluded by stale failures. */
+async function applyDeliveryBookkeeping(
+  db: Awaited<ReturnType<typeof sql>>,
+  subscriptionId: number,
+  outcome: PushDeliveryOutcome,
+): Promise<void> {
+  if (outcome === "gone") {
+    await db`delete from desk_push_subs where id = ${subscriptionId}`;
+  } else if (outcome === "accepted") {
+    await db`update desk_push_subs set last_sent = now(), fails = 0 where id = ${subscriptionId}`;
+  } else {
+    await db`update desk_push_subs set fails = fails + 1 where id = ${subscriptionId}`;
+  }
+}
+
 /** Send to every subscriber the picker returns a payload for. Never throws. */
 async function fanout(
   subs: SubRow[],
@@ -212,9 +229,7 @@ async function fanout(
       const bucket = result.outcome === "accepted" ? "sent" : result.outcome;
       out[bucket]++;
       try {
-        if (result.outcome === "gone") await db`delete from desk_push_subs where id = ${sub.id}`;
-        else if (result.outcome === "accepted") await db`update desk_push_subs set last_sent = now(), fails = 0 where id = ${sub.id}`;
-        else await db`update desk_push_subs set fails = fails + 1 where id = ${sub.id}`;
+        await applyDeliveryBookkeeping(db, sub.id, result.outcome);
       } catch {
         /* bookkeeping only */
       }
@@ -398,17 +413,26 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
   if (!sub) return { ok: false, error: "this browser is not subscribed", status: 404 };
   const attemptedAtMs = Date.now();
   const r = await sendOne(sub, { title: "Satoshi's Council", body: "Alerts are on. This is what a call looks like.", tag: "test", url: "/" });
+  let evidenceRecorded = false;
   try {
+    await applyDeliveryBookkeeping(db, sub.id, r.outcome);
     await recordReceipt(db, { kind: "test", key: `test-${sub.id}` }, sub, r, attemptedAtMs);
+    evidenceRecorded = true;
   } catch {
-    /* evidence only */
+    /* Delivery already happened. Readiness remains fail-closed without durable evidence. */
   }
   if (r.outcome === "gone") {
-    await db`delete from desk_push_subs where id = ${sub.id}`;
     return { ok: false, error: "the push service says this subscription is gone — turn alerts off and on again", status: 410 };
   }
   if (r.outcome === "failed") return { ok: false, error: "the push service refused the test", status: 502 };
+  if (!evidenceRecorded) {
+    return {
+      ok: false,
+      error: "the push service accepted the test, but readiness proof was not recorded — try again",
+      status: 503,
+    };
+  }
   return { ok: true, prefs: { on_call: sub.on_call, on_settle: sub.on_settle, owner: sub.owner } };
 }
 
-export const __test = { fanout, cleanEndpoint, cleanKey };
+export const __test = { fanout, cleanEndpoint, cleanKey, applyDeliveryBookkeeping };
