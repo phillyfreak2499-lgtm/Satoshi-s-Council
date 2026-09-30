@@ -162,7 +162,7 @@ test("a raw seat read and a final vote stay separate facts, with the forced-sit 
 
 test("a suppression reason is never inferred when the frame cannot prove it", () => {
   const model = codeOf(READ_MODEL);
-  assert.match(model, /suppression = rawConf != null && rawConf < speakBar \? "below-speak-bar" : null;/);
+  assert.match(model, /suppression = vote\?\.forced_sit === true && rawConf != null && rawConf < speakBar \? "below-speak-bar" : null;/, "a Chair-only eligibility hold cannot invent a producer confidence hold");
   assert.match(model, /suppression: SuppressionReason \| null/);
   const tape = read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx");
   assert.match(tape, /SUPPRESSION_LABEL\[s\.suppression\] : "suppressed"/, "an unprovable reason reads simply suppressed");
@@ -367,7 +367,8 @@ test("executable economics are suppressed whenever the priced ask is a midpoint 
 
 test("seat classification follows the Chair's own authority order", () => {
   const model = codeOf(READ_MODEL);
-  assert.match(model, /const speaksNow = finalLean === "UP" \|\| finalLean === "DOWN";/);
+  assert.match(model, /const finalLean: Lean = row\?\.lean \?\? vote\?\.lean \?\? "WAIT";/, "the actual admitted Chair row outranks the producer opinion");
+  assert.match(model, /const speaksNow = \(finalLean === "UP" \|\| finalLean === "DOWN"\) && !forced && !foldedOut;/, "a forced sit or zero-score fold cannot claim admitted speech");
   // The exact precedence, asserted by position in source. Authority comes
   // before direction (a muted or vetoed seat still carries a lean), a DOWN feed
   // silences outright, and only then does a directional final vote speak.
@@ -383,7 +384,7 @@ test("seat classification follows the Chair's own authority order", () => {
     at('} else if (health === "DOWN") {'),
     at("} else if (speaksNow) {"),
     at("} else if (forced && benched) {"),
-    at("} else if (forced && rawDirectional) {"),
+    at("} else if ((forced || foldedOut) && rawDirectional) {"),
   ];
   for (let i = 1; i < order.length; i++) {
     assert.ok(order[i] > order[i - 1], `branch ${i} must follow branch ${i - 1}`);
@@ -406,8 +407,8 @@ test("seat classification follows the Chair's own authority order", () => {
 
 test("a raw read falls back to the final vote only when the vote was not transformed", () => {
   const model = codeOf(READ_MODEL);
-  assert.match(model, /const rawLean = vote\?\.raw_lean \?\? \(forced \? null : finalLean\);/);
-  assert.match(model, /const rawConf = num\(vote\?\.raw_conf\) \?\? \(forced \? null : finalConf\);/);
+  assert.match(model, /const rawLean = vote\?\.raw_lean \?\? \(producerForced \? null : vote\?\.lean \?\? finalLean\);/);
+  assert.match(model, /const rawConf = num\(vote\?\.raw_conf\) \?\? \(producerForced \? null : num\(vote\?\.confidence\) \?\? finalConf\);/);
   // The repo-wide convention this matches, and the reason the fallback stops at
   // a forced sit, are both stated in source.
   assert.match(read(READ_MODEL), /raw_lean \?\? lean/);

@@ -582,7 +582,7 @@ export type SeatFact = {
    * surface that must never reconstruct one can refuse to.
    */
   raw_retained: boolean;
-  /** The vote the Chair actually heard. */
+  /** The admitted Chair row's side, or the producer vote before a row arrives. Authority is separate. */
   final_lean: Lean;
   /**
    * The final confidence as recorded. On a forced sit the pipeline rewrites this
@@ -604,7 +604,7 @@ export type SeatFact = {
   health_warning: boolean;
   /** The per-seat speaking bar (52 plus COACH's offset), when the frame carries the knob. */
   speak_bar: number | null;
-  /** True when this seat is one of the 15 currently voting specialists. */
+  /** True when this voting seat has a Chair row on the frame, including rows held from speaking. */
   aggregated: boolean;
   health: FeedHealth;
   status: SeatStatus | null;
@@ -620,22 +620,21 @@ export type SeatFact = {
 /**
  * One seat's presentation facts.
  *
- * THE PRECEDENCE IS THE PIPELINE'S, NOT A NEW ONE. `sitUnlessSure` in bots.ts
- * returns early for WARDEN, then handles retired seats, then a COACH bench, then
- * the confidence bar — and `applyHealth` silences a DOWN feed before any of it.
- * Reading those branches in the same order is how "below-speak-bar" is proven by
- * exhaustion: when a seat is force-sat and is not retired, benched, unhealthy or
- * muted, the confidence bar is the only branch left. Where even that cannot be
- * established the reason stays null and the display says "suppressed".
+ * The producer retains its selected raw read, while `runChair` admits a copy of
+ * the vote. Its row can therefore be a forced WAIT even when the producer vote
+ * is directional. Read that admitted row first; a producer opinion does not
+ * prove the Chair heard it. Authority and feed exclusions precede direction.
+ * A held read stays visible as research, with only reasons the frame proves.
  */
 function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined, knobs: Record<string, SeatKnobs> | undefined, asOf: number): SeatFact {
   const meta = SEAT_BY_ID[seat];
   const family = meta.tab;
   const knob = knobs?.[seat];
   const speakBar = knob ? SPEAK_CONF + (num(knob.speak_offset) ?? 0) : SPEAK_CONF;
-  const finalLean: Lean = vote?.lean ?? row?.lean ?? "WAIT";
+  const finalLean: Lean = row?.lean ?? vote?.lean ?? "WAIT";
   const finalConf = num(row?.conf ?? vote?.confidence);
   const forced = vote?.forced_sit === true || row?.forced_sit === true;
+  const producerForced = vote ? vote.forced_sit === true : forced;
   /**
    * The seat's own read.
    *
@@ -650,8 +649,8 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
    * back to those would report the transform as the seat's own reading — the
    * exact conflation this column exists to prevent.
    */
-  const rawLean = vote?.raw_lean ?? (forced ? null : finalLean);
-  const rawConf = num(vote?.raw_conf) ?? (forced ? null : finalConf);
+  const rawLean = vote?.raw_lean ?? (producerForced ? null : vote?.lean ?? finalLean);
+  const rawConf = num(vote?.raw_conf) ?? (producerForced ? null : num(vote?.confidence) ?? finalConf);
   const rawRetained =
     vote != null &&
     (vote.raw_lean === "UP" || vote.raw_lean === "DOWN" || vote.raw_lean === "WAIT") &&
@@ -661,7 +660,10 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   const rawDirectional = rawLean === "UP" || rawLean === "DOWN";
   const benched = knob != null && num(knob.benched_until) != null && knob.benched_until > asOf;
 
-  const speaksNow = finalLean === "UP" || finalLean === "DOWN";
+  // CLOCK alone is FOLDED with its score removed; correlated family folds can
+  // retain a scaled contribution. Neither case is separate entry support.
+  const foldedOut = status === "FOLDED" && num(row?.contribution) === 0;
+  const speaksNow = (finalLean === "UP" || finalLean === "DOWN") && !forced && !foldedOut;
 
   let voice: SeatVoice;
   let suppression: SuppressionReason | null = null;
@@ -693,11 +695,11 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
   } else if (forced && benched) {
     voice = "benched";
     suppression = "benched";
-  } else if (forced && rawDirectional) {
+  } else if ((forced || foldedOut) && rawDirectional) {
     voice = "suppressed";
-    // Every earlier branch of the filter is excluded above, so the confidence bar
-    // is the only one left — but only claim it when the numbers actually show it.
-    suppression = rawConf != null && rawConf < speakBar ? "below-speak-bar" : null;
+    // A producer forced sit below its bar proves that reason. A Chair-only
+    // eligibility sit or a zero-score fold does not prove a confidence hold.
+    suppression = vote?.forced_sit === true && rawConf != null && rawConf < speakBar ? "below-speak-bar" : null;
   } else {
     voice = "waiting";
   }

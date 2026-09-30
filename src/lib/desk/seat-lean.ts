@@ -54,6 +54,7 @@ export type LeanDirection = "BULLISH" | "BEARISH" | "NEUTRAL" | "NO_READ";
 /** Truthful seat states, each one the frame can prove. */
 export type SeatLeanStatus =
   | "SPEAKING"
+  | "FOLDED"
   | "RESEARCH READ"
   | "BELOW BAR"
   | "SUPPRESSED"
@@ -97,6 +98,7 @@ export type SeatLean = {
 
 const STATUS_PLAIN: Readonly<Record<SeatLeanStatus, string>> = Object.freeze({
   SPEAKING: "SATOSHI heard this read.",
+  FOLDED: "SATOSHI folded this read; it is not separate entry support.",
   "RESEARCH READ": "Directional read on the frame. No Chair row yet, so SATOSHI has not aggregated it.",
   "BELOW BAR": RESEARCH_ONLY_LINE,
   SUPPRESSED: RESEARCH_ONLY_LINE,
@@ -139,6 +141,7 @@ export function leanDirection(score: number | null): LeanDirection {
 }
 
 function statusOf(fact: SeatFact): SeatLeanStatus {
+  if (fact.status === "FOLDED" && fact.aggregated && (fact.voice === "speaking" || fact.voice === "suppressed" || fact.voice === "waiting")) return "FOLDED";
   switch (fact.voice) {
     case "speaking":
       // A directional final voice is SPEAKING only with the Chair row that proves
@@ -180,6 +183,7 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
   const sourceStrength = retained ? fact.raw_conf : null;
   const score = leanScore(researchSide, sourceStrength);
   const status = statusOf(fact);
+  const isAuthorizedSpeaker = fact.voice === "speaking" && fact.aggregated === true;
   return {
     seat: fact.seat,
     callsign: fact.callsign,
@@ -189,9 +193,9 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
     sourceStrength,
     status,
     statusPlain: STATUS_PLAIN[status],
-    isAuthorizedSpeaker: fact.voice === "speaking" && fact.aggregated === true,
+    isAuthorizedSpeaker,
     stale: fact.health_warning === true,
-    heardLean: fact.final_lean,
+    heardLean: isAuthorizedSpeaker ? fact.final_lean : "WAIT",
     reason: fact.why ?? "",
     skillId: fact.skill_used && fact.skill_used !== "SIT" ? fact.skill_used : null,
     window: { ticker: window.ticker, close_time: window.close_time, as_of: window.as_of },
@@ -279,6 +283,7 @@ export function leanPlainLine(lean: Pick<SeatLean, "score" | "direction" | "stat
   const word = DIRECTION_WORD[lean.direction];
   const line =
     lean.status === "SPEAKING" ? `${word} read — SATOSHI counted it.`
+    : lean.status === "FOLDED" ? `${word} read — folded by SATOSHI; no separate entry support.`
     : lean.status === "BELOW BAR" ? `${word} read — not strong enough for SATOSHI to count.`
     : lean.status === "SUPPRESSED" ? `${word} read — SATOSHI did not count it.`
     : lean.status === "RESEARCH READ" ? "Directional research read — SATOSHI has not counted it."
