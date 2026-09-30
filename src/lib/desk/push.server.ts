@@ -270,7 +270,9 @@ export async function pushRecipientCounts(): Promise<PushRecipientCounts> {
 }
 
 /** Durable provider-attempt evidence. This intentionally says "accepted",
- * never "delivered": browser display and human receipt are outside our proof. */
+ * never "delivered": browser display and human receipt are outside our proof.
+ * Recovery-pilot readiness is narrower still: only a currently eligible
+ * owner subscription may contribute call/test acceptance. */
 export async function pushDeliverySummary(): Promise<PushDeliverySummary> {
   const db = await sql();
   const rows = await db<PushDeliverySummary>`
@@ -288,7 +290,7 @@ export async function pushDeliverySummary(): Promise<PushDeliverySummary> {
           and r.attempted_at >= now() - interval '24 hours'
           and exists (
             select 1 from desk_push_subs s
-            where s.id = r.subscription_id and s.on_call and s.fails < ${MAX_FAILS}
+            where s.id = r.subscription_id and s.owner and s.on_call and s.fails < ${MAX_FAILS}
           )
       )::int as call_ready_accepted_24h,
       count(*) filter (where r.outcome = 'failed' and r.attempted_at >= now() - interval '24 hours')::int as failed_24h,

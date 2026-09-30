@@ -41,7 +41,7 @@ export function pushReceipt(input: PushReceiptInput): PushReceipt {
 
 export type PushDeliverySummary = {
   accepted_24h: number;
-  /** Provider-accepted call/test receipt for a currently eligible call subscriber. */
+  /** Provider-accepted call/test receipt for a currently eligible owner call subscriber. */
   call_ready_accepted_24h: number;
   failed_24h: number;
   gone_24h: number;

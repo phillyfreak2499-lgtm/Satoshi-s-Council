@@ -107,7 +107,7 @@ test("notification readiness fails closed before a pilot can advance", () => {
   const noAcceptedTest = recoveryPilotDecision(snap(), ctx({ callNotificationAccepted24h: 0 }));
   assert.equal(noAcceptedTest.eligible, false);
   assert.equal(noAcceptedTest.watch, null);
-  assert.match(noAcceptedTest.reason ?? "", /provider-accepted call notification test/);
+  assert.match(noAcceptedTest.reason ?? "", /provider-accepted owner call-notification test/);
 });
 
 test("pilot rows are capped at three and the first settled pilot loss stops the day", () => {
