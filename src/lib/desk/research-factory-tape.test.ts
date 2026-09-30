@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
+import { auditAdmission } from "./admission-audit.ts";
+import { dailyAdmission } from "./selective-entry.ts";
 import {
   CHECKPOINTS, WAIT_REASONS, classifyTape, conditionMet, gradeWindow, shouldRecord, tapeIdentityQuality,
   type Audit, type TapeEvent, type TapeFrame,
@@ -11,7 +13,7 @@ import {
 } from "./research-factory-insight.ts";
 import type { WindowFact } from "./research-factory-analysis.ts";
 import { chairWaitReason } from "./telemetry.ts";
-import type { ChairResult, SeatId, SeatRow, Snapshot } from "./types";
+import type { CallLogRow, ChairResult, SeatId, SeatRow, Snapshot } from "./types";
 
 // ---------------------------------------------------------------------------
 // Fixtures: a production frame as the engine publishes it.
@@ -116,6 +118,51 @@ test("no requirement is invented: without production's daily admission state, su
   assert.equal(conditionMet(r.conditions[0]!, { supporters: 9 }), null);
   const tight = classifyTape(frame({ daily: { tightened: true } as TapeFrame["daily"], chair: chair({ lean: "UP", vs_bar: 0.6 }), audit: audit(["supporters"], { mode: "tight" }) }));
   assert.equal(tight.conditions[0]!.required, SELECTIVE_PARAMS.tight_min_speaking, "tightened mode requires what production requires");
+});
+
+test("owner rollback tape names the actual policy and requires strictly positive normal-mode edge", () => {
+  const s = snap(300, { edge_up: 0, spot_age_s: 1 });
+  const c = chair({ lean: "UP", vs_bar: 0.6 });
+  const ctx = { calls: [], ready: true, start: close - 900_000, watch: { key: `${ticker}|${close}`, side: "UP" as const, since: s.as_of, last: s.as_of, frames: 1, mode: "normal" as const } };
+  const a = auditAdmission(s, c, ctx);
+  assert.equal(a.checks.find((check) => check.id === "model_edge")?.pass, false);
+  const r = classifyTape(frame({ snap: s, chair: c, audit: a, daily: dailyAdmission([], s.as_of), policy: "ENTRY_OWNER_ROLLBACK_V1" }));
+  assert.equal(r.raw.policy, "ENTRY_OWNER_ROLLBACK_V1");
+  assert.equal(r.primary_blocker, "MODEL_EDGE_FAIL");
+  assert.deepEqual(r.conditions.map((condition) => [condition.metric, condition.op, condition.required]), [["model_edge_cents", ">", 0]]);
+  assert.equal(conditionMet(r.conditions[0]!, { model_edge_cents: 0 }), false, "zero cannot clear the real production blocker");
+  assert.equal(conditionMet(r.conditions[0]!, { model_edge_cents: 0.001 }), true);
+});
+
+test("tightened tape uses decision-time opposition, time and inclusive edge requirements", () => {
+  const calls: CallLogRow[] = [1, 2].map((i) => ({ ticker: `LOSS-${i}`, t: close - (i + 1) * 900_000 + 60_000, close_time: close - i * 900_000, lean: "UP", cents: 85, settle: 0 }) as CallLogRow);
+  const s = snap(300, { edge_up: 4, spot_age_s: 1 });
+  const c = chair({ lean: "UP", vs_bar: 0.6, rows: [row("STREAK", "UP"), row("CHAIN", "UP"), row("DRIFT", "UP"), row("STRIKE", "UP"), row("FADE", "DOWN")] });
+  const ctx = { calls, ready: true, start: close - 900_000, watch: { key: `${ticker}|${close}`, side: "UP" as const, since: s.as_of - 20_000, last: s.as_of, frames: 5, mode: "tight" as const } };
+  const a = auditAdmission(s, c, ctx);
+  assert.equal(a.mode, "tight");
+  const d = dailyAdmission(calls, s.as_of);
+  const r = classifyTape(frame({ snap: s, chair: c, audit: a, daily: { ...d, tightened: false } }));
+  assert.equal(r.primary_blocker, "OPPOSITION_FAIL");
+  assert.equal(r.conditions[0]!.required, 0, "the audit mode overrides a later daily-summary mode");
+  assert.equal(conditionMet(r.conditions[0]!, { opposing: 1 }), false);
+  const edge = classifyTape(frame({ snap: s, chair: c, audit: { ...a, checks: a.checks.map((check) => check.id === "opposition" ? { ...check, pass: true } : check) }, daily: d }));
+  assert.equal(edge.primary_blocker, "MODEL_EDGE_FAIL");
+  assert.deepEqual(edge.conditions.map((condition) => [condition.op, condition.required]), [[">=", 5]]);
+  const lateSnap = snap(150, { edge_up: 6, spot_age_s: 1 });
+  const late = classifyTape(frame({ snap: lateSnap, chair: c, audit: auditAdmission(lateSnap, c, { ...ctx, watch: null }), daily: d }));
+  assert.equal(late.primary_blocker, "TIME_WINDOW_FAIL");
+  assert.deepEqual(late.conditions[0]!.required, [180, 600]);
+  assert.equal(conditionMet(late.conditions[0]!, { secs_left: 150 }), false);
+});
+
+test("a complete-window boundary failure cannot be cleared by the current market's clock", () => {
+  const r = classifyTape(frame({ chair: chair({ lean: "UP", vs_bar: 0.6 }), audit: audit(["complete_window"]) }));
+  assert.equal(r.primary_blocker, "TIME_WINDOW_FAIL");
+  assert.deepEqual(r.conditions.map((condition) => [condition.metric, condition.op, condition.required, condition.changeable_within_window]), [["complete_window_pass", "pass", true, false]]);
+  assert.equal(conditionMet(r.conditions[0]!, { secs_left: 300, complete_window_pass: false }), false);
+  const hardLate = classifyTape(frame({ chair: chair({ gates: [{ id: "late", pass: false, hard: true }] }) }));
+  assert.equal(hardLate.conditions[0]!.metric, "chair:late_pass", "a hard Chair clock gate is not relabelled as the separate entry band");
 });
 
 // ---------------------------------------------------------------------------

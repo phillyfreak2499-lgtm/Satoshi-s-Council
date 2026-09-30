@@ -10,11 +10,11 @@
  */
 import { createHash } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { CHAIR_FLOOR_SINCE_ISO, FLOOR_LIVE_SINCE } from "./book-floor.ts";
-import { SELECTIVE_ENTRY_ID, SELECTIVE_FROZEN_AT, SELECTIVE_V3_FROZEN_AT, OWNER_ROLLBACK_V1_FROZEN_AT, ENTRY_OWNER_ROLLBACK_V1, fingerprint } from "./floor-policy.ts";
+import { CHAIR_FLOOR_SINCE_ISO } from "./book-floor.ts";
+import { SELECTIVE_ENTRY_ID, ENTRY_OWNER_ROLLBACK_V1, fingerprint } from "./floor-policy.ts";
 import { DEFAULT_FEE_ENGINE, feeFingerprint, type FeeEngineId } from "./fee-engine.ts";
 import {
-  ECONOMICS_BOOK_VERSION, allScope, bookSummary, chicagoDayOf, chicagoDaysScope, completedWeekScope, diffSurfaces, rollingHoursScope,
+  ECONOMICS_BOOK_VERSION, ERAS, allScope, bookSummary, chicagoDayOf, chicagoDaysScope, completedWeekScope, diffSurfaces, rollingHoursScope,
   sinceScope, type BookSummary, type LedgerRow, type ScopeSpec, type SurfaceDiff, type SurfaceRow,
 } from "./economics-book.ts";
 
@@ -27,7 +27,8 @@ export const LEDGER_QUERY = `
     (extract(epoch from graded_at) * 1000)::bigint as graded_ms,
     winner, official_value, research_quality, chair_lean,
     entry_cents, settle_cents, ev_cents, entry_lean, entry_secs_left,
-    shadow_entry_cents, shadow_ev_cents
+    shadow_entry_cents, shadow_ev_cents,
+    entry_skill_roster #>> '{book,entry_policy}' as entry_policy
   from desk_ledger
   where close_time >= $1::timestamptz and close_time <= $2::timestamptz
   order by close_time, id`;
@@ -96,6 +97,7 @@ function toRow(r: Record<string, unknown>): LedgerRow {
     chair_lean: r.chair_lean == null ? null : String(r.chair_lean), entry_cents: num(r.entry_cents), settle_cents: num(r.settle_cents),
     ev_cents: num(r.ev_cents), entry_lean: lean(r.entry_lean), entry_secs_left: num(r.entry_secs_left),
     shadow_entry_cents: num(r.shadow_entry_cents), shadow_ev_cents: num(r.shadow_ev_cents),
+    entry_policy: typeof r.entry_policy === "string" ? r.entry_policy : null,
   };
 }
 
@@ -141,11 +143,12 @@ export async function reconcileBook(opts: { asOfIso: string; sinceIso?: string; 
     return { scope_id: scope.id, book, reference, reconciled: reference ? cells.every((c) => c.equal) : null, cells };
   });
 
-  const eras: BookSummary[] = [
-    sinceScope("era_A0_pre_floor", since, asOfMs), sinceScope("era_A1_floor70", CHAIR_FLOOR_SINCE_ISO, asOfMs),
-    sinceScope("era_B_floor80_trial", FLOOR_LIVE_SINCE, asOfMs), sinceScope("era_C1_selective_v1v2", SELECTIVE_FROZEN_AT, asOfMs),
-    sinceScope("era_C2_selective_v3", SELECTIVE_V3_FROZEN_AT, asOfMs), sinceScope("era_C3_owner_rollback_v1", OWNER_ROLLBACK_V1_FROZEN_AT, asOfMs),
-  ].map((s, i, all) => bookSummary(rows, { ...s, end_ms: all[i + 1]?.start_ms ?? asOfMs + 1 }, engine));
+  // Partition the bounded read by each row's captured payment policy, falling
+  // back to close-time eras only for legacy rows. A held older fill can close
+  // after a policy transition without being lost from both populations.
+  const eras: BookSummary[] = ERAS.map(era => bookSummary(rows, {
+    ...allScope(asOfMs), id: `era_${era.id}`, start_ms: Date.parse(since), eras: [era.id],
+  }, engine));
 
   const rolling = rollingHoursScope(asOfMs, 168);
   const yesterday = chicagoDayOf(asOfMs - 86_400_000);

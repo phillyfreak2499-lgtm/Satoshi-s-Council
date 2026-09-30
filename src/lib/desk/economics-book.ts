@@ -24,6 +24,10 @@ import { DEFAULT_FEE_ENGINE, allInCostCents, feeFingerprint, holdNetCents, realA
 
 export const ECONOMICS_BOOK_VERSION = "ECONOMICS_BOOK_V1";
 
+/** The ledger's axis is window close. The first complete restored-policy
+ * window opens at the policy boundary and closes fifteen minutes later. */
+export const OWNER_ROLLBACK_FIRST_CLOSE_ISO = new Date(Date.parse(OWNER_ROLLBACK_V1_FROZEN_AT) + 900_000).toISOString();
+
 // ---------------------------------------------------------------------------
 // Populations.
 // ---------------------------------------------------------------------------
@@ -57,11 +61,15 @@ export const ERAS: readonly EraSpec[] = Object.freeze([
   { id: "A1_floor70", since: CHAIR_FLOOR_SINCE_ISO, until: FLOOR_LIVE_SINCE, entry_policy: "70¢ floor", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "the 70¢ floor, one contract held to settlement" },
   { id: "B_floor80_trial", since: FLOOR_LIVE_SINCE, until: SELECTIVE_FROZEN_AT, entry_policy: "ENTRY_80_V1", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "the 80¢ trial with the 70¢ shadow book on the same windows" },
   { id: "C1_selective_v1v2", since: SELECTIVE_FROZEN_AT, until: SELECTIVE_V3_FROZEN_AT, entry_policy: "ENTRY_SELECTIVE_V1/V2", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "three-supporter quorum; zero fills" },
-  { id: "C2_selective_v3", since: SELECTIVE_V3_FROZEN_AT, until: OWNER_ROLLBACK_V1_FROZEN_AT, entry_policy: "ENTRY_SELECTIVE_V3", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "post-loss two-supporter selective policy" },
-  { id: "C3_owner_rollback_v1", since: OWNER_ROLLBACK_V1_FROZEN_AT, until: null, entry_policy: "ENTRY_OWNER_ROLLBACK_V1", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "prospective owner rollback of the post-loss normal-mode narrowing with current booking safety rails" },
+  { id: "C2_selective_v3", since: SELECTIVE_V3_FROZEN_AT, until: OWNER_ROLLBACK_FIRST_CLOSE_ISO, entry_policy: "ENTRY_SELECTIVE_V3", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "post-loss two-supporter selective policy" },
+  { id: "C3_owner_rollback_v1", since: OWNER_ROLLBACK_FIRST_CLOSE_ISO, until: null, entry_policy: "ENTRY_OWNER_ROLLBACK_V1", exit_policy: "HOLD_V1", quantity: "one_contract_hold", why: "complete windows opening at the prospective owner rollback boundary; actual paid policy takes precedence when recorded" },
 ]);
 
-export function eraOf(closeMs: number): EraId {
+export function eraOf(closeMs: number, paidPolicy?: string | null): EraId {
+  if (paidPolicy === "ENTRY_OWNER_ROLLBACK_V1") return "C3_owner_rollback_v1";
+  if (paidPolicy === "ENTRY_SELECTIVE_V3") return "C2_selective_v3";
+  if (paidPolicy === "ENTRY_SELECTIVE_V1" || paidPolicy === "ENTRY_SELECTIVE_V2") return "C1_selective_v1v2";
+  if (paidPolicy === "ENTRY_80_V1") return "B_floor80_trial";
   for (const e of ERAS) {
     const since = e.since ? Date.parse(e.since) : -Infinity;
     const until = e.until ? Date.parse(e.until) : Infinity;
@@ -91,6 +99,8 @@ export type LedgerRow = {
   entry_secs_left: number | null;
   shadow_entry_cents: number | null;
   shadow_ev_cents: number | null;
+  /** Policy captured at payment, when present; never inferred from grade time. */
+  entry_policy?: string | null;
 };
 
 export type EventKind =
@@ -116,7 +126,7 @@ export type ClassifiedRow = {
 
 /** Classify one row. Excluded research quality is reported, never dropped. */
 export function classifyRow(row: LedgerRow, engine: FeeEngineId = DEFAULT_FEE_ENGINE): ClassifiedRow {
-  const era = eraOf(row.close_ms);
+  const era = eraOf(row.close_ms, row.entry_policy);
   const base = { row, era, hold_identity: null as boolean | null, official_win: null as boolean | null, all_in_cost: null as number | null };
   if (row.research_quality != null && row.research_quality !== "valid") return { ...base, event: "excluded" };
   if (row.entry_cents == null || !realAskCents(row.entry_cents)) {
@@ -219,7 +229,7 @@ export function allScope(asOfMs: number, ledger: LedgerKind = "main_paper"): Sco
 export function inScope(row: LedgerRow, scope: ScopeSpec): boolean {
   if (scope.start_ms != null && row.close_ms < scope.start_ms) return false;
   if (scope.end_ms != null && row.close_ms >= scope.end_ms) return false;
-  if (scope.eras && !scope.eras.includes(eraOf(row.close_ms))) return false;
+  if (scope.eras && !scope.eras.includes(eraOf(row.close_ms, row.entry_policy))) return false;
   return true;
 }
 

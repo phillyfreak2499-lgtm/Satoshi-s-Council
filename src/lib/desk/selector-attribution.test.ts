@@ -86,7 +86,7 @@ test("the BLIND_ELIGIBLE row prices the exact lane, keeps the whole-cent lane be
   assert.deepEqual({ side: r.side, ask: r.ask_cents, whole: r.ask_whole_cents, fee: r.fee_cents, lean: r.chair_lean }, { side: "UP", ask: 90.1, whole: 90, fee: feeCents(90.1), lean: "WAIT" });
   assert.equal(r.model_edge_cents, 4.2);
   assert.equal(r.index_margin_cents, indexMargin(snap(), "UP", 90));
-  assert.equal(r.rejection_reason, "waiting for a directional setup");
+  assert.equal(r.rejection_reason, "directional Chair read", "the frozen V3 reference vector supplies its actual failing check");
   assert.equal(r.payload.chair_same_side, false);
   assert.equal((r.counterfactual as { price_lane: { exact_minus_whole: number } }).price_lane.exact_minus_whole, 0.1);
 });

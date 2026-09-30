@@ -15,6 +15,7 @@ import { auditAdmission, type AdmissionAudit } from "./admission-audit";
 import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
 import { captureEntrySkillRoster, withEntrySkillRosterColumn } from "./entry-skill-roster";
 import { evaluateEntrySkillQuality, withEntrySkillQualityColumn } from "./entry-skill-quality";
+import { FLOOR_OWNER_ROLLBACK_V1 } from "./floor-policy";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -721,7 +722,12 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
   const key = windowKey(snap);
   if (e.entryState[key]) return;
   const touch = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
+  const policy = { entry_policy: FLOOR_OWNER_ROLLBACK_V1.entry_policy,
+    floor_policy: FLOOR_OWNER_ROLLBACK_V1.policy_id, prospective_start: e.selectiveStart };
+  const roster = captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha(), takerFeeCents);
+  if (roster) Object.assign(roster.book, policy);
   e.entryState[key] = {
+    ...policy,
     lean: chair.lean,
     regime: snap.regime_key ?? "",
     secs_left: Math.round((snap.secs_left ?? 0) * 10) / 10,
@@ -734,7 +740,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
     touch_size: Math.round(Number(touch) || 0),
     fee_cents: takerFeeCents(cents),
     build_sha: runningBuildSha(),
-    entry_roster: captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha(), takerFeeCents),
+    entry_roster: roster,
   };
   const keys = Object.keys(e.entryState);
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
@@ -1235,6 +1241,9 @@ async function applyGrade(
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
   }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
+  // buildLedgerRow consumes entry state; retain its immutable paid-policy
+  // metadata for the asynchronous exit writer before that deletion.
+  const bookedEntryPolicy = e.entryState[windowKey(snap)];
   // Enqueue the ledger row (built now, from this window's state) for a durable,
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
   e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source, scoreAudit), Date.now());
@@ -1301,7 +1310,7 @@ async function applyGrade(
     // means no booked position or no replay for this exact window — either way, nothing
     // to measure and nothing written.
     if (!exitReplayPath || !booked || !(booked.cents > 0)) return;
-    const champion = await activeChampion();
+    const champion = await activeChampion(bookedEntryPolicy);
     await recordExitArena(
       {
         ticker: snap.ticker,
@@ -1310,7 +1319,8 @@ async function applyGrade(
         entry: { side: booked.lean, cents: booked.cents, t: booked.t },
         path: exitReplayPath,
       },
-      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at), e.selectiveStart)).toISOString() },
+      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at),
+        bookedEntryPolicy?.prospective_start ?? e.selectiveStart)).toISOString() },
     );
   })().catch((err) => {
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;

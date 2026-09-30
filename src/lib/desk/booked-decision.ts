@@ -23,6 +23,10 @@ export type BookedDecisionState = {
   build_sha: string;
   /** Same-tick card roster, captured only after a bookable paper fill. */
   entry_roster?: EntrySkillRoster | null;
+  /** Measurement-only identity frozen at the actual payment. Absent on legacy entries. */
+  entry_policy?: string;
+  floor_policy?: string;
+  prospective_start?: number;
 };
 
 type BookedCallLike = {
@@ -87,6 +91,9 @@ export function sanitizeBookedDecisionState(raw: unknown): Record<string, Booked
       fee_cents: finite(row.fee_cents),
       build_sha: buildSha(row.build_sha),
       entry_roster: roster(row.entry_roster),
+      ...(typeof row.entry_policy === "string" ? { entry_policy: row.entry_policy } : {}),
+      ...(typeof row.floor_policy === "string" ? { floor_policy: row.floor_policy } : {}),
+      ...(typeof row.prospective_start === "number" ? { prospective_start: row.prospective_start } : {}),
     };
   }
   return out;

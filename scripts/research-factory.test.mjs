@@ -582,7 +582,7 @@ const AUDIT_IDS = ["risk_history", "daily_risk", "complete_window", "direction",
 /** A full production admission audit: directional frames pass everything but confirmation; WAIT frames leave side checks unevaluated. */
 const tapeAudit = (lean) => ({ mode: "normal", positioned: false, eligible: false, checks: AUDIT_IDS.map((id) => ({ id, label: id,
   pass: id === "confirmation" ? (lean === "WAIT" ? null : false) : id === "direction" ? lean !== "WAIT" : lean === "WAIT" && ["team", "supporters", "families", "opposition", "quote", "profit_reserve", "model_edge", "index_edge"].includes(id) ? null : true })) });
-const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { audit: tapeAudit(lean), daily: { tightened: false } } });
+const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { policy: "ENTRY_OWNER_ROLLBACK_V1", audit: tapeAudit(lean), daily: { tightened: false } } });
 
 test("decision tape E1 paper: checkpoint receipts copy actual published outputs without changing decisions or sampling", async () => {
   const calls = [];
@@ -661,6 +661,7 @@ test("decision tape: env-gated on a literal flag; records checkpoints and change
   frame = tapeFrame(500, "UP", 0.6); await mod.decisionTapeTick(tapeClose - 500_000); // the Chair turns directional: a change
   const rows = inserts();
   assert.deepEqual(rows.map((r) => [r.secs, r.checkpoint, r.label]), [[610, null, "DIRECTION_BELOW_BAR"], [598, 600, "DIRECTION_BELOW_BAR"], [500, null, "CONFIRMATION_INCOMPLETE"]]);
+  assert.ok(rows.every((r) => r.record.raw.policy === frame.selective.policy), "the actual production entry policy survives the observer adapter and durable payload");
   assert.ok(rows.every((r) => r.partial === true), "this window was already open when the observer started");
   assert.ok(rows.find((r) => r.checkpoint === 600).record.seats?.length === 2, "seat reads ride on checkpoint briefs");
   assert.equal(rows.find((r) => r.checkpoint == null).record.seats, undefined, "change events stay compact");

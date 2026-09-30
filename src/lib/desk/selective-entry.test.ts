@@ -8,6 +8,7 @@ import { bookable, bookableShadow, paperBookEdgeOk, paperBookTeamOk } from "./bo
 import { takerFeeCents } from "./clock.ts";
 import { markSide } from "./scalp.ts";
 import { captureEntrySkillRoster } from "./entry-skill-roster.ts";
+import { FLOOR_OWNER_ROLLBACK_V1 } from "./floor-policy.ts";
 import {
   chicagoDay, dailyAdmission, hasPaperPosition, restoreRiskCalls, selectiveBlock, selectiveBookOk,
   selectiveChair, settleRiskCalls, SELECTIVE_PARAMS, type SelectiveContext,
@@ -230,7 +231,7 @@ function bookingHarness(saveOk = true) {
   assert.equal(functions.length, names.size);
   const events: string[] = [];
   const scope = { bookable, bookableShadow, paperBookEdgeOk, paperBookTeamOk, selectiveBookOk,
-    hasPaperPosition, restoreRiskCalls, settleRiskCalls, markSide, takerFeeCents, captureEntrySkillRoster,
+    hasPaperPosition, restoreRiskCalls, settleRiskCalls, markSide, takerFeeCents, captureEntrySkillRoster, FLOOR_OWNER_ROLLBACK_V1,
     process: { env: {} }, persistState: async () => { events.push("saved"); return saveOk; },
     notifyCall: () => events.push("notified"),
   };

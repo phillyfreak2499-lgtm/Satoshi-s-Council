@@ -87,6 +87,12 @@ test("real Chair family fold books the first revalidated rollback frame and pers
   assert.equal(rows.length, 1);
   assert.equal(rows[0].state.risk_calls.length, 1, "normal persistence stores exactly one paper position");
   assert.equal(rows[0].state.risk_calls[0].ticker, confirmedSnap.ticker);
+  const paid = rows[0].state.entry_state[`${confirmedSnap.ticker}:${confirmedSnap.close_time}`];
+  assert.equal(paid.entry_policy, "ENTRY_OWNER_ROLLBACK_V1", "actual payment captures its policy before settlement");
+  assert.equal(paid.floor_policy, "FLOOR_OWNER_ROLLBACK_V1");
+  assert.equal(paid.prospective_start, e.selectiveStart);
+  assert.equal(paid.entry_roster.book.entry_policy, paid.entry_policy, "durable roster carries the same paid identity");
+  assert.equal(paid.entry_roster.book.prospective_start, e.selectiveStart);
 });
 
 test("integration refuses DATABASE_URL before Vite or SQL startup", () => {
