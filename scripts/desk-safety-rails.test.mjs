@@ -2675,6 +2675,13 @@ test("call-notification readiness is independently visible and never gates canon
     "push readiness counts the same bounded recipient population as fanout");
   assert.match(push, /on_call and fails < \$\{MAX_FAILS\}/,
     "failed subscriptions are excluded from call readiness");
+  assert.match(push, /async function applyDeliveryBookkeeping[\s\S]*last_sent = now\(\), fails = 0/,
+    "provider acceptance repairs stale subscription failures");
+  const testPush = between(push, "export async function testPush(", "export const __test");
+  assert.match(testPush, /applyDeliveryBookkeeping\(db, sub\.id, r\.outcome\)/,
+    "a public test uses the same subscription bookkeeping as real fanout");
+  assert.match(testPush, /if \(!evidenceRecorded\)[\s\S]*readiness proof was not recorded/,
+    "an accepted test cannot claim readiness when durable evidence failed");
   assert.match(health, /call_notifications:[\s\S]*configured: e\.alertCallSubs > 0/,
     "deep health names whether call alerts have any eligible recipient");
   assert.match(health, /recovery_pilot_ready:[\s\S]*e\.alertCallSubs > 0[\s\S]*call_ready_accepted_24h/,
