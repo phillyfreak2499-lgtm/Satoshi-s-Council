@@ -161,6 +161,8 @@ type Eng = {
   callLog: CallLogRow[];
   riskCalls: CallLogRow[];
   riskReady: boolean;
+  /** Process-local proof: this exact complete history was valid before a reservation save failed. Never restored from storage. */
+  riskReservationPending: string | null;
   entryWatch: EntryWatch | null;
   recoveryPilotWatch: RecoveryPilotWatch | null;
   recoveryPilotStart: number;
@@ -332,6 +334,7 @@ function freshEng(): Eng {
     callLog: [],
     riskCalls: [],
     riskReady: false,
+    riskReservationPending: null,
     entryWatch: null,
     recoveryPilotWatch: null,
     recoveryPilotStart: recoveryPilotStartAtBoot(Date.now(), recoveryPilotEnabled(), false, null),
@@ -395,7 +398,7 @@ function freshEng(): Eng {
 
 /** Integration-test access to the exact entry functions used by `tick`.
  * Tests use the normal PGlite fallback, never an injected persistence stub. */
-export const __entryIntegration = { freshEng, applyEntryMode, noteCall };
+export const __entryIntegration = { freshEng, applyEntryMode, noteCall, persistState, loadState };
 
 /** REACHABILITY-A harness access to the remaining decision steps `tick` runs, in
  * the same order (a rail test pins the order in `tick`). Read-only exposure: no
@@ -422,6 +425,9 @@ async function sql() {
 }
 
 async function loadState(e: Eng) {
+  // Restored history must establish its own validity. Process-local failed-save
+  // proof can never override a newly loaded durable invalid-history marker.
+  e.riskReservationPending = null;
   try {
     const db = await sql();
     const rows = await db<{ state: unknown }>`select state from desk_state where id = ${STATE_ID} limit 1`;
@@ -508,11 +514,18 @@ async function persistState(e: Eng, force = false) {
   if (!force && Date.now() - e.lastPersistAt < PERSIST_EVERY_MS) return true;
   e.lastPersistAt = Date.now();
   try {
+    const riskSnapshot = JSON.stringify(e.riskCalls);
+    const restoredRisk = restoreRiskCalls(e.riskCalls, e.callLog);
+    // A failed reservation write closes admission immediately. Only the exact
+    // complete history previously known valid may regain readiness after its
+    // full-state retry is acknowledged. Invalid restored history has no proof.
+    const recoveringRisk = !e.riskReady && e.riskReservationPending === riskSnapshot &&
+      restoredRisk.valid && JSON.stringify(restoredRisk.calls) === riskSnapshot;
     const state = JSON.stringify({
       learner: sliceLearner(e.learner),
       call_log: e.callLog.slice(0, 80),
       risk_calls: e.riskCalls,
-      risk_history_valid: e.riskReady,
+      risk_history_valid: e.riskReady || recoveringRisk,
       selective_start: e.selectiveStart,
       selective_policy: SELECTIVE_ENTRY_ID,
       baseline_calls: e.baselineCalls,
@@ -556,6 +569,13 @@ async function persistState(e: Eng, force = false) {
     });
     e.stateWrite = write;
     await write;
+    const currentRisk = recoveringRisk ? restoreRiskCalls(e.riskCalls, e.callLog) : null;
+    if (recoveringRisk && e.stateWrite === write && !e.riskReady && e.riskReservationPending === riskSnapshot &&
+        JSON.stringify(e.riskCalls) === riskSnapshot &&
+        currentRisk?.valid && JSON.stringify(currentRisk.calls) === riskSnapshot) {
+      e.riskReady = true;
+      e.riskReservationPending = null;
+    }
     return true;
   } catch (err) {
     e.lastError = `state save: ${err instanceof Error ? err.message : String(err)}`;
@@ -734,8 +754,10 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
   e.riskCalls = restoreRiskCalls(e.riskCalls, [e.callLog[0]!]).calls;
   e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
   // Save the daily reservation before publishing the new call. A restart must not reset its allowance.
+  const validReservation = e.riskReady ? JSON.stringify(e.riskCalls) : null;
   if (!(await persistState(e, true))) {
     e.riskReady = false;
+    e.riskReservationPending = validReservation;
     return;
   }
   notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
@@ -776,8 +798,10 @@ async function noteRecoveryPilotCall(e: Eng, snap: Snapshot, decision: RecoveryP
   e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: side };
   e.recoveryPilotWatch = null;
   // Reserve the daily slot durably before making the pilot public.
+  const validReservation = e.riskReady ? JSON.stringify(e.riskCalls) : null;
   if (!(await persistState(e, true))) {
     e.riskReady = false;
+    e.riskReservationPending = validReservation;
     return;
   }
   notifyCall(side, Math.round(ask), snap.mins_left, snap.ticker, RECOVERY_PILOT_SOURCE);
