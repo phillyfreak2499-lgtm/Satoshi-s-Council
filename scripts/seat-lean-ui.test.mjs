@@ -196,14 +196,24 @@ test("a directional vote without a Chair row is announced as a research read, ne
   assert.match(text(html), /Status: RESEARCH READ/);
   assert.match(text(html), /Directional research read — SATOSHI has not counted it\./);
   assert.doesNotMatch(text(html), /SATOSHI heard|SATOSHI counted/);
+  assert.equal(noRow.heardLean, "WAIT", "a research read cannot become the seat detail's heard vote");
   assert.match(html, /aria-valuenow="85"/, "the read itself still shows");
   const withRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }), WINDOW);
   assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "pro" }))), /Status: SPEAKING/);
   assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "guided" }))), /Status: Bullish read — SATOSHI counted it\./);
+  assert.equal(withRow.heardLean, "UP");
   for (const l of [noRow, withRow]) {
     const t = text(renderToString(React.createElement(SeatLeanMeter, { lean: l, mode: "pro", showDisclaimer: true })));
     assert.match(t, /It is not a probability and not a SATOSHI call\./);
   }
+});
+
+test("the seat detail heard chip uses the shared admitted read, with an explicit no-row state", () => {
+  const detail = read("src/routes/seat.$id.tsx");
+  assert.match(detail, /SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/);
+  assert.doesNotMatch(detail, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/);
+  assert.match(detail, /chairRow \? <>SATOSHI heard:/);
+  assert.match(detail, /No Chair row yet — research read only\./);
 });
 
 test("a fact without both retained raw fields renders NO READ, never a manufactured number", () => {
