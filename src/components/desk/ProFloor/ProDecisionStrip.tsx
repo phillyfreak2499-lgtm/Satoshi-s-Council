@@ -130,7 +130,7 @@ export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
           }
         >
           <span className={cn("text-title font-medium", tone)} aria-live="polite">
-            <span className="sr-only">House conclusion: </span>
+            <span className="sr-only">SATOSHI decision: </span>
             {conclusion.lean}
           </span>
           <div className="font-mono text-micro text-subtle">

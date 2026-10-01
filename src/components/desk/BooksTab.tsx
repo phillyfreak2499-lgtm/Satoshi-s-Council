@@ -419,7 +419,7 @@ function LabPane({ lab, tz }: { lab: BooksLab | null; tz: string }) {
               </div>
             </div>
           </div>
-          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-3 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             A shock is the settlement index jumping while an ask stayed put; fillable means the stale ask was still there 200 ms later. One paper trade per
             window, bought at that ask and held to settlement after the fee, so a burst of correlated shocks cannot inflate it. This edge lives at 200 ms
             on the cheap side; the chair ticks every four seconds and books only at the live {FLOOR_LIVE_CENTS}¢ floor or better, so it is not chasing it. INDEX brings the read to the council
@@ -519,7 +519,7 @@ function TrialPane({ trial, tz }: { trial: FloorTrial; tz: string }) {
         {col("live book", trial.live, trial.live_cents, false)}
         {col("shadow book", trial.shadow, trial.shadow_cents, true)}
       </div>
-      <p className="mt-2 font-mono text-micro text-subtle">
+      <p className="mt-2 font-sans text-micro text-subtle">
         {trial.until ? "This comparison ended before selective mode. New selective results are recorded separately. " : ""}
         Same windows, two floors. The live book pays {trial.live_cents}¢ or better; the shadow book counts what the old{" "}
         {trial.shadow_cents}¢ floor would have taken, and books nothing. It declined {trial.declined} fill
@@ -539,7 +539,7 @@ function KeeperPane({ keeper }: { keeper: Keeper }) {
         <KeeperCol label="all-time" s={keeper.all} />
         <KeeperCol label="last 7 days" s={keeper.week} />
       </div>
-      <p className="mt-2 font-mono text-micro text-subtle">
+      <p className="mt-2 font-sans text-micro text-subtle">
         Sits is how often the chair passed. Confluence is how hard the fills cleared the bar; floor kept is the share that honoured the floor in
         force when they closed — {FLOOR_LIVE_CENTS}¢ during the trial, {FLOOR_SHADOW_CENTS}¢ before it. Max drawdown is the worst peak-to-trough on
         paper. Every call is graded at its own 15-minute close.
@@ -704,10 +704,10 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
             <Totals label="since floor introduced" t={books.floor} />
             <Totals label="all-time" t={books.all} />
           </div>
-          <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
             Overlapping periods, not separate books. The floor period starts {fmtWhen(books.floor_since, tz)} and includes the later {FLOOR_LIVE_CENTS}¢ trial. Trial results are already in these totals; the shadow comparison is never added. Today uses America/Chicago; row times use {tz}.
           </p>
-          <p className="mt-2 font-mono text-micro"><a href="/record" className="text-fg underline underline-offset-4">Read the week on the record <span aria-hidden="true">→</span></a></p>
+          <p className="mt-2 font-sans text-micro"><a href="/record" className="text-fg underline underline-offset-4">Read the week on the record <span aria-hidden="true">→</span></a></p>
           {err ? <div className="mt-2 font-mono text-micro text-wait">last refresh failed: {err}</div> : null}
         </Pane>
       </section>
@@ -746,7 +746,7 @@ export function BooksTab({ tz, initial }: { tz: string; initial?: Books | null }
       <section id="books-calibration" className="grid grid-cols-1 scroll-mt-20 gap-4 xl:grid-cols-2">
         <Pane title={<Tip k="books.calib">DID THE PRICE TELL THE TRUTH?</Tip>}>
           <BucketChart buckets={books.buckets} at={books.at} />
-          <p className="mt-1 font-mono text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>
+          <p className="mt-1 font-sans text-micro text-subtle">grey = price paid · gold = breakeven after the fee · green or red = the shelf cleared it or fell short</p>
         </Pane>
         <Pane title={<Tip k="books.heat">HOURS</Tip>}>
           <Heat cells={books.heat} />

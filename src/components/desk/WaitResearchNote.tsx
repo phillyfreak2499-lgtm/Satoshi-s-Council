@@ -2,7 +2,7 @@
 export function WaitResearchNote() {
   return (
     <aside className="rounded-md border border-border bg-surface p-4 sm:p-5" aria-label="Why the desk has been waiting">
-      <p className="font-mono text-micro uppercase tracking-widest text-wait">About this WAIT stretch</p>
+      <p className="font-sans text-micro uppercase tracking-widest text-wait">About this WAIT stretch</p>
       <h2 className="mt-2 font-sans text-title font-medium text-fg">Why the Floor is waiting</h2>
       <p className="mt-2 max-w-[75ch] font-sans text-ui leading-relaxed text-muted">
         The Council has not found enough qualifying paper calls lately. A call needs supporting evidence,

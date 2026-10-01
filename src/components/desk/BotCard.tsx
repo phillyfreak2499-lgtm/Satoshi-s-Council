@@ -45,14 +45,13 @@ export function BotCard({
           className="flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
         >
           <span className="shrink-0 font-mono text-ui text-fg">
-            {seat} <span className="text-subtle">{meta.callsign}</span>
+            {seat} <HealthDot h={vote.health} /> <span className="text-subtle">{meta.callsign}</span>
           </span>
           <span className="font-mono text-micro text-muted">{seatAvailabilityLabel(lean)}</span>
-          <LeanChip lean={vote.lean} />
+          <LeanChip research lean={vote.lean} />
           <SeatLeanMini key={leanKey(lean)} lean={lean} className="shrink-0" />
           {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
           <span className="min-w-0 flex-1 truncate font-mono text-micro text-muted">{vote.hypothesis || vote.reasoning}</span>
-          <HealthDot h={vote.health} />
           <span aria-hidden="true" className="font-mono text-micro text-subtle">
             ▸
           </span>
@@ -80,13 +79,12 @@ export function BotCard({
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
           <div>
             <div className="font-mono text-ui text-fg">
-              <Tip k={`seat.${seat}`}>{seat}</Tip>{" "}
+              <Tip k={`seat.${seat}`}>{seat}</Tip>{" "}<HealthDot h={vote.health} />{" "}
               <span className="text-subtle">{meta.callsign}</span>
             </div>
             <div className="font-mono text-micro text-subtle">{meta.eyes}</div>
           </div>
           <div className="flex items-center gap-2">
-            <HealthDot h={vote.health} />
             <span className="font-mono text-micro text-muted">{vote.feed_age_s.toFixed(1)}s</span>
             {compact && !focused ? (
               <button
@@ -107,35 +105,15 @@ export function BotCard({
         {seat === "WICK" || seat === "TAPE" ? <a href={`/training/${seat.toLowerCase()}`} className="flex min-h-11 items-center border-t border-border px-3 font-mono text-micro text-wait hover:text-fg">Train with {seat} ↗</a> : null}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 p-3">
-        <div className="flex items-center gap-2">
-          <LeanChip lean={vote.lean} cents={ask} />
-          <span className="font-mono text-micro tabular text-muted">{vote.confidence} conf</span>
-          <Tip k="field.avg ¢">
-            <span
-              className={cn(
-                "font-mono text-data tabular",
-                avg == null ? "text-subtle" : avg >= 0 ? "text-up" : "text-down",
-              )}
-            >
-              {avg == null ? "avg —" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}
-              {st.legs.length ? ` · ${st.legs.length}` : ""}
-            </span>
-          </Tip>
-          <Tip k="field.calls">
-            <span className="font-mono text-data tabular text-fg">{calls} calls</span>
-          </Tip>
-          <Tip k="col.calib">
-            <span className="font-mono text-micro tabular text-muted">
-              {Math.round(calib * 100)}% · {calibN}/{FULL_N}
-            </span>
-          </Tip>
-          <span className="font-mono text-micro text-wait">
-            {vote.skill_used} ·{" "}
-            <Tip k={vote.skill_used === "SIT" ? "skill.SIT" : `skill.${vote.skill_status}`} mark={false}>
-              {vote.skill_status}
-            </Tip>
-          </span>
-        </div>
+        <dl className="grid grid-cols-2 gap-3">
+          <div><dt className="font-sans text-micro text-subtle">Research read</dt><dd><LeanChip research lean={vote.lean} cents={ask} /></dd></div>
+          <div><dt className="font-sans text-micro text-subtle">Confidence</dt><dd className="font-mono tabular text-fg">{vote.confidence}</dd></div>
+          <div><dt className="font-sans text-micro text-subtle"><Tip k="field.avg ¢">Average cents</Tip></dt><dd className={cn("font-mono tabular", avg == null ? "text-subtle" : avg >= 0 ? "text-up" : "text-down")}>{avg == null ? "—" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}</dd><dd className="font-sans text-micro text-muted">{st.legs.length} graded legs</dd></div>
+          <div><dt className="font-sans text-micro text-subtle"><Tip k="field.calls">Calls</Tip></dt><dd className="font-mono tabular text-fg">{calls}</dd></div>
+          <div><dt className="font-sans text-micro text-subtle"><Tip k="col.calib">Calibration</Tip></dt><dd className="font-mono tabular text-fg">{Math.round(calib * 100)}%</dd><dd className="font-sans text-micro text-muted">{calibN}/{FULL_N} observations</dd></div>
+          <div><dt className="font-sans text-micro text-subtle">Selected skill</dt><dd className="font-mono text-micro text-muted">{vote.skill_used} · <Tip k={vote.skill_used === "SIT" ? "skill.SIT" : `skill.${vote.skill_status}`} mark={false}>{vote.skill_status}</Tip></dd></div>
+        </dl>
+        <p className="font-sans text-micro text-subtle">Dotted underlines open definitions: hover, focus, or tap.</p>
         <Field
           k="phase"
           v={

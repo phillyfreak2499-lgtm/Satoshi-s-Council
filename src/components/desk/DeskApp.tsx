@@ -81,7 +81,7 @@ function FloorModeSwitch({ mode, onMode }: { mode: FloorMode; onMode: (m: FloorM
       <span className="mr-2 hidden font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
         View
       </span>
-      <div className="flex w-full items-center gap-1 sm:w-auto">
+      <div className="flex w-full items-center gap-0.5 sm:w-auto">
         {(
           [
             ["guided", "Guided Floor", "the plain-language view"],
@@ -96,7 +96,7 @@ function FloorModeSwitch({ mode, onMode }: { mode: FloorMode; onMode: (m: FloorM
               onClick={() => onMode(id)}
               aria-current={on ? "page" : undefined}
               title={hint}
-              className={cn(seg, on ? NAV_TAB_ON : NAV_TAB_IDLE)}
+              className={cn(seg, on ? "border-fg bg-fg text-bg font-semibold" : NAV_TAB_IDLE)}
             >
               {label}
             </button>
@@ -415,9 +415,6 @@ export function DeskApp({ last }: { last?: BooksWindow | null } = {}) {
           aria-label="Pro Floor sections"
           className="council-floor-tools gutter flex flex-wrap items-center gap-1 border-b border-border bg-surface py-1"
         >
-          <span className="mr-2 hidden font-mono text-micro uppercase tracking-widest text-subtle sm:inline">
-            Pro Floor
-          </span>
           {PRIMARY.map((item) => {
             const active = item.id === "structure" ? DESK_IDS.has(tab) : tab === item.id;
             return (

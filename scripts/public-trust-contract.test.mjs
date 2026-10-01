@@ -54,7 +54,7 @@ test("the live Floor separates the standing read from the current signal frame",
   const signal = read("src/lib/desk/chair-signal.ts");
   const gauge = read("src/components/desk/ChairSignalGauge.tsx");
 
-  assert.match(floor, /Standing Chair read/);
+  assert.match(floor, /SATOSHI · standing read/);
   assert.match(floor, /Current frame · the gauge below moves live/);
   assert.match(floor, /Paper entry is separate/);
   assert.match(signal, /Current Chair frame:/);

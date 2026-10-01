@@ -27,7 +27,7 @@ test("Quiet density compacts the room without unmounting the call or adding navi
   assert.match(css, /\.council-floor-room\[data-density="quiet"\]\s*\{\s*padding-top: 78px;/);
   assert.equal((component.match(/<ChairBoard\s/g) ?? []).length, 1);
   assert.equal((component.match(/<CallPrices\s/g) ?? []).length, 1);
-  assert.match(component, /<details className="council-chair-evidence">[\s\S]*?<summary>View evidence[\s\S]*?Prices, fees &amp; timestamps[\s\S]*?<\/summary>[\s\S]*?<EconomicsBox[\s\S]*?<CallPrices[\s\S]*?<\/details>/);
+  assert.match(component, /<details className="council-chair-evidence">[\s\S]*?<summary[^>]*>View evidence[\s\S]*?Prices, fees &amp; timestamps[\s\S]*?<\/summary>[\s\S]*?<EconomicsBox[\s\S]*?<CallPrices[\s\S]*?<\/details>/);
   assert.ok(component.indexOf("<CallPrices") > component.indexOf('id="chair-stage"'));
 });
 

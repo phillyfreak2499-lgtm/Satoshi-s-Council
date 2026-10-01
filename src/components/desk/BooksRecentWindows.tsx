@@ -103,7 +103,7 @@ export function BooksRecentWindows({
     <section aria-label="Recent windows summary" className="rounded-md border border-border bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-mono text-micro uppercase tracking-widest text-subtle">Recent windows</h2>
-        <p className="font-mono text-micro text-subtle">
+        <p className="font-sans text-micro text-subtle">
           {fills} filled · sit runs collapsed
         </p>
       </div>
@@ -151,7 +151,7 @@ export function BooksRecentWindows({
       </div>
       {missing && missing.length > 0 ? (
         <div className="mt-3">
-          <p className="font-mono text-micro text-muted">{missingWindowsLine(missing.length)}</p>
+          <p className="font-sans text-micro text-muted">{missingWindowsLine(missing.length)}</p>
           <details className="font-mono text-micro text-subtle">
             <summary className="min-h-11 cursor-pointer py-2">
               Show missing closes · {missing.length} dated outages

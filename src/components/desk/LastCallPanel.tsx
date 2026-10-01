@@ -43,7 +43,7 @@ export function LastCallPanel({
       aria-label="Last recorded paper call"
       className="rounded-md border border-border bg-surface p-4 sm:p-5"
     >
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">{line.label}</p>
+      <p className="font-sans text-micro uppercase tracking-widest text-subtle">{line.label}</p>
       <p className="mt-2 font-sans text-body leading-relaxed text-fg">
         <a href={line.href} className="text-fg underline underline-offset-2 hover:text-muted">
           {line.text}

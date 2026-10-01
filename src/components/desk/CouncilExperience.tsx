@@ -22,7 +22,7 @@ export function CouncilEntrance({ onTour, onEnter }: { onTour?: () => void; onEn
         <h2 id="obs-title" className="obs-hero-title">A council of minds.<br /><em>One considered call.</em></h2>
         <p className="obs-hero-description">Many perspectives. A clear 15-minute view.<br className="obs-desktop-break" /> Follow the call, understand the reasoning,<br className="obs-desktop-break" /> and know when the Council waits.</p>
         <div className="obs-hero-actions">
-          <a className="obs-primary" href="#chair-stage" onClick={onEnter}>Enter the floor <Arrow /></a>
+          <a className="obs-primary" href="#chair-stage" onClick={onEnter}>Open the floor <Arrow /></a>
           <a className="obs-text-link" href="#the-method">Meet the Council <Arrow diagonal /></a>
           {onTour ? <button type="button" className="obs-text-link" onClick={onTour}>60-second tour</button> : null}
         </div>

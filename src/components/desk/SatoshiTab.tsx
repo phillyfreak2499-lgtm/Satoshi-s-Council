@@ -150,7 +150,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
       <div className="council-chair-summary">
         <div className="min-w-0">
           <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            <Tip k="pane.board">Standing Chair read</Tip>
+            <Tip k="pane.board">SATOSHI · standing read</Tip>
           </div>
           <h1 className={cn("council-chair-verdict font-sans font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             <span className="sr-only">Chair call: </span>
@@ -197,7 +197,7 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
         </div>
       </div>
       <details className="council-chair-evidence">
-        <summary>View evidence <span>Prices, fees &amp; timestamps</span></summary>
+        <summary className="flex flex-wrap items-center gap-x-2 gap-y-1">View evidence <span>Prices, fees &amp; timestamps</span></summary>
         <div className="company-evidence-metrics">
           <div>
             <div className="font-mono text-micro uppercase tracking-widest text-subtle">
@@ -346,7 +346,7 @@ function ShadowChair({ v2 }: { v2: V2Frame }) {
           weights · {v2.top.map(([k, w]) => `${k} ${w >= 0 ? "+" : ""}${w.toFixed(2)}`).join(" · ")}
         </div>
       ) : null}
-      <p className="mt-2 font-mono text-micro text-subtle">
+      <p className="mt-2 font-sans text-micro text-subtle">
         Paper only. One probability learned from the ledger — every seat&apos;s honest read plus the
         market — trading only where it beats the ask by more than the fee, only as far from the market as its
         calibration record has earned, and never under 35¢. It competes with the chair on
@@ -564,8 +564,8 @@ function GavelList({ gavel, tz }: { gavel: GavelRow[]; tz: string }) {
           </table>
         </div>
       )}
-      <p className="border-t border-border px-3 py-1.5 font-mono text-micro text-subtle">
-        UP/DOWN is the Chair read. FILLED means the paper book recorded it. SKIP means the read stood but no paper position was taken; skipped reads never enter paper P&amp;L.
+      <p className="border-t border-border px-3 py-1.5 font-sans text-micro text-subtle">
+        UP/DOWN is the SATOSHI read. FILLED means the paper book recorded it. SKIP means the read stood but no paper position was taken; skipped reads never enter paper P&amp;L.
         {size > 1 ? ` Filled P&L is shown at ${size.toLocaleString("en-US")} contracts, assuming the ask holds.` : ""}
       </p>
     </section>
@@ -587,7 +587,7 @@ function SeatsList({ rows, learner }: { rows: SeatRow[]; learner: import("@/lib/
         <span aria-hidden="true" className="transition-transform duration-200 ease-out group-open:rotate-90">▸</span>
       </summary>
       <div className="border-t border-border px-3 py-2">
-        <p className="mb-2 font-mono text-micro text-subtle">Each seat&apos;s own paper scalps in cents — specialist practice, not the Chair&apos;s book. These do not settle windows and are never Chair calls.</p>
+        <p className="mb-2 font-sans text-micro text-subtle">Each seat&apos;s own paper scalps in cents — specialist practice, not the Chair&apos;s book. These do not settle windows and are never Chair calls.</p>
         {!withFills.length ? (
           <div className="font-mono text-ui text-muted">No specialist fills yet.</div>
         ) : (

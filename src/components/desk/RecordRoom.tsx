@@ -101,7 +101,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">Results · This week</div>
           <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The week on the record.</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">Paper grades. Public prices. No live orders.</p>
-          {data ? <p className="mt-2 font-mono text-micro text-subtle">{data.window.label}. As of {utcStamp(data.at)}.</p> : null}
+          {data ? <p className="mt-2 font-sans text-micro text-subtle">{data.window.label}. As of {utcStamp(data.at)}.</p> : null}
         </section>
 
         {!data ? (
@@ -116,7 +116,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
                 <Stat label="Net after fees" value={fmtCents(data.score.net)} sub="one contract per fill, real ask, real fee" />
                 <Stat label="Max drawdown" value={data.score.max_dd == null ? "—" : data.score.max_dd ? fmtCents(data.score.max_dd) : "0.0¢"} sub={data.score.max_dd == null ? "scorecard unavailable this refresh" : "worst peak to trough this week"} />
               </dl>
-              <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+              <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
                 {note?.text} <a href="/books" className="text-fg underline underline-offset-4">Books, last 7 days <span aria-hidden="true">→</span></a>
               </p>
             </Block>
@@ -153,7 +153,7 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
 
             <Block n="04" title="One seat note">
               <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">{data.seat_note ? data.seat_note.line : "No graded directional seat reads this week."}</p>
-              <p className="mt-2 font-mono text-micro text-subtle">A seat record is a graded frequency, not a rating. It does not change how the Chair hears the seat.</p>
+              <p className="mt-2 font-sans text-micro text-subtle">A seat record is a graded frequency, not a rating. It does not change how the Chair hears the seat.</p>
             </Block>
 
             {data.missing_windows > 0 ? (
@@ -169,12 +169,12 @@ export function RecordRoom({ initial }: { initial: WeekRecord | null }) {
                 <a href="/training/wick" className="text-fg underline underline-offset-4">Start with WICK <span aria-hidden="true">→</span></a>
                 <a href="/books" className="text-fg underline underline-offset-4">Full books <span aria-hidden="true">→</span></a>
               </div>
-              <p className="mt-3 font-mono text-micro text-subtle">A longer Bitcoin clock is graded separately <a href="/hour" className="text-fg underline underline-offset-4">→ /hour</a></p>
+              <p className="mt-3 font-sans text-micro text-subtle">A longer Bitcoin clock is graded separately <a href="/hour" className="text-fg underline underline-offset-4">→ /hour</a></p>
             </section>
 
             <details className="mt-6 rounded-md border border-border bg-surface p-4">
               <summary className="cursor-pointer font-sans text-ui text-fg">Copy the week</summary>
-              <p className="mt-2 font-mono text-micro text-subtle">Plain text, in the site voice. Paste it where you like.</p>
+              <p className="mt-2 font-sans text-micro text-subtle">Plain text, in the site voice. Paste it where you like.</p>
               <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-sm border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-muted">{data.copy}</pre>
               <div className="mt-3 flex items-center gap-3">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copy()}>Copy</button>
