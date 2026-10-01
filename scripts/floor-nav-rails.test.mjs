@@ -134,13 +134,12 @@ test("?view=guided selects Guided, Pro clears it, and ?guided=true is not canoni
 test("the home page offers both doors explicitly, and claims no advantage for either", () => {
   const home = read(HOME);
   assert.match(home, /href="\/desk\?view=guided"/, "Guided has its own canonical entry");
-  assert.match(home, /href="\/desk"/, "Pro remains one click away");
-  assert.match(home, /Open Guided Floor/);
-  assert.match(home, /Open Pro Floor/);
-  assert.match(home, /See the Council’s live decision in plain English/);
-  assert.match(home, /Full evidence, prices, model, gates and diagnostics/);
-  // Same window, same call — and no accuracy claim to dress one up.
-  assert.match(home, /same live window and the same call/i);
+  assert.match(home, /href="\/desk\?view=pro"/, "Pro has its own canonical entry");
+  assert.match(home, /New here · Guided Floor/);
+  assert.match(home, /Returning · Pro Floor/);
+  // Same window, same Chair decision — Pro only exposes more working.
+  assert.match(home, /same live window and the same Chair decision/i);
+  assert.match(home, /Pro only exposes more of the working/i);
   const homeCode = codeOf(HOME);
   for (const claim of [
     /more accurate/i,
@@ -152,8 +151,10 @@ test("the home page offers both doors explicitly, and claims no advantage for ei
   ]) {
     assert.doesNotMatch(homeCode, claim, "neither view may claim better research");
   }
-  // Paper-only messaging survives the rewrite.
-  assert.match(home, /Paper research\. Public prices\. No live orders\./);
+  // Paper-only and no-live-order messaging survive the rewrite.
+  assert.match(home, /Independent Bitcoin research · Paper only/);
+  assert.match(home, /Public prices · No live orders · Not affiliated with Kalshi\./);
+  assert.match(home, /It never trades\./);
 });
 
 // ---------------------------------------------------------------------------
