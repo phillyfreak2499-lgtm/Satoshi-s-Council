@@ -199,6 +199,31 @@ test('legacy state without a checkpoint does not invent a lost decision', async 
   assert.equal(h.grades.length, 0);
 });
 
+test('expired market settles from frozen pre-close votes, never post-result votes', async () => {
+  const h = harness(); const e = h.freshEng(); const original = fixture();
+  setCurrent(e, original); h.noteGradeCand(e, original.snap, original.votes, original.chair);
+  const expired = { ...original.snap, as_of: CLOSE + 4000, secs_left: 0,
+    official_settles: [{ ticker: TICKER, close_time: CLOSE, lean: 'DOWN' }] };
+  const postResult = [{ seat: 'DRIFT', lean: 'UP', confidence: 99 }];
+  h.noteGradeCand(e, expired, postResult, original.chair);
+  await h.settleIfNeeded(e, expired, postResult, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 1);
+  assert.deepEqual(h.grades[0].votes, original.votes);
+  assert.equal(h.grades[0].snap.as_of, original.snap.as_of);
+  await h.settleIfNeeded(e, expired, postResult, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 1, 'the retained expired contract grades once');
+});
+
+test('expired market without any pre-close evidence stays missing, not reconstructed', async () => {
+  const h = harness(); const e = h.freshEng(); const original = fixture();
+  const expired = { ...original.snap, as_of: CLOSE + 4000, secs_left: 0,
+    official_settles: [{ ticker: TICKER, close_time: CLOSE, lean: 'DOWN' }] };
+  await h.settleIfNeeded(e, expired, original.votes, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 0);
+  assert.equal(e.pending.length, 0);
+  assert.match(e.errors.at(-1).msg, /no retained pre-close grading input/);
+});
+
 test('wrong identities, missing votes, nonfinite data and completed windows are refused', () => {
   const w = fixture();
   for (const bad of [null, {}, { ...w, close_time: CLOSE + 900000 }, { ...w, votes: [] }, { ...w, chair: {} }, { ...w, snap: { ...w.snap, spot: NaN } }, { ...w, snap: { ...w.snap, as_of: CLOSE + 120000 } }]) {

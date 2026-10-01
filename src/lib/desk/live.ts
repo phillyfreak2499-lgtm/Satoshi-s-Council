@@ -1,4 +1,5 @@
 import { enrichSnapshot } from "./features";
+import { recordedMarketIdentity } from "./market-window.ts";
 import { appendPeriod, deltaOver, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, valuesOf, type HistPoint } from "./hist";
 import { emptyTally } from "./candle-time";
 import type { PathPoint } from "./path-time";
@@ -18,10 +19,10 @@ export function bundleToSnapshot(
 ): Snapshot {
   const now = b.as_of;
   const kalshi = b.kalshi;
-  const close =
-    kalshi?.close_time && kalshi.close_time > now
-      ? kalshi.close_time
-      : Math.ceil(now / (15 * 60_000)) * 15 * 60_000;
+  // Expiry never creates a new market. Keep the observed ticker and close
+  // together, even through a venue pause; a new contract requires new evidence.
+  const market = recordedMarketIdentity(kalshi, prev);
+  const close = market.close_time;
   const spot = b.spot ?? prev?.spot ?? 0;
   const backup = b.spot_backup ?? prev?.spot_backup ?? 0;
   const perp = b.perp ?? prev?.perp ?? 0;
@@ -170,7 +171,7 @@ export function bundleToSnapshot(
     mins_left: 0,
     secs_left: 0,
     close_time: close,
-    ticker: kalshi?.ticker ?? prev?.ticker ?? "KXBTC15M-—",
+    ticker: market.ticker,
     kalshi_host: kalshi?.host ?? prev?.kalshi_host ?? "",
     kalshi_trade_n: kalshi?.trade_n ?? prev?.kalshi_trade_n ?? 0,
     kalshi_taker_yes: kalshi?.taker_yes ?? prev?.kalshi_taker_yes ?? 0.5,
@@ -217,7 +218,7 @@ export function bundleToSnapshot(
       seq: quote_seq,
       gap,
       source: kalshi?.host || b.spot_source || "none",
-      ticker: kalshi?.ticker ?? prev?.ticker ?? "KXBTC15M-—",
+      ticker: market.ticker,
     },
     yes_mid,
     yes_mid_path,
