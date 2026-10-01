@@ -8,6 +8,8 @@ export type DiscordEvent = {
   target: string; payload: DiscordPayload; expires: number; parent?: string;
 };
 export type DiscordPayload = {
+  /** Outbox metadata only; removed before provider I/O. */
+  heldBeforeRelease?: boolean;
   username: string; allowed_mentions: { parse: string[] };
   embeds: { title: string; description: string; color: number; timestamp: string;
     fields: { name: string; value: string; inline?: boolean }[]; footer: { text: string } }[];
@@ -29,17 +31,31 @@ function embed(title: string, description: string, color: number, observed: numb
     embeds: [{ title, description, color, timestamp: stamp(observed), fields,
       footer: { text: "Paper-only Bitcoin research · satoshiscouncil.com" } }] };
 }
+/** Normalize both new embeds and stored pre-release payloads without inventing seat reads. */
+export function paperLayers(payload: DiscordPayload, side: "UP" | "DOWN", source: string | null): DiscordPayload {
+  return { ...payload, embeds: payload.embeds.map((e) => {
+    const entry = e.fields.find((f) => f.name === "Entry")?.value;
+    const fields = e.fields.filter((f) => !["Decision", "Research outlook", "SATOSHI decision", "Paper position"].includes(f.name));
+    return { ...e, fields: [...fields,
+      { name: "Research outlook", value: "Not recorded in this post. Seat leans are research only and post separately." },
+      { name: "SATOSHI decision", value: source
+        ? `Not recorded here. ${source} is a paper pilot, not a SATOSHI Chair decision.`
+        : `${side} — the Chair decision at the original booking time.` },
+      { name: "Paper position", value: `Recorded paper fill · ${side}${entry ? ` · ${entry}` : ""}. No real order or money.` },
+    ] };
+  }) };
+}
 export function paperEvent(side: "UP" | "DOWN", cents: number, close: number, observed: number,
   ticker: string, source: string | null, build: string, target: string): DiscordEvent {
   const key = `paper|${ticker}|${close}|${source ?? "chair"}|${side}`;
   const seat = source ? "RECOVERY_FAV85_V1" : "SATOSHI";
   return { key, kind: "paper", ticker, close, observed, seat, side, source, build, target,
     expires: close + 86400000,
-    payload: embed(`■ PAPER POSITION BOOKED · ${side}`, "Recorded paper fill. No live trade: paper only, no real order or money.", 0x16a34a, observed,
+    payload: paperLayers(embed(`■ PAPER POSITION BOOKED · ${side}`, "Recorded paper fill. No live trade: paper only, no real order or money.", 0x16a34a, observed,
       [{ name: "Seat", value: seat, inline: true }, { name: "Direction", value: side, inline: true },
         { name: "Decision", value: source ? `${seat} paper pilot, not a SATOSHI Chair decision` : "SATOSHI decision (the Chair's call), booked as a paper position", inline: true },
         { name: "Entry", value: `${cents.toFixed(1)}¢`, inline: true },
-        { name: "Window closes (UTC)", value: stamp(close) }, { name: "Window", value: ticker }]) };
+        { name: "Window closes (UTC)", value: stamp(close) }, { name: "Window", value: ticker }]), side, source) };
 }
 /** Directional reads post at most once per 15-minute Kalshi window: one research-outlook
  * summary of every seat's lean, taken on the first frame with at most this much time left
@@ -105,8 +121,7 @@ export function latePayload(payload: DiscordPayload, late: LateInfo): DiscordPay
     : `■ Paper position settled${won == null ? "" : ` · ${won ? "WIN" : "LOSS"}`}. Follow-up for a paper position booked earlier, held while Discord delivery was off and posted after the owner release as a record. Net P&L includes the book's actual fee.`;
   return { ...payload, embeds: [{ ...original, title: closed ? LATE_LABEL : LATE_OPEN_LABEL, description: layer, color: LATE_COLOR,
     fields: [{ name: "Originally booked (CT)", value: centralTime(late.booked) }, { name: "Settled outcome", value: outcome },
-      ...original.fields,
-      { name: "Research outlook", value: "Not part of this post. Seat-lean summaries are research only and post separately." }] }] };
+      ...original.fields] }] };
 }
 export type PaperScoreboard = { wins: number; losses: number; net: number };
 export function settlementEvent(parent: DiscordEvent, winner: "UP" | "DOWN", net: number,
@@ -114,12 +129,12 @@ export function settlementEvent(parent: DiscordEvent, winner: "UP" | "DOWN", net
   const won = parent.side === winner;
   return { ...parent, key: `settle|${parent.key}`, kind: "settle", parent: parent.key,
     build, observed: graded, expires: graded + 86400000,
-    payload: embed(`■ PAPER POSITION SETTLED · ${won ? "WIN" : "LOSS"}`,
+    payload: paperLayers(embed(`■ PAPER POSITION SETTLED · ${won ? "WIN" : "LOSS"}`,
       "Follow-up to the recorded paper fill. Net P&L includes the book's actual fee.", won ? 0x16a34a : 0xdc2626, graded,
       [{ name: "Seat", value: parent.seat, inline: true }, { name: "Booked direction", value: parent.side, inline: true },
         { name: "Outcome", value: winner, inline: true }, { name: "Net after fees", value: `${net >= 0 ? "+" : ""}${net.toFixed(1)}¢`, inline: true },
         ...(scoreboard ? [{ name: "Paper scoreboard · all-time", value: `${scoreboard.wins}W–${scoreboard.losses}L · ${scoreboard.net >= 0 ? "+" : ""}${scoreboard.net.toFixed(1)}¢ net after fees` }] : []),
-        { name: "Window closes (UTC)", value: stamp(parent.close) }, { name: "Window", value: parent.ticker }]) };
+        { name: "Window closes (UTC)", value: stamp(parent.close) }, { name: "Window", value: parent.ticker }]), parent.side, parent.source) };
 }
 export type PostResult = { ok: boolean; status: number | null; retryMs: number; terminal: boolean; message: string | null; code: string };
 const seconds = (value: unknown): number => {

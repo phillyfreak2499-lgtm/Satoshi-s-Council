@@ -269,8 +269,8 @@ test("post copy keeps research outlook, SATOSHI decision and paper position dist
   const pilot = lib.paperEvent("DOWN", 85, now + 60000, now, "KX-X", "RECOVERY_FAV85_V1", buildA, paper.hash).payload;
   assert.match(chairCall.embeds[0].title, /^■ PAPER POSITION BOOKED · UP$/);
   assert.match(chairCall.embeds[0].description, /No live trade: paper only, no real order or money/);
-  assert.equal(field(chairCall, "Decision"), "SATOSHI decision (the Chair's call), booked as a paper position");
-  assert.equal(field(pilot, "Decision"), "RECOVERY_FAV85_V1 paper pilot, not a SATOSHI Chair decision");
+  assert.equal(field(chairCall, "SATOSHI decision"), "UP — the Chair decision at the original booking time.");
+  assert.equal(field(pilot, "SATOSHI decision"), "Not recorded here. RECOVERY_FAV85_V1 is a paper pilot, not a SATOSHI Chair decision.");
   assert.notEqual(wait.embeds[0].color, chairCall.embeds[0].color);
   for (const p of [wait, up, chairCall, pilot]) {
     const text = JSON.stringify(p);
@@ -333,8 +333,8 @@ test("late paper call: label leads the title, booked time in CT, grey embed, rec
   assert.notEqual(late.embeds[0].color, 0x16a34a);
   assert.doesNotMatch(JSON.stringify(late), LIVE_WORDS);
   assert.match(late.embeds[0].description, /^■ Paper position booked earlier · UP\. .*Paper only, no real order or money\.$/);
-  assert.equal(field(late, "Decision"), "SATOSHI decision (the Chair's call), booked as a paper position");
-  assert.match(field(late, "Research outlook"), /^Not part of this post\. Seat-lean summaries are research only/);
+  assert.equal(field(late, "SATOSHI decision"), "UP — the Chair decision at the original booking time.");
+  assert.match(field(late, "Research outlook"), /^Not recorded in this post\. Seat leans are research only/);
   assert.equal(field(late, "Entry"), "83.0¢");
   // Embed timestamp stays the original booking time, never the posting time.
   assert.equal(late.embeds[0].timestamp, new Date(f.booked).toISOString());
@@ -372,7 +372,7 @@ test("late marking survives a restart: derived from durable outbox and release r
   const f = await lateFixture(t);
   let attempts = 0; const posted = [];
   const flaky = new DiscordOutbox(f.db, { build: buildA, paper, read }, () => release.discordReleased(f.db), f.time,
-    async (u, p) => { posted.push(p); return ++attempts === 1 ? { ...accepted, ok: false, status: 503, retryMs: 1000, code: "provider_or_receipt_failure" } : accepted; }, () => {});
+    async (u, p) => { posted.push(p); return ++attempts === 1 ? { ...accepted, ok: false, status: 429, retryMs: 1000, code: "rate_limited" } : accepted; }, () => {});
   f.advance(1000); await flaky.drain();
   // New process (and new deploy) retries the same row: still late.
   const restarted = new DiscordOutbox(f.db, { build: buildB, paper, read }, () => release.discordReleased(f.db), f.time,
@@ -417,3 +417,4 @@ test("24h cutoff unchanged: held paper past close+24h expires on release; just i
   assert.equal(f.calls[0].p.embeds[0].title, lib.LATE_LABEL);
   assert.equal(field(f.calls[0].p, "Window"), "KX-IN");
 });
+

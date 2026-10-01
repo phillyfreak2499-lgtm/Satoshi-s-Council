@@ -211,7 +211,7 @@ test("full production engine and push source differ only by the two outbound pub
   await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('pending',null,'valid'),('breakeven',0,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
   let attempts=0;const posted=[];
   const retry=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async(u,p)=>{
-    posted.push(p);return ++attempts===1?{...accepted,ok:false,status:503,retryMs:1000,code:'provider_or_receipt_failure'}:accepted;
+    posted.push(p);return ++attempts===1?{...accepted,ok:false,status:429,retryMs:1000,code:'rate_limited'}:accepted;
   });
   await retry.drain();f.advance(1001);await retry.drain();await retry.drain();
   assert.equal(posted.length,2);assert.deepEqual(posted[0],posted[1]);
@@ -234,3 +234,4 @@ test("losing settlement scoreboard includes the current loss and stored fees",as
   await f.outbox.drain();
   assert.equal(f.calls[1].p.embeds[0].fields.find(x=>x.name==='Paper scoreboard · all-time').value,'0W–1L · -85.0¢ net after fees');
 });
+

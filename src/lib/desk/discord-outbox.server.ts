@@ -1,5 +1,5 @@
 import type { Sql } from "@/lib/db";
-import { latePayload, postDiscord, settlementEvent, READ_SUMMARY_PREFIX, type DiscordEvent, type DiscordPayload, type PostResult } from "./discord-posts";
+import { latePayload, paperLayers, postDiscord, settlementEvent, READ_SUMMARY_PREFIX, type DiscordEvent, type DiscordPayload, type PostResult } from "./discord-posts";
 export type DiscordConfig = { build: string; paper: { url: string; hash: string } | null; read: { url: string; hash: string } | null };
 type Row = {
   event_key: string; kind: DiscordEvent["kind"]; ticker: string; close_time: string; seat: string;
@@ -40,7 +40,7 @@ export class DiscordOutbox {
     if (!target || target.hash !== event.target) return;
     // Only the per-window research summary is a read event; superseded per-seat
     // journal entries (pre-summary format) are dropped, never replayed.
-    if (event.kind === "read" && !event.key.startsWith(READ_SUMMARY_PREFIX)) return;
+    if (event.kind === "read" && event.key !== `${READ_SUMMARY_PREFIX}${event.ticker}|${event.close}`) return;
     // Reads captured while held stay held (and are collapsed on release). A paper call is
     // judged against the current release so journal lag can never drop a booked call.
     const released = await this.released(event.kind === "read" ? event.observed : undefined);
@@ -89,6 +89,14 @@ export class DiscordOutbox {
     this.busy = true;
     try {
       const now = this.now();
+      // Old per-seat rows may already be in SQL, not just the disk journal.
+      await this.db`update desk_discord_outbox set state='expired',lease_until=null,error_code='superseded_read'
+        where kind='read' and state in ('pending','held') and event_key not like 'readwin|%'`;
+      // Do not add a summary to an upgrade window whose legacy read already posted.
+      await this.db`update desk_discord_outbox o set state='expired',lease_until=null,error_code='window_already_delivered'
+        where o.kind='read' and o.state='pending' and exists (
+          select 1 from desk_discord_outbox s where s.kind='read' and s.state='sent'
+            and s.ticker=o.ticker and s.close_time=o.close_time and s.event_key<>o.event_key)`;
       if (!(await this.released())) {
         await this.db`update desk_discord_outbox set state='held',lease_until=null,error_code='discord_release_held' where state='pending'`;
         return;
@@ -98,8 +106,6 @@ export class DiscordOutbox {
       await this.db`update desk_discord_outbox set state='held',error_code='destination_changed'
         where state='pending' and target_hash not in (${this.config.paper?.hash ?? ""},${this.config.read?.hash ?? ""})`;
       await this.db`update desk_discord_outbox set state='expired',lease_until=null where state='pending' and expires_at<=${new Date(now)}`;
-      const [flag] = await this.db<{ released_at: string | null }>`select released_at from desk_discord_release where id=1 and released`;
-      const releasedAt = flag?.released_at ? new Date(flag.released_at).getTime() : null;
       await this.settlements();
       for (let i = 0; i < 10; i++) {
         const time = this.now();
@@ -118,9 +124,31 @@ export class DiscordOutbox {
           await this.db`update desk_discord_outbox set state='held',lease_until=null where event_key=${row.event_key}`;
           continue;
         }
-        // A held paper call/settlement posted after release is relabelled late; normal posts are untouched.
-        const late = row.kind !== "read" && releasedAt != null && new Date(row.observed_at).getTime() < releasedAt;
-        const result: PostResult = await this.post(target.url, late ? await this.late(row) : row.payload, row.attempts - 1);
+        // Persist send intent BEFORE provider I/O. A crash or ambiguous acceptance must
+        // never turn into a second public post. Only an explicit 429 can be retried.
+        // The lease CAS prevents an old worker from sending a row requeued by release.
+        // Read the release timestamp in this same statement, not once per drain.
+        const [dispatch] = await this.db<{ released_at: string | null }>`
+          update desk_discord_outbox o set state='failed',error_code='delivery_unconfirmed'
+          from desk_discord_release f where f.id=1 and f.released and o.event_key=${row.event_key}
+            and o.state='pending' and o.lease_until=${new Date(time + 60000)}
+            and (o.kind<>'read' or not exists (select 1 from desk_discord_outbox s
+              where s.kind='read' and s.state='sent' and s.ticker=o.ticker
+                and s.close_time=o.close_time and s.event_key<>o.event_key))
+          returning f.released_at`;
+        if (!dispatch) continue;
+        const releasedAt = dispatch.released_at ? new Date(dispatch.released_at).getTime() : null;
+        const late = row.kind !== "read" && (row.payload.heldBeforeRelease === true ||
+          (releasedAt != null && new Date(row.observed_at).getTime() < releasedAt));
+        const cleanPayload = { ...row.payload };
+        delete cleanPayload.heldBeforeRelease;
+        const payload = row.kind === "read" ? cleanPayload : paperLayers(cleanPayload, row.side, row.source);
+        const result: PostResult = await this.post(target.url, late ? await this.late({ ...row, payload }) : payload, row.attempts - 1);
+        const retryable = !result.ok && result.status === 429 && !result.terminal && row.attempts < 8;
+        await this.db`update desk_discord_outbox set state=${result.ok ? "sent" : retryable ? "pending" : "failed"},
+          lease_until=null,next_attempt=${new Date(this.now() + result.retryMs)},message_id=${result.message},last_status=${result.status},
+          error_code=${result.ok || retryable || result.terminal ? result.code : "delivery_unconfirmed"},
+          delivered_at=${result.ok ? new Date(this.now()) : null} where event_key=${row.event_key}`;
         // Cooldowns are persisted and shared by both tiers, including global 429 responses.
         // Conservatively block both destinations: this also covers identical Discord bucket routing.
         for (const t of [this.config.paper, this.config.read]) {
@@ -130,10 +158,6 @@ export class DiscordOutbox {
             on conflict(target_hash) do update set blocked_until=greatest(desk_discord_destinations.blocked_until,excluded.blocked_until),
               disabled=desk_discord_destinations.disabled or excluded.disabled`;
         }
-        const terminal = result.terminal || row.attempts >= 8;
-        await this.db`update desk_discord_outbox set state=${result.ok ? "sent" : terminal ? "failed" : "pending"},
-          lease_until=null,next_attempt=${new Date(this.now() + result.retryMs)},message_id=${result.message},last_status=${result.status},
-          error_code=${result.code},delivered_at=${result.ok ? new Date(this.now()) : null} where event_key=${row.event_key}`;
         if (!result.ok) this.log(`${row.kind}:${result.code}:${result.status ?? "network"}`);
       }
     } catch { this.log("queue_failure"); } finally { this.busy = false; }

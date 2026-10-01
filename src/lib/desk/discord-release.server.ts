@@ -44,7 +44,8 @@ export async function discordReleaseControl(db: Sql, input: DiscordReleaseInput,
         update desk_discord_outbox set state='expired',lease_until=null,error_code='collapsed_on_release'
         where state='held' and kind='read' returning 1
       ), requeued as (
-        update desk_discord_outbox set state='pending',lease_until=null,next_attempt=${at},error_code=null
+        update desk_discord_outbox set state='pending',lease_until=null,next_attempt=${at},error_code=null,
+          payload=jsonb_set(payload,'{heldBeforeRelease}','true'::jsonb)
         where state='held' and kind<>'read' and expires_at>${at} returning 1
       ), expired as (
         update desk_discord_outbox set state='expired',lease_until=null,error_code='expired_while_held'
