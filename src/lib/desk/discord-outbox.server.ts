@@ -1,10 +1,10 @@
 import type { Sql } from "@/lib/db";
-import { postDiscord, settlementEvent, READ_SUMMARY_PREFIX, type DiscordEvent, type DiscordPayload, type PostResult } from "./discord-posts";
+import { latePayload, postDiscord, settlementEvent, READ_SUMMARY_PREFIX, type DiscordEvent, type DiscordPayload, type PostResult } from "./discord-posts";
 export type DiscordConfig = { build: string; paper: { url: string; hash: string } | null; read: { url: string; hash: string } | null };
 type Row = {
   event_key: string; kind: DiscordEvent["kind"]; ticker: string; close_time: string; seat: string;
   side: "UP" | "DOWN"; source: string | null; observed_at: string; build_sha: string; target_hash: string;
-  payload: DiscordPayload; expires_at: string; attempts: number;
+  payload: DiscordPayload; expires_at: string; attempts: number; parent_key?: string | null;
 };
 const eventOf = (r: Row): DiscordEvent => ({ key: r.event_key, kind: r.kind, ticker: r.ticker, close: new Date(r.close_time).getTime(),
   seat: r.seat, side: r.side, source: r.source, observed: new Date(r.observed_at).getTime(), build: r.build_sha,
@@ -22,6 +22,18 @@ export class DiscordOutbox {
     if (observed == null) return true;
     const rows = await this.db`select id from desk_discord_release where id=1 and released and released_at<=${new Date(observed)}`;
     return rows.length > 0;
+  }
+  /** Late = booked/graded before the current owner release, i.e. held then posted after it.
+   * Derived from durable outbox + flag rows, so it survives restarts. Read-only lookups. */
+  private async late(row: Row): Promise<DiscordPayload> {
+    const parent = row.kind === "settle" && row.parent_key
+      ? (await this.db<{ observed_at: string }>`select observed_at from desk_discord_outbox where event_key=${row.parent_key}`)[0] : undefined;
+    const [l] = await this.db<{ winner: "UP" | "DOWN"; ev_cents: number }>`select winner,ev_cents from desk_ledger_research
+      where ticker=${row.ticker} and close_time=${new Date(row.close_time)} and entry_lean=${row.side}
+        and entry_source is not distinct from ${row.source} and winner in ('UP','DOWN') and ev_cents is not null limit 1`;
+    return latePayload(row.payload, { kind: row.kind === "settle" ? "settle" : "paper", side: row.side,
+      booked: new Date(parent?.observed_at ?? row.observed_at).getTime(), close: new Date(row.close_time).getTime(),
+      posted: this.now(), outcome: l ? { winner: l.winner, net: Number(l.ev_cents) } : null });
   }
   async enqueue(event: DiscordEvent): Promise<void> {
     const target = event.kind === "read" ? this.config.read : this.config.paper;
@@ -86,6 +98,8 @@ export class DiscordOutbox {
       await this.db`update desk_discord_outbox set state='held',error_code='destination_changed'
         where state='pending' and target_hash not in (${this.config.paper?.hash ?? ""},${this.config.read?.hash ?? ""})`;
       await this.db`update desk_discord_outbox set state='expired',lease_until=null where state='pending' and expires_at<=${new Date(now)}`;
+      const [flag] = await this.db<{ released_at: string | null }>`select released_at from desk_discord_release where id=1 and released`;
+      const releasedAt = flag?.released_at ? new Date(flag.released_at).getTime() : null;
       await this.settlements();
       for (let i = 0; i < 10; i++) {
         const time = this.now();
@@ -104,7 +118,9 @@ export class DiscordOutbox {
           await this.db`update desk_discord_outbox set state='held',lease_until=null where event_key=${row.event_key}`;
           continue;
         }
-        const result: PostResult = await this.post(target.url, row.payload, row.attempts - 1);
+        // A held paper call/settlement posted after release is relabelled late; normal posts are untouched.
+        const late = row.kind !== "read" && releasedAt != null && new Date(row.observed_at).getTime() < releasedAt;
+        const result: PostResult = await this.post(target.url, late ? await this.late(row) : row.payload, row.attempts - 1);
         // Cooldowns are persisted and shared by both tiers, including global 429 responses.
         // Conservatively block both destinations: this also covers identical Discord bucket routing.
         for (const t of [this.config.paper, this.config.read]) {

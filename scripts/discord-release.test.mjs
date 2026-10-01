@@ -217,7 +217,10 @@ test("one post per booked paper call: no aggregation, duplicates deduped, held c
   const posted = f.calls.filter((c) => c.u === paper.url);
   assert.equal(posted.length, 5);
   assert.equal(new Set(posted.map((c) => JSON.stringify(c.p))).size, 5);
-  assert.ok(posted.every((c) => c.p.embeds.length === 1 && /PAPER POSITION BOOKED/.test(c.p.embeds[0].title)));
+  assert.ok(posted.every((c) => c.p.embeds.length === 1));
+  // The call held before release posts once, labelled late; the four booked after release are normal.
+  assert.equal(posted.filter((c) => c.p.embeds[0].title.startsWith("LATE · ")).length, 1);
+  assert.equal(posted.filter((c) => /^■ PAPER POSITION BOOKED · (UP|DOWN)$/.test(c.p.embeds[0].title)).length, 4);
 });
 
 test("release does not flood: 1,049 held reads collapse, held unexpired paper calls post once, expired ones do not", async (t) => {
@@ -228,8 +231,8 @@ test("release does not flood: 1,049 held reads collapse, held unexpired paper ca
     select 'read|KX-'||g||'|DRIFT','read','KX-'||g,$1::timestamptz - (g||' minutes')::interval,'DRIFT','UP',null,$1::timestamptz - (g||' minutes')::interval - interval '5 minutes',
       $2,$3,'{"username":"x","allowed_mentions":{"parse":[]},"embeds":[]}'::jsonb,'held',$1::timestamptz - (g||' minutes')::interval,'rollout_held'
     from generate_series(1,1049) g`, [new Date(now), "c".repeat(40), read.hash]);
-  const fresh = paperAt(f, "c".repeat(40), "KX-FRESH", now - 3600000);
-  const stale = { ...paperAt(f, "c".repeat(40), "KX-STALE", now - 2 * 86400000), expires: now - 86400000 };
+  const fresh = { ...paperAt(f, "c".repeat(40), "KX-FRESH", now - 3600000), observed: now - 3700000 };
+  const stale = { ...paperAt(f, "c".repeat(40), "KX-STALE", now - 2 * 86400000), observed: now - 2 * 86400000 - 60000, expires: now - 86400000 };
   const o = f.outbox(buildA);
   await o.enqueue(fresh); await o.enqueue(stale);
   assert.equal((await f.db.query("select count(*)::int n from desk_discord_outbox where state='held'"))[0].n, 1051);
@@ -299,4 +302,118 @@ test("owner route: admin key required; release/hold/status only through it", asy
   delete process.env.DESK_ADMIN_KEY;
   assert.equal((await call({ key: "owner-test-key", action: "release" })).status, 503);
   assert.equal(await release.discordReleased(f.db), false);
+});
+
+// ---- Late (held, posted after release) paper calls and settlements ----
+const field = (p, name) => p.embeds[0].fields.find((x) => x.name === name)?.value;
+const LIVE_WORDS = /\b(now|live|new call)\b/i;
+async function lateFixture(t, { bookedAgo = 3 * 3600000, closeAgo = 2 * 3600000, ledger = null, source = null } = {}) {
+  const f = await fixture(t);
+  const now = f.time();
+  const booked = now - bookedAgo, close = now - closeAgo;
+  const e = { ...lib.paperEvent("UP", 83, close, booked, "KX-LATE", source, "c".repeat(40), paper.hash) };
+  const o = f.outbox(buildA);
+  await o.enqueue(e); // held: Discord flag not yet released
+  if (ledger) await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',$3,$4,$5,$6,'valid')",
+    ["KX-LATE", new Date(close), source, ledger.winner, ledger.net, new Date(close + 60000)]);
+  await release.discordReleaseControl(f.db, { action: "release" }, now);
+  return { ...f, o, e, booked, close, now };
+}
+
+test("late paper call: label leads the title, booked time in CT, grey embed, recorded outcome shown, layers separate", async (t) => {
+  const f = await lateFixture(t, { ledger: { winner: "UP", net: 17 } });
+  f.advance(1000); await f.o.drain();
+  const late = f.calls.find((c) => c.u === paper.url).p;
+  assert.equal(late.embeds[0].title, "LATE · ALREADY SETTLED · posted after release, not a current call");
+  assert.equal(late.embeds[0].fields[0].name, "Originally booked (CT)");
+  assert.equal(late.embeds[0].fields[0].value, lib.centralTime(f.booked));
+  assert.match(late.embeds[0].fields[0].value, /^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2} (AM|PM) CT$/);
+  assert.equal(field(late, "Settled outcome"), "UP · paper WIN · +17.0¢ net after fees");
+  assert.equal(late.embeds[0].color, lib.LATE_COLOR);
+  assert.notEqual(late.embeds[0].color, 0x16a34a);
+  assert.doesNotMatch(JSON.stringify(late), LIVE_WORDS);
+  assert.match(late.embeds[0].description, /^■ Paper position booked earlier · UP\. .*Paper only, no real order or money\.$/);
+  assert.equal(field(late, "Decision"), "SATOSHI decision (the Chair's call), booked as a paper position");
+  assert.match(field(late, "Research outlook"), /^Not part of this post\. Seat-lean summaries are research only/);
+  assert.equal(field(late, "Entry"), "83.0¢");
+  // Embed timestamp stays the original booking time, never the posting time.
+  assert.equal(late.embeds[0].timestamp, new Date(f.booked).toISOString());
+  // Its settlement follow-up (graded before release) is late too: label first, booked time from the parent.
+  f.advance(1000); await f.o.drain();
+  const settle = f.calls.filter((c) => c.u === paper.url)[1].p;
+  assert.equal(settle.embeds[0].title, lib.LATE_LABEL);
+  assert.equal(field(settle, "Originally booked (CT)"), lib.centralTime(f.booked));
+  assert.equal(field(settle, "Settled outcome"), "UP · paper WIN · +17.0¢ net after fees");
+  assert.match(settle.embeds[0].description, /^■ Paper position settled · WIN\./);
+  assert.equal(settle.embeds[0].color, lib.LATE_COLOR);
+  assert.doesNotMatch(JSON.stringify(settle), LIVE_WORDS);
+});
+
+test("late paper call with no recorded settlement says so plainly and invents no outcome", async (t) => {
+  const f = await lateFixture(t);
+  f.advance(1000); await f.o.drain();
+  const late = f.calls[0].p;
+  assert.equal(late.embeds[0].title, lib.LATE_LABEL);
+  assert.equal(field(late, "Settled outcome"), "Not known: no recorded settlement for this window was found when this was posted.");
+  assert.doesNotMatch(JSON.stringify(late), /\bWIN\b|\bLOSS\b/);
+  // A loss is reported as a loss when recorded.
+  const g = await lateFixture(t, { ledger: { winner: "DOWN", net: -83 } });
+  g.advance(1000); await g.o.drain();
+  assert.equal(field(g.calls[0].p, "Settled outcome"), "DOWN · paper LOSS · -83.0¢ net after fees");
+  // A window that has not closed yet is never called settled.
+  const h = await lateFixture(t, { bookedAgo: 120000, closeAgo: -300000 });
+  h.advance(1000); await h.o.drain();
+  assert.equal(h.calls[0].p.embeds[0].title, lib.LATE_OPEN_LABEL);
+  assert.equal(field(h.calls[0].p, "Settled outcome"), `Not settled yet: the window closes ${lib.centralTime(h.close)}.`);
+  assert.doesNotMatch(JSON.stringify(h.calls[0].p), LIVE_WORDS);
+});
+
+test("late marking survives a restart: derived from durable outbox and release rows only", async (t) => {
+  const f = await lateFixture(t);
+  let attempts = 0; const posted = [];
+  const flaky = new DiscordOutbox(f.db, { build: buildA, paper, read }, () => release.discordReleased(f.db), f.time,
+    async (u, p) => { posted.push(p); return ++attempts === 1 ? { ...accepted, ok: false, status: 503, retryMs: 1000, code: "provider_or_receipt_failure" } : accepted; }, () => {});
+  f.advance(1000); await flaky.drain();
+  // New process (and new deploy) retries the same row: still late.
+  const restarted = new DiscordOutbox(f.db, { build: buildB, paper, read }, () => release.discordReleased(f.db), f.time,
+    async (u, p) => { posted.push(p); return accepted; }, () => {});
+  f.advance(2000); await restarted.drain();
+  assert.equal(posted.length, 2);
+  assert.ok(posted.every((p) => p.embeds[0].title === lib.LATE_LABEL));
+  assert.equal((await f.rows()).find((r) => r.event_key === f.e.key).state, "sent");
+});
+
+test("normal (non-late) paper calls and settlements are byte-identical to the stored payload", async (t) => {
+  const f = await fixture(t);
+  await release.discordReleaseControl(f.db, { action: "release" }, f.time() - 1000);
+  const o = f.outbox(buildA);
+  const e = paperAt(f, buildA, "KX-NORMAL", f.time() + 600000);
+  await o.enqueue(e); f.advance(5000); await o.drain(); // queued rows default next_attempt to DB now()
+  assert.deepEqual(f.calls[0].p, e.payload);
+  assert.equal(f.calls[0].p.embeds[0].title, "■ PAPER POSITION BOOKED · UP");
+  assert.equal(f.calls[0].p.embeds[0].color, 0x16a34a);
+  assert.equal(f.calls[0].p.embeds[0].description, "Recorded paper fill. No live trade: paper only, no real order or money.");
+  assert.equal(field(f.calls[0].p, "Originally booked (CT)"), undefined);
+  await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'UP',17,$3,'valid')",
+    [e.ticker, new Date(e.close), new Date(f.time() + 1000)]);
+  f.advance(30000); await o.drain(); await o.drain(); // settle rows default next_attempt to DB now()
+  assert.match(f.calls[1].p.embeds[0].title, /^■ PAPER POSITION SETTLED · WIN$/);
+  assert.notEqual(f.calls[1].p.embeds[0].color, lib.LATE_COLOR);
+});
+
+test("24h cutoff unchanged: held paper past close+24h expires on release; just inside posts once, late", async (t) => {
+  const f = await fixture(t);
+  const now = f.time(), day = 86400000;
+  const e = lib.paperEvent("UP", 83, now, now, "KX", null, buildA, paper.hash);
+  assert.equal(e.expires - e.close, day);
+  const inside = lib.paperEvent("UP", 83, now - day + 60000, now - day, "KX-IN", null, buildA, paper.hash);
+  const outside = lib.paperEvent("DOWN", 83, now - day - 60000, now - day - 120000, "KX-OUT", null, buildA, paper.hash);
+  const o = f.outbox(buildA);
+  await o.enqueue(inside); await o.enqueue(outside);
+  const r = await release.discordReleaseControl(f.db, { action: "release" }, now);
+  assert.deepEqual(r.backlog, { reads_collapsed: 0, paper_requeued: 1, paper_expired: 1 });
+  f.advance(1000); await o.drain(); await o.drain();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].p.embeds[0].title, lib.LATE_LABEL);
+  assert.equal(field(f.calls[0].p, "Window"), "KX-IN");
 });

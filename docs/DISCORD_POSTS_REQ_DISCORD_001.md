@@ -21,6 +21,20 @@ The release step also settles the held backlog in the same SQL statement:
 - Held paper calls and settlements still inside their 24h expiry are re-queued once and posted once, keeping their original key and embed timestamp.
 - Held paper rows already past expiry are marked `expired` (`expired_while_held`).
 
+**Late posts.** A paper call or settlement that posts after the release but was booked or graded before it is relabelled at send time so it cannot read as a current call. The rule is `observed_at < desk_discord_release.released_at`. It needs no new migration and survives restarts and deploys, because both values sit in durable rows (`desk_discord_outbox` and `desk_discord_release`).
+
+What changes on a late post:
+- **Title:** `LATE · ALREADY SETTLED · posted after release, not a current call`. If the window has not closed yet, the title is `LATE · posted after release, not a current call`, so the post never claims a settlement that hasn't happened.
+- **Description:** starts with the paper-position layer (`■ Paper position booked earlier · UP. …`).
+- **Color:** grey `#6b7280`.
+- **First field, "Originally booked (CT)":** the booking time in America/Chicago, for example `Oct 1, 2026, 1:07 PM CT`. For a settlement, this is the parent call's booking time.
+- **"Settled outcome":** taken from `desk_ledger_research` for the exact window, source and side, for example `UP · paper WIN · +15.0¢ net after fees`. If no settlement is recorded, it says `Not known: no recorded settlement for this window was found when this was posted.` If the window is still open, it says `Not settled yet: the window closes … CT.`
+- **Kept fields:** the original Seat, Direction, Decision (the SATOSHI decision layer), Entry and Window fields stay, plus a separate "Research outlook" field.
+- **Wording:** no "now", "live" or "new call".
+- **Timestamp:** the embed timestamp stays the original booking time.
+
+The 24h cutoff is unchanged. Paper posts expire at close + 24h, and settlements at grade + 24h. Normal paper calls and settlements are sent byte-for-byte as stored.
+
 A held read captured before the release time stays held. A booked paper call is judged against the current flag, so journal lag cannot drop it. `hold` clears the flag, and the worker re-holds anything pending on its next drain. A destination (webhook) rotation still holds pending rows rather than rerouting them. A deploy by itself no longer holds anything.
 
 ## Configuration

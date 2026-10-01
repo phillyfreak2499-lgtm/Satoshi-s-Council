@@ -81,6 +81,33 @@ export function readSummaryEvent(leans: readonly SeatLean[], chairLean: string,
         { name: "Snapshot (UTC)", value: stamp(window.as_of), inline: true },
         { name: "Window closes (UTC)", value: stamp(window.close_time), inline: true }, { name: "Window", value: window.ticker }]) };
 }
+/** Held paper calls/settlements that post only after the owner release. They must never read
+ * as a current call: the label leads the title, the embed is grey, the original booking time is
+ * shown in CT, and the window outcome is taken from the recorded ledger or plainly marked unknown. */
+export const LATE_LABEL = "LATE · ALREADY SETTLED · posted after release, not a current call";
+export const LATE_OPEN_LABEL = "LATE · posted after release, not a current call";
+export const LATE_COLOR = 0x6b7280;
+const CT = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "short",
+  day: "numeric", hour: "numeric", minute: "2-digit" });
+export const centralTime = (ms: number) => `${CT.format(new Date(ms))} CT`;
+export type LateInfo = { kind: "paper" | "settle"; side: "UP" | "DOWN"; booked: number; close: number; posted: number;
+  outcome: { winner: "UP" | "DOWN"; net: number } | null };
+export function latePayload(payload: DiscordPayload, late: LateInfo): DiscordPayload {
+  const original = payload.embeds[0];
+  const closed = late.close <= late.posted || late.outcome != null;
+  const won = late.outcome ? late.outcome.winner === late.side : null;
+  const outcome = late.outcome
+    ? `${late.outcome.winner} · paper ${won ? "WIN" : "LOSS"} · ${late.outcome.net >= 0 ? "+" : ""}${late.outcome.net.toFixed(1)}¢ net after fees`
+    : closed ? "Not known: no recorded settlement for this window was found when this was posted."
+      : `Not settled yet: the window closes ${centralTime(late.close)}.`;
+  const layer = late.kind === "paper"
+    ? `■ Paper position booked earlier · ${late.side}. Held while Discord delivery was off and posted after the owner release as a record. Paper only, no real order or money.`
+    : `■ Paper position settled${won == null ? "" : ` · ${won ? "WIN" : "LOSS"}`}. Follow-up for a paper position booked earlier, held while Discord delivery was off and posted after the owner release as a record. Net P&L includes the book's actual fee.`;
+  return { ...payload, embeds: [{ ...original, title: closed ? LATE_LABEL : LATE_OPEN_LABEL, description: layer, color: LATE_COLOR,
+    fields: [{ name: "Originally booked (CT)", value: centralTime(late.booked) }, { name: "Settled outcome", value: outcome },
+      ...original.fields,
+      { name: "Research outlook", value: "Not part of this post. Seat-lean summaries are research only and post separately." }] }] };
+}
 export type PaperScoreboard = { wins: number; losses: number; net: number };
 export function settlementEvent(parent: DiscordEvent, winner: "UP" | "DOWN", net: number,
   graded: number, build: string, scoreboard?: PaperScoreboard): DiscordEvent {
