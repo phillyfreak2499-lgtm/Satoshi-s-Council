@@ -1,4 +1,4 @@
-export type PushEventKind = "call" | "settle" | "watchdog" | "test";
+export type PushEventKind = "call" | "read" | "settle" | "watchdog" | "test";
 export type PushDeliveryOutcome = "accepted" | "gone" | "failed";
 
 export type PushReceiptInput = {

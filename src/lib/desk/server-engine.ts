@@ -1,3 +1,4 @@
+import { captureDirectionalRegret } from "./directional-regret.server";
 /**
  * The shared brain. One engine loop on the server: pulls the live tape,
  * runs the 21 seats and the chair, prints calls, grades every finished
@@ -839,7 +840,7 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
     e.riskReservationPending = validReservation;
     return;
   }
-  notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
+  notifyCall(chair.lean, e.callLog[0]!.cents, snap.mins_left, snap.ticker, undefined, snap.close_time);
 }
 
 /**
@@ -883,7 +884,7 @@ async function noteRecoveryPilotCall(e: Eng, snap: Snapshot, decision: RecoveryP
     e.riskReservationPending = validReservation;
     return;
   }
-  notifyCall(side, Math.round(ask), snap.mins_left, snap.ticker, RECOVERY_PILOT_SOURCE);
+  notifyCall(side, e.callLog[0]!.cents, snap.mins_left, snap.ticker, RECOVERY_PILOT_SOURCE, snap.close_time);
 }
 
 function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
@@ -1627,6 +1628,29 @@ async function tick(e: Eng) {
       await noteRecoveryPilotCall(e, snap, pilot);
     } else {
       e.recoveryPilotWatch = null;
+    }
+    // Observe only after both books have made their decision. No research result
+    // changes eligibility, a call, a paid position, or the real-money follower.
+    {
+      const reasons: string[] = (admissionAudit?.checks ?? [])
+        .filter(check => check.pass !== true && check.blocking !== false && check.id !== "direction" && check.id !== "quote")
+        .map(check => `${check.label}: ${check.pass === null ? "unverified" : "requirement not met"}`);
+      const ask = chair.lean === "UP" ? (snap.yes_ask_exact ?? snap.yes_ask) : chair.lean === "DOWN" ? (snap.no_ask_exact ?? snap.no_ask) : 0;
+      if (chair.lean !== "WAIT" && !paperBookEdgeOk(snap, chair.lean))
+        reasons.push("non-positive after-fee booking edge");
+      if (chair.lean !== "WAIT" && !paperBookTeamOk(chair, chair.lean))
+        reasons.push("eligible team support requirement not met");
+      const selective = chair.gates.find((g) => g.id === "selective" && !g.pass);
+      if (selective && !admissionAudit) reasons.push(selective.value || selective.label);
+      const sideAsk = chair.lean === "UP" ? snap.yes_ask : snap.no_ask;
+      const bid = chair.lean === "UP" ? snap.yes_bid : snap.no_bid;
+      const size = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
+      if (!(Number.isFinite(sideAsk) && Number.isFinite(bid) && Number.isFinite(size)) || sideAsk >= 99 || bid < 0 || bid > sideAsk || sideAsk - bid > SELECTIVE_PARAMS.max_spread_cents || size < 1 || snap.yes_ask + snap.no_ask < 100)
+        reasons.push("executable quote, spread or resting-size requirement not met");
+      if (!(ask > 0 && ask < 100)) reasons.push("executable ask unavailable");
+      else if (!bookable(ask)) reasons.push(`${ask}¢ ask is below the 80¢ paper floor`);
+      if (e.riskReservationPending) reasons.push("paper booking awaits durable risk reservation");
+      void captureDirectionalRegret(snap, chair, [...new Set(reasons)], hasPaperPosition(e.riskCalls, snap) && !e.riskReservationPending);
     }
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // MEASUREMENT ONLY (authority: none). Buffers per-seat + Chair-gating telemetry

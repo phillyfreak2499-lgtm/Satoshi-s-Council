@@ -22,7 +22,7 @@ test("subscription upsert retains owner only for identical delivery keys", async
   try {
     await pg.exec(`create table desk_push_subs (
       endpoint text primary key, p256dh text not null, auth text not null,
-      token text, on_call boolean, on_settle boolean, ua text,
+      token text, on_call boolean, on_settle boolean, on_read boolean default false, ua text,
       owner boolean not null default false, last_seen timestamptz, fails int default 0
     )`);
     const db = async (strings, ...values) => {
@@ -37,6 +37,10 @@ test("subscription upsert retains owner only for identical delivery keys", async
       subscription: { endpoint, keys: { p256dh, auth } }, on_call: true, on_settle: true,
     });
     assert.equal((await subscribe(input())).prefs.owner, false, "public enrollment cannot acquire owner");
+    assert.equal((await subscribe(input())).prefs.on_read, false, "new tier is opt-in");
+    const chosen = await subscribe({ ...input(), on_read: true, on_call: false });
+    assert.equal(chosen.prefs.on_read, true);
+    assert.equal(chosen.prefs.on_call, false, "read opt-in does not enable paper fills");
     await pg.query("update desk_push_subs set owner=true, fails=7 where endpoint=$1", [endpoint]);
     assert.equal((await subscribe(input())).prefs.owner, true, "same keys preserve authenticated enrollment");
     assert.equal((await subscribe(input("publickeyBBB"))).prefs.owner, false, "public key rotation clears owner atomically");

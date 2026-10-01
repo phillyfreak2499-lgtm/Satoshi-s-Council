@@ -1,3 +1,4 @@
+import { RegretLedger } from "./RegretLedger";
 import { sampleRate, DISPLAY_SAMPLE_MIN } from "@/lib/desk/display-evidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useState } from "react";
@@ -1094,6 +1095,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             </section>
           </>
         )}
+        <RegretLedger />
       </main>
       <PaperDisclaimer />
     </div>
