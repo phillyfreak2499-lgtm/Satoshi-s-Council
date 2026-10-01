@@ -10,6 +10,7 @@
 import type { ProFloorFacts } from "@/lib/desk/pro-floor";
 import { Panel, StatBox } from "./panels";
 import { leanTone } from "./tones";
+import { DecisionLayerMark } from "../DecisionLayerMark";
 
 function stamp(t: number | null): string {
   if (t == null) return "time not recorded";
@@ -32,14 +33,14 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
     >
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <StatBox
-          label="SATOSHI · current read"
-          className="border-sky-400/50 border-dashed"
+          label={<DecisionLayerMark layer="decision" />}
+          className="border-gold/50 bg-gold/5 border-dashed"
           value={lean}
           tone={leanTone(lean)}
           sub="what SATOSHI says on this frame"
         />
         <StatBox
-          label="Paper book · position"
+          label={<DecisionLayerMark layer="position" />}
           className="border-border-strong bg-surface-2 border-l-4"
           value={p.held ? "HELD" : "NONE"}
           tone={p.held ? "text-fg" : "text-subtle"}

@@ -23,6 +23,7 @@ import { EvidenceFamilies } from "./EvidenceFamilies";
 import { CouncilEvidenceTape } from "./CouncilEvidenceTape";
 import { DecisionGates } from "./DecisionGates";
 import { DataHealthCard } from "./DataHealthCard";
+import { StickyDecisionHeader } from "./StickyDecisionHeader";
 import { PaperPositionCard } from "./PaperPositionCard";
 
 export function ProOverview({
@@ -62,6 +63,7 @@ export function ProOverview({
 
   return (
     <div className="flex flex-col gap-3">
+      <StickyDecisionHeader facts={facts} />
       <ProDecisionStrip facts={facts} />
       <div className="rounded-sm border border-border p-3">
         <p className="mb-2 font-sans text-ui leading-relaxed text-muted">The last call is history. The current SATOSHI read appears above; WAIT is a valid decision and does not book a paper position. Check feed health below to distinguish a quiet desk from a feed problem.</p>

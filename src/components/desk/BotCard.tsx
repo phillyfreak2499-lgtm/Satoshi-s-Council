@@ -12,6 +12,7 @@ import { leanKey, seatDirectionalLean } from "@/lib/desk/seat-lean";
 import { Eyes } from "./Eyes";
 import { Tip } from "./Tip";
 import { cn } from "@/lib/utils";
+import { DecisionLayerMark } from "./DecisionLayerMark";
 
 export function BotCard({
   seat,
@@ -42,12 +43,13 @@ export function BotCard({
           type="button"
           aria-expanded="false"
           onClick={() => setOpen(true)}
-          className="flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
+          className="flex flex-wrap min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
         >
           <span className="shrink-0 font-mono text-ui text-fg">
             {seat} <HealthDot h={vote.health} /> <span className="text-subtle">{meta.callsign}</span>
           </span>
           <span className="font-mono text-micro text-muted">{seatAvailabilityLabel(lean)}</span>
+          <DecisionLayerMark layer="research" compact />
           <LeanChip research lean={vote.lean} />
           <SeatLeanMini key={leanKey(lean)} lean={lean} className="shrink-0" />
           {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
@@ -106,7 +108,7 @@ export function BotCard({
       </div>
       <div className="flex min-w-0 flex-col gap-1.5 p-3">
         <dl className="grid grid-cols-2 gap-3">
-          <div><dt className="font-sans text-micro text-subtle">Research read</dt><dd><LeanChip research lean={vote.lean} cents={ask} /></dd></div>
+          <div><dt><DecisionLayerMark layer="research" /></dt><dd className="mt-1"><LeanChip research lean={vote.lean} cents={ask} /></dd></div>
           <div><dt className="font-sans text-micro text-subtle">Confidence</dt><dd className="font-mono tabular text-fg">{vote.confidence}</dd></div>
           <div><dt className="font-sans text-micro text-subtle"><Tip k="field.avg ¢">Average cents</Tip></dt><dd className={cn("font-mono tabular", avg == null ? "text-subtle" : avg >= 0 ? "text-up" : "text-down")}>{avg == null ? "—" : `${avg >= 0 ? "+" : ""}${avg.toFixed(1)}¢`}</dd><dd className="font-sans text-micro text-muted">{st.legs.length} graded legs</dd></div>
           <div><dt className="font-sans text-micro text-subtle"><Tip k="field.calls">Calls</Tip></dt><dd className="font-mono tabular text-fg">{calls}</dd></div>

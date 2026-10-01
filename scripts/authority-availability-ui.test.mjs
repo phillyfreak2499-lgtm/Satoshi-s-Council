@@ -46,6 +46,8 @@ const {BotCard}=load('src/components/desk/BotCard.tsx');
 const {ChamberRoster}=load('src/components/desk/ChamberRoom.tsx');
 const {GuidedFloor}=load('src/components/desk/GuidedFloorView.tsx');
 const {EvidenceFamilies}=load('src/components/desk/ProFloor/EvidenceFamilies.tsx');
+const {PaperPositionCard}=load('src/components/desk/ProFloor/PaperPositionCard.tsx');
+const {DecisionLayerMark}=load('src/components/desk/DecisionLayerMark.tsx');
 const render=(C,props)=>renderToStaticMarkup(React.createElement(C,props));
 const text=html=>html.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
 const window={ticker:'KXBTC15M-26SEP301900-00',close_time:Date.parse('2026-10-01T00:00:00Z'),as_of:Date.parse('2026-09-30T23:54:00Z')};
@@ -102,4 +104,33 @@ test('CONTEXT availability labels have separate wrapping rows, including pit cre
  assert.match(html,/flex min-w-0 flex-1 flex-col gap-1 py-2/);
  assert.doesNotMatch(html,/w-\[5\.25rem\].*whitespace-nowrap/);
  assert.match(html,/break-words font-sans/);
+});
+
+test('three decision layers keep distinct permanent labels and surface ownership',()=>{
+ const marks=['research','decision','position'].map(layer=>render(DecisionLayerMark,{layer}));
+ assert.match(marks[0],/data-decision-layer="research"[^>]*>.*Research lean/);
+ assert.match(marks[1],/data-decision-layer="decision"[^>]*>.*SATOSHI decision/);
+ assert.match(marks[2],/data-decision-layer="position"[^>]*>.*Paper position/);
+ assert.equal(new Set(marks).size,3);
+ const {chair,votes,snap,learner}=fixture();
+ const compact=render(BotCard,{seat:'WICK',snap,vote:votes.find(v=>v.seat==='WICK'),compact:true});
+ assert.match(compact,/data-decision-layer="research"/);
+ assert.match(compact,/class="[^"]*flex-wrap/);
+ assert.match(compact,/class="sr-only sm:not-sr-only">Research lean/);
+ const guided=render(GuidedFloor,{chair,votes,snap,knobs:learner.knobs,callLog:[],demo:false,onPro:()=>{}});
+ assert.match(guided,/data-decision-layer="decision"/);assert.match(guided,/data-decision-layer="research"/);
+ const paper=render(PaperPositionCard,{facts:{conclusion:{lean:'WAIT'},paper:{held:false,no_position_why:'No paper position',entry_source:null,entry_side:null,entry_cents:null,entry_at:null,ask_now:null,floor_cents:80,state:{kind:'none'}}},full:false});
+ assert.match(paper,/data-decision-layer="decision"/);assert.match(paper,/data-decision-layer="position"/);
+});
+
+test('compact Pro status keeps a directional opinion separate from the actual book',()=>{
+ const {StickyDecisionHeader}=load('src/components/desk/ProFloor/StickyDecisionHeader.tsx');
+ const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP'},paper:{held:false}};
+ const sticky=render(StickyDecisionHeader,{facts});
+ assert.match(sticky,/data-decision-layer="decision"/);
+ assert.match(sticky,/data-decision-layer="position"/);
+ const empty=text(sticky);
+ assert.match(empty,/SATOSHI decision UP/);assert.match(empty,/Paper position NONE/);
+ const held=text(render(StickyDecisionHeader,{facts:{...facts,paper:{held:true}}}));
+ assert.match(held,/Paper position HELD/);assert.match(held,/Window closes in/);
 });

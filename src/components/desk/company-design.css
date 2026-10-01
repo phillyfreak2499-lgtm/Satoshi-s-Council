@@ -218,3 +218,6 @@ html[data-motion="reduce"] .company-button, html[data-motion="reduce"] .company-
 .company-editorial-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 700px) { .company-editorial-grid { grid-template-columns: 1fr; } }
 .company-hero-lede, .company-hero-doors, .company-process p, .company-editorial-card p { font-family: var(--font-sans); line-height: 1.75; }
+
+/* Clip room art without creating a scroll ancestor for the sticky status. */
+.council-full-site .council-floor-room:has(.pro-sticky-status) { overflow: clip; }

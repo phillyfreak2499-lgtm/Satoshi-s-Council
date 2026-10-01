@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { fmtDistance, fmtScore, fmtUsd, type ProFloorFacts } from "@/lib/desk/pro-floor";
 import { CentsCell, KindTag } from "./panels";
 import { leanTone } from "./tones";
+import { DecisionLayerMark } from "../DecisionLayerMark";
 
 const RELATION_WORD: Record<ProFloorFacts["market"]["relation"], string> = {
   ABOVE: "above the line",
@@ -26,7 +27,7 @@ function Cell({
   sub,
   className,
 }: {
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
   sub?: React.ReactNode;
   className?: string;
@@ -122,7 +123,7 @@ export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
         </Cell>
 
         <Cell
-          label="SATOSHI"
+          label={<DecisionLayerMark layer="decision" />}
           sub={
             standard.evidence == null || standard.required == null
               ? "score comparison unavailable"
