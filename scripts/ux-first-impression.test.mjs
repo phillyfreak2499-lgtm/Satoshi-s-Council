@@ -27,13 +27,21 @@ test("?view=pro pins Pro and the homepage Pro door names that URL", () => {
   assert.match(app, /mountedFloorMode\(window\.location\.search, readStoredFloorMode\(\), FIRST_VISIT_FLOOR_MODE\)/);
 });
 
-test("the paper-only line is a chip under the H1, above the CTAs, at body contrast", () => {
+test("paper-only scope and the live-state explanation stay above the CTAs", () => {
   const home = read(HOME);
   const h1 = home.indexOf('id="home-title"');
+  const lede = home.indexOf("company-hero-lede");
   const chip = home.indexOf("company-hero-chip");
+  const live = home.indexOf("company-hero-live");
   const actions = home.indexOf('className="company-actions"');
-  assert.ok(h1 > 0 && chip > h1 && actions > chip);
-  assert.match(home, /Paper research\. Public prices\. No live orders\. · Not affiliated with Kalshi\./);
+  assert.ok(h1 > 0 && lede > h1 && chip > lede && live > chip && actions > live);
+  assert.match(home, /Independent Bitcoin research · Paper only/);
+  assert.match(home, /records hypothetical positions at the actual ask and fee/);
+  assert.match(home, /It never trades\./);
+  assert.match(home, /Public prices · No live orders · Not affiliated with Kalshi\./);
+  assert.match(home.slice(live, actions), /Chair read/);
+  assert.match(home.slice(live, actions), /Paper position/);
+  assert.match(home.slice(live, actions), /Status \/ freshness/);
   assert.doesNotMatch(home.slice(chip, actions), /Start with WICK/);
   assert.match(home.slice(actions), /Start with WICK/);
   const css = read(CHIP);
