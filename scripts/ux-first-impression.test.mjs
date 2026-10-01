@@ -43,7 +43,7 @@ test("paper-only scope and the live-state explanation stay above the CTAs", () =
   assert.match(home.slice(live, actions), /Paper position/);
   assert.match(home.slice(live, actions), /Status \/ freshness/);
   assert.doesNotMatch(home.slice(chip, actions), /Start with WICK/);
-  assert.match(home.slice(actions), /Start with WICK/);
+  assert.match(home.slice(actions), /href="\/training\/wick"/, "WICK remains reachable below the live-first hero");
   const css = read(CHIP);
   assert.match(css, /\.company-hero-chip\s*\{/);
   assert.match(css, /color:\s*var\(--company-ink\)/);
