@@ -100,6 +100,11 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
       ) : blocked ? (
         <div role="status" className="font-sans text-ui leading-relaxed text-muted">
           Notifications are blocked for this site. Open your browser’s site permissions, allow notifications, then reload this page to enable alerts.
+          <button type="button" className="btn btn-secondary mt-3" disabled={busy || !ready}
+            onClick={() => void apply({ on_call: false, on_settle: false })}>
+            Turn off alerts in this browser
+          </button>
+          {msg ? <p className="mt-2">{msg}</p> : null}
         </div>
       ) : (
         <>
