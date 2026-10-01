@@ -80,6 +80,7 @@ test("registry server is aggregate read-only and has no actuator path", () => {
   }
   assert.equal((src.match(/jsonb_path_exists/g) ?? []).length, 3, "each replay JSON path is evaluated once");
   assert.match(src, /from replay_rows/);
+  assert.doesNotMatch(src, /jsonb_array_elements\(cols -> '(?:imb|resid|fair)'\)/, "registry must not explode full replay arrays");
   assert.doesNotMatch(src, /insert\s+into|update\s+desk_|delete\s+from/i);
   for (const forbidden of [
     "noteCall(", "applyDeskOp", "decideChair(", "runChair(", "selectiveBlock",
