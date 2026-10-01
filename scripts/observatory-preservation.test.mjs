@@ -73,8 +73,14 @@ test("focus and presentation never replace data or make research decisions", () 
   assert.match(styles, /html\[data-motion="reduce"\]/);
   assert.match(styles, /\.observatory \.obs-icon \{/);
   assert.doesNotMatch(styles, /\.observatory (?:svg|button|select|a)\s*\{/);
-  assert.match(read("src/components/desk/SiteHeader.tsx"), /className="council-site-bar gutter/);
+  const siteHeader = read("src/components/desk/SiteHeader.tsx");
+  assert.match(siteHeader, /className="council-site-bar gutter/);
   assert.match(styles, /\.council-site-header > \.council-site-bar \{ height:/);
+  assert.match(siteHeader, /<\/header>\s*\{shortcuts \? <div className=\{cn\(f\.panel, "council-site-shortcut-row"\)\}>/,
+    "quick links render after the sticky header so they scroll away instead of covering content");
+  const stickyHeaderEnd = siteHeader.indexOf("</header>");
+  const shortcutAt = siteHeader.indexOf("council-site-shortcut-row");
+  assert.ok(stickyHeaderEnd > 0 && shortcutAt > stickyHeaderEnd);
   assert.doesNotMatch(styles, /\.council-site-header > \.gutter\s*\{/,
     "header bar height must not constrain the full mobile menu");
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);
