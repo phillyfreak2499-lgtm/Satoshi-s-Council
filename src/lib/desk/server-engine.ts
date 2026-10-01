@@ -7,6 +7,7 @@
  * Demo mode never touches this — it stays a per-browser sandbox.
  */
 import { runBots } from "./bots";
+import { readApprovedGaps } from "./venue-pause.ts";
 import { checkpointActiveWindow, restoreActiveWindow, type ActiveWindow } from "./active-window";
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
@@ -252,6 +253,8 @@ type Eng = {
   ledgerFlushing: boolean;
   /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
   ledgerGapCount: number;
+  ledgerGapRawCount: number;
+  ledgerGapClassifiedCount: number;
   lastGapScanAt: number;
   /** Owner push subscriptions the watchdog could reach, from the last probe. */
   alertOwnerSubs: number;
@@ -271,6 +274,8 @@ type Eng = {
   reconAt: number;
   reconHoles: number;
   reconMissing: number[];
+  reconClassified: number;
+  reconUnresolved: number;
   reconBaseline: number | null;
   /** Owner readiness latch: the "enough data to evaluate" push fires ONCE. Persisted. */
   readinessAlerted: boolean;
@@ -417,6 +422,8 @@ function freshEng(): Eng {
     entryState: {},
     ledgerFlushing: false,
     ledgerGapCount: 0,
+    ledgerGapRawCount: 0,
+    ledgerGapClassifiedCount: 0,
     lastGapScanAt: 0,
     alertOwnerSubs: 0,
     alertCallSubs: 0,
@@ -427,6 +434,8 @@ function freshEng(): Eng {
     reconAt: 0,
     reconHoles: 0,
     reconMissing: [],
+    reconClassified: 0,
+    reconUnresolved: 0,
     reconBaseline: null,
     readinessAlerted: false,
     watchdog: freshWatchdog(),
@@ -1413,6 +1422,8 @@ function gradeableBook(snap: Snapshot): boolean {
 }
 
 function noteGradeCand(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  // A retained expired market is useful for settlement identity, never fitting.
+  if (snap.as_of > snap.close_time) return;
   if (e.gradeCand && e.gradeCand.snap.close_time !== snap.close_time) e.gradeCand = null;
   if (gradeableBook(snap)) e.gradeCand = { snap, votes, chair };
 }
@@ -1467,6 +1478,22 @@ async function settleIfNeeded(
         : { snap: prev.snap!, votes: prev.votes, chair: prev.chair! };
   } else {
     s = gradeSource(e, snap, votes, chair);
+  }
+  // When an expired market is retained, the first post-close tick may carry
+  // its result. Grade only an original pre-close decision, never fresh votes
+  // evaluated with that result already available.
+  if (s.snap.as_of > w.close_time) {
+    const frozen = e.gradeCand?.snap.close_time === w.close_time && e.gradeCand.snap.ticker === w.ticker && e.gradeCand.snap.as_of <= w.close_time
+      ? e.gradeCand
+      : prev.snap?.close_time === w.close_time && prev.snap.ticker === w.ticker && prev.snap.as_of <= w.close_time && prev.chair
+        ? { snap: prev.snap, votes: prev.votes, chair: prev.chair }
+        : null;
+    if (!frozen) {
+      noteErr(e, "settlement evidence", `${w.ticker}:${w.close_time} has no retained pre-close grading input; not graded`);
+      await persistState(e, true);
+      return;
+    }
+    s = frozen;
   }
   const hit = officialHit(e, snap, w.ticker, w.close_time);
   if (hit) {
@@ -2141,7 +2168,15 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
       select (extract(epoch from close_time) * 1000)::bigint as ms
       from desk_ledger where close_time > now() - interval '6 hours' order by close_time
     `;
-    e.ledgerGapCount = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n))).length;
+    const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
+    // On any classification read failure keep every raw hole blocking. Only
+    // separately executed owner-approved records may reduce integrity counting.
+    e.ledgerGapCount = holes.length;
+    e.ledgerGapRawCount = holes.length;
+    e.ledgerGapClassifiedCount = 0;
+    const classified = await readApprovedGaps(db, holes);
+    e.ledgerGapCount = classified.unresolved.length;
+    e.ledgerGapClassifiedCount = classified.classified.length;
   } catch (err) {
     noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
   }
@@ -2181,6 +2216,11 @@ async function reconcile(e: Eng): Promise<void> {
     const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
     e.reconHoles = holes.length;
     e.reconMissing = holes.slice(-8);
+    e.reconClassified = 0;
+    e.reconUnresolved = holes.length;
+    const classified = await readApprovedGaps(db, holes);
+    e.reconClassified = classified.classified.length;
+    e.reconUnresolved = classified.unresolved.length;
     if (e.reconBaseline == null) {
       e.reconBaseline = holes.length; // first run absorbs existing history silently
     } else if (holes.length > e.reconBaseline) {
@@ -2381,7 +2421,9 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
       ledger_queue: e.ledgerQueue.length,
       ledger_queue_oldest_s: Math.round(oldestQueueAgeMs(e.ledgerQueue, now) / 1000),
       ledger_gaps: e.ledgerGapCount,
-      reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
+      ledger_gaps_raw: e.ledgerGapRawCount,
+      ledger_gaps_classified: e.ledgerGapClassifiedCount,
+      reconcile: { window_days: 90, holes: e.reconHoles, classified: e.reconClassified, unresolved: e.reconUnresolved, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
       alerts: {
         deliverable: alerts.deliverable,
