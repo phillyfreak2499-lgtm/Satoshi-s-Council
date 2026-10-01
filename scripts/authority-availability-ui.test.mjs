@@ -120,3 +120,12 @@ test('three decision layers keep distinct permanent labels and surface ownership
  const paper=render(PaperPositionCard,{facts:{conclusion:{lean:'WAIT'},paper:{held:false,no_position_why:'No paper position',entry_source:null,entry_side:null,entry_cents:null,entry_at:null,ask_now:null,floor_cents:80,state:{kind:'none'}}},full:false});
  assert.match(paper,/data-decision-layer="decision"/);assert.match(paper,/data-decision-layer="position"/);
 });
+
+test('compact Pro status keeps a directional opinion separate from the actual book',()=>{
+ const {StickyDecisionHeader}=load('src/components/desk/ProFloor/StickyDecisionHeader.tsx');
+ const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP'},paper:{held:false}};
+ const empty=text(render(StickyDecisionHeader,{facts}));
+ assert.match(empty,/SATOSHI decision UP/);assert.match(empty,/Paper position NONE/);
+ const held=text(render(StickyDecisionHeader,{facts:{...facts,paper:{held:true}}}));
+ assert.match(held,/Paper position HELD/);assert.match(held,/Window closes in/);
+});
