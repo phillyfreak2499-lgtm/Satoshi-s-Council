@@ -1,4 +1,5 @@
 /** Read-only roster receipts. Counts never stand in for seat identities or clocks. */
+import { chairQuorumMember } from "./council-authority.ts";
 import type { ChairResult, Snapshot } from "./types.ts";
 
 type Side = "UP" | "DOWN";
@@ -51,7 +52,7 @@ export function chairRoster(snap: Snapshot, chair: ChairResult): RosterReceipt |
   return readRoster({
     ticker: snap.ticker, close_time: snap.close_time, snapshot_at: stamp(snap.as_of) ? snap.as_of : null,
     phase: "observation", population: "chair-quorum",
-    members: chair.rows.filter((r) => !["WARDEN", "ORBIT", "WIRE"].includes(r.seat) && r.status !== "MUTED" && !r.forced_sit)
+    members: chair.rows.filter((r) => chairQuorumMember(r, new Set(), new Set(["WARDEN", "ORBIT", "WIRE"])))
       .map((r) => ({ seat: r.seat, lean: r.lean })),
   });
 }

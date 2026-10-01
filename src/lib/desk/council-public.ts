@@ -29,5 +29,16 @@ export function availabilityLine(rows: readonly { selectable_live_cards?: number
     return "LIVE source availability unverified on this frame. The roster size is not the active count.";
   const selectable = rows.filter((r) => (r.selectable_live_cards ?? 0) > 0).length;
   const ready = rows.filter((r) => (r.authority_ready_cards ?? 0) > 0).length;
-  return `${selectable} sources with selectable LIVE cards · ${ready} with card authority in this regime. Availability is not a directional vote; feeds, confidence and entry gates still apply.`;
+  return `${selectable} sources with selectable LIVE cards · ${ready} with seat authority available now. Confidence and entry gates still apply.`;
+}
+
+export type SeatAvailability = { seat?: string; selectable_live_cards?: number; authority_ready_cards?: number; authority_hold_reason?: string };
+/** Shared visible and accessible status on roster cards and research instruments. */
+export function seatAvailabilityLabel(row: SeatAvailability | undefined): string {
+  if (row?.seat && (COUNCIL_PIT_CREW as readonly string[]).includes(row.seat)) return "Pit crew — non-voter";
+  if (row?.seat && (COUNCIL_RETIRED as readonly string[]).includes(row.seat)) return "Retired — research only";
+  if (row?.selectable_live_cards == null || row.authority_ready_cards == null) return "Authority unverified";
+  if (row.selectable_live_cards === 0) return "Research quarantine — no selectable LIVE card";
+  if (row.authority_ready_cards === 0) return `Held — ${row.authority_hold_reason || "no authority in this regime"}`;
+  return "LIVE authority available";
 }

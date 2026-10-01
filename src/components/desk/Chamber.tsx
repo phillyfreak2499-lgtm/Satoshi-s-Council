@@ -1,4 +1,4 @@
-import { availabilityLine } from "@/lib/desk/council-public";
+import { availabilityLine, seatAvailabilityLabel } from "@/lib/desk/council-public";
 import { useEffect, useRef, useState } from "react";
 import { SEAT_IDS, type Lean, type SeatId, type SeatRow } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
@@ -38,7 +38,7 @@ function Cell({
         id={`chamber-${r.seat}`}
         aria-expanded={active}
         aria-controls="chamber-thesis"
-        aria-label={`${r.seat} (${r.callsign}) ${r.selectable_live_cards === 0 ? "Research quarantine: no selectable LIVE card" : r.authority_ready_cards === 0 ? "Held from authority in this regime" : `${voteWords(r.lean)} at ${r.conf} confidence`}`}
+        aria-label={`${r.seat} (${r.callsign}) ${seatAvailabilityLabel(r)}. ${r.authority_ready_cards === 0 ? "Research read only" : `${voteWords(r.lean)} at ${r.conf} confidence`}`}
         onMouseEnter={onHover}
         onMouseLeave={onLeave}
         onFocus={onHover}

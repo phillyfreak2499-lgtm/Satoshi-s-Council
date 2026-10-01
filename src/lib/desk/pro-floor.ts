@@ -608,6 +608,8 @@ export type SeatFact = {
   aggregated: boolean;
   selectable_live_cards?: number;
   authority_ready_cards?: number;
+  authority_hold_reason?: string;
+  abstention_eligible?: boolean;
   health: FeedHealth;
   status: SeatStatus | null;
   /** Effective weight presented to the Chair, and its signed contribution. */
@@ -724,6 +726,8 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     aggregated: row != null && !NON_VOTERS.has(seat) && !RETIRED.has(seat),
     selectable_live_cards: row?.selectable_live_cards,
     authority_ready_cards: row?.authority_ready_cards,
+    authority_hold_reason: row?.authority_hold_reason,
+    abstention_eligible: row?.abstention_eligible,
     health,
     status,
     weight: num(row?.weight),
@@ -797,7 +801,7 @@ const FAMILY_EYES: Record<SeatTab, string> = {
 export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
   return (Object.keys(TAB_SEATS) as SeatTab[]).map((family) => {
     const seats = facts.filter((f) => f.family === family);
-    const voting = seats.filter((s) => s.aggregated && s.authority_ready_cards !== 0);
+    const voting = seats.filter((s) => s.aggregated && s.authority_ready_cards !== 0 && s.abstention_eligible !== false);
     const up = voting.filter((s) => s.voice === "speaking" && s.final_lean === "UP").length;
     const down = voting.filter((s) => s.voice === "speaking" && s.final_lean === "DOWN").length;
     return {

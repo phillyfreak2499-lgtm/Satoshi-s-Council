@@ -84,6 +84,8 @@ export type SeatLean = {
   statusPlain: string;
   selectable_live_cards?: number;
   authority_ready_cards?: number;
+  authority_hold_reason?: string;
+  abstention_eligible?: boolean;
   /** True only when the Chair aggregated this seat's directional vote on this frame. */
   isAuthorizedSpeaker: boolean;
   /** The feed under the seat is STALE. The read is shown, the warning beside it. */
@@ -201,6 +203,8 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
     reason: fact.why ?? "",
     selectable_live_cards: fact.selectable_live_cards,
     authority_ready_cards: fact.authority_ready_cards,
+    authority_hold_reason: fact.authority_hold_reason,
+    abstention_eligible: fact.abstention_eligible,
     skillId: fact.skill_used && fact.skill_used !== "SIT" ? fact.skill_used : null,
     window: { ticker: window.ticker, close_time: window.close_time, as_of: window.as_of },
     disclaimer: DIRECTIONAL_LEAN_DISCLAIMER,

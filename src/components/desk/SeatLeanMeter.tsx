@@ -1,3 +1,4 @@
+import { seatAvailabilityLabel } from "@/lib/desk/council-public";
 import { useId, type CSSProperties } from "react";
 import {
   DIRECTIONAL_LEAN_DISCLAIMER,
@@ -69,7 +70,7 @@ export function SeatLeanMeter({
         <span className="seat-lean__end" aria-hidden="true">Bullish</span>
       </div>
       <div className="seat-lean__meta">
-        {lean.selectable_live_cards === 0 ? <span className="seat-lean__reason">Research quarantine — no selectable LIVE card.</span> : lean.authority_ready_cards === 0 ? <span className="seat-lean__reason">LIVE card held from authority in this regime.</span> : null}
+        <span className="seat-lean__reason">{seatAvailabilityLabel(lean)}</span>
         {mode === "pro" ? <span>Research read: <span className="seat-lean__status">{side}</span></span> : null}
         {lean.stale ? <span className="seat-lean__stale">STALE</span> : null}
         <span>
@@ -136,6 +137,7 @@ export function SeatLeanSummary({ lean, meterId, className }: { lean: SeatLean; 
       <span className="seat-lean__value" data-direction={lean.direction}>{empty ? word : `${lean.score} · ${word}`}</span>
       {lean.stale ? <> <span className="seat-lean__stale">STALE</span></> : null}
       <span className="seat-lean__summary-line">{leanPlainLine(lean)}</span>
+      <span className="seat-lean__summary-line">{seatAvailabilityLabel(lean)}</span>
       {meterId ? <a className="seat-lean__summary-link" href={`#${meterId}`}>Full meter ↓</a> : null}
       <span className="sr-only">{" "}{DIRECTIONAL_LEAN_DISCLAIMER}</span>
     </p>

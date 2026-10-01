@@ -29,6 +29,7 @@ test('real producer all-SHADOW ordinary waits cannot add sit tax or WAIT quorum'
 });
 test('a genuine authorized WAIT still contributes sit tax; holding its card removes only that authority',async()=>{
  const m=await setup();const {L,snap}=fixture(m);
+ L.seat_n.DRIFT=80;L.seat_hits.DRIFT=70;
  Object.assign(L.skills['DRIFT.aligned_3h'],{status:'LIVE',n:100,ev_n:100,wilson:0.9,ev:5,manual_hold:false,min_walkforward_n:undefined,min_regime_n:undefined});
  const votes=m.bots.runBots(snap,L).map(v=>v.seat==='DRIFT'?{...v,lean:'WAIT',forced_sit:false,skill_used:'SIT',skill_status:'SIT'}:v);
  const live=m.chair.runChair(votes,snap,L,settings);
@@ -57,7 +58,43 @@ test('mixed roster: quarantined ordinary WAITs cannot suppress two admitted dire
 });
 test('public availability uses verified inventory and does not invent a fixed active count',async()=>{
  const {availabilityLine}=await import('../src/lib/desk/council-public.ts');
- assert.match(availabilityLine([{selectable_live_cards:1,authority_ready_cards:1},{selectable_live_cards:2,authority_ready_cards:0},{selectable_live_cards:0,authority_ready_cards:0}]),/^2 sources with selectable LIVE cards · 1 with card authority/);
+ assert.match(availabilityLine([{selectable_live_cards:1,authority_ready_cards:1},{selectable_live_cards:2,authority_ready_cards:0},{selectable_live_cards:0,authority_ready_cards:0}]),/^2 sources with selectable LIVE cards · 1 with seat authority available now/);
  assert.match(availabilityLine([{}]),/unverified/);
  assert.match(availabilityLine([]),/unverified/);
+});
+
+test('real producer COACH-benched natural WAIT never adds sit mass or quorum, including display inventory',async()=>{
+ const m=await setup();const {L,snap}=fixture(m);
+ L.seat_n.DRIFT=80;L.seat_hits.DRIFT=70;
+ Object.assign(L.skills['DRIFT.aligned_3h'],{status:'LIVE',n:100,ev_n:100,wilson:0.9,ev:5,manual_hold:false,min_walkforward_n:undefined,min_regime_n:undefined});
+ snap.ret5=0;snap.ret15=0;snap.ret30=0;
+ L.knobs.DRIFT={...L.knobs.DRIFT,benched_until:snap.as_of+60000};
+ const votes=m.bots.runBots(snap,L);const natural=votes.find(v=>v.seat==='DRIFT');
+ assert.equal(natural.lean,'WAIT');assert.ok(!natural.forced_sit,'real producer natural WAIT follows the previously leaking path');
+ const chair=m.chair.runChair(votes,snap,L,settings);const row=chair.rows.find(r=>r.seat==='DRIFT');
+ assert.equal(chair.sit_mass,0);assert.equal(chair.bar_breakdown.sit_mass,0);assert.equal(chair.quorum.wait,0);
+ assert.equal(row.abstention_eligible,false);assert.equal(row.selectable_live_cards,1);assert.equal(row.authority_ready_cards,0);assert.match(row.authority_hold_reason,/COACH/);
+ L.knobs.DRIFT.benched_until=snap.as_of;
+ const released=m.chair.runChair(votes,snap,L,settings);
+ assert.equal(released.quorum.wait,1);assert.equal(released.sit_mass,1,'expired bench preserves an authorized WAIT');
+});
+test('real Chair roster and quorum agree across quarantine, COACH bench, mute, feed hold and authorized WAIT',async()=>{
+ const m=await setup();const {chairRoster,quorumCheck,rosterCounts}=await import('../src/lib/desk/roster-evidence.ts');
+ for(const mode of ['quarantine','coach','mute','feed','calibration','ready']){
+   const {L,snap}=fixture(m);snap.ret5=0;snap.ret15=0;snap.ret30=0;
+   if(mode!=='quarantine'){
+     L.seat_n.DRIFT=80;L.seat_hits.DRIFT=70;
+     Object.assign(L.skills['DRIFT.aligned_3h'],{status:'LIVE',n:100,ev_n:100,wilson:0.9,ev:5,manual_hold:false,min_walkforward_n:undefined,min_regime_n:undefined});
+   }
+   if(mode==='coach')L.knobs.DRIFT={...L.knobs.DRIFT,benched_until:snap.as_of+60000};
+   if(mode==='calibration')L.seat_calib_debt.DRIFT=80;
+   const votes=m.bots.runBots(snap,L);
+   if(mode==='feed')votes.find(v=>v.seat==='DRIFT').health='STALE';
+   const chair=m.chair.runChair(votes,snap,L,{...settings,mutes:mode==='mute'?['DRIFT']:[]});
+   const receipt=chairRoster(snap,chair);
+   assert.equal(quorumCheck(receipt,chair.quorum).status,'MATCH',mode);
+   assert.deepEqual(rosterCounts(receipt),chair.quorum,mode);
+   assert.equal(chair.quorum.wait,mode==='ready'?1:0,mode);
+   assert.equal(chair.sit_mass,mode==='ready'?1:0,mode);
+ }
 });

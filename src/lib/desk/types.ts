@@ -459,6 +459,8 @@ export type SeatRow = {
   /** Verified current-regime card inventory; absent on historical frames. */
   selectable_live_cards?: number;
   authority_ready_cards?: number;
+  authority_hold_reason?: string;
+  abstention_eligible?: boolean;
   conf: number;
   skill_used: string;
   base_w: number;

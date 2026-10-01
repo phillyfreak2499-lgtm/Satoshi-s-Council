@@ -89,7 +89,7 @@ function SeatPage() {
           {/* Compact lean summary at the top: the seat's own research read, beside what SATOSHI decided. Presentation only. */}
           <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-md border border-border bg-surface px-3 py-2">
             {lean ? <SeatLeanSummary key={leanKey(lean)} lean={lean} meterId={`seat-lean-${id}`} /> : null}
-            {lean ? <span className="font-mono text-micro text-muted">{chairRow ? <>SATOSHI heard: <LeanChip lean={lean.heardLean} /></> : "No Chair row yet — research read only."}</span> : null}
+            {lean ? <span className="font-mono text-micro text-muted">{!chairRow ? "No Chair row yet — research read only." : lean.isAuthorizedSpeaker ? <>SATOSHI heard: <LeanChip lean={lean.heardLean} /></> : chairRow.abstention_eligible === true && chairRow.lean === "WAIT" ? "Authorized WAIT — no directional vote." : "Research only — no vote counted."}</span> : null}
           </div>
           <BotCard seat={id} snap={snap} vote={vote} />
         </>

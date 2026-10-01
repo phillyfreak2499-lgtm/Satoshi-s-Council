@@ -120,7 +120,7 @@ test("3. the seat page top area carries a compact lean summary linking to the fu
   assert.doesNotMatch(page, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/, "a producer opinion cannot be labelled as a Chair hearing");
   const html = renderToString(React.createElement(SeatLeanSummary, { lean: lean({ raw_lean: "DOWN", raw_conf: 74 }), meterId: "seat-lean-DRIFT" }));
   const t = text(html);
-  assert.match(t, /^Directional Lean: 13 · Bearish Bearish read — not strong enough for SATOSHI to count\. Full meter ↓/);
+  assert.match(t, /^Directional Lean: 13 · Bearish Bearish read — not strong enough for SATOSHI to count\. Authority unverified Full meter ↓/);
   assert.match(html, /href="#seat-lean-DRIFT"/);
   assert.match(html, /data-lean-key="KXBTC15M-26SEP2514-T85000\|1790000000000\|DRIFT"/);
   assert.match(html, /data-direction="BEARISH"/);

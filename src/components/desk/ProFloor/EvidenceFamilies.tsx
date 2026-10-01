@@ -9,7 +9,7 @@
  * Tapping a family jumps to its existing specialist desk.
  */
 import { cn } from "@/lib/utils";
-import { availabilityLine, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type FamilyFacts, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
 import type { SeatId, SeatTab } from "@/lib/desk/types";
 import { Chip, Panel } from "./panels";
@@ -39,7 +39,7 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
         type="button"
         onClick={() => onJump(s.seat)}
         className="flex min-h-11 w-full items-center gap-2 rounded-sm px-1 text-left hover:bg-surface-2/60"
-        aria-label={`${s.seat}: ${VOICE_LABEL[s.voice]}${speaking ? `, ${s.final_lean}` : ""}. Open the ${s.family} desk.`}
+        aria-label={`${s.seat}: ${seatAvailabilityLabel(s)}. ${VOICE_LABEL[s.voice]}${speaking ? `, ${s.final_lean}` : ""}. Open the ${s.family} desk.`}
       >
         <span className="w-[4.5rem] shrink-0 font-mono text-micro text-fg">{s.seat}</span>
         <span className={cn("w-[5.25rem] shrink-0 whitespace-nowrap font-mono text-micro tabular", tone)}>
@@ -50,7 +50,7 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
             ? `raw read · ${s.suppression ? SUPPRESSION_LABEL[s.suppression] : "suppressed"}`
             : speaking
               ? `${s.health_warning ? "STALE feed · " : ""}${s.why || "speaking"}`
-              : VOICE_LABEL[s.voice]}
+              : seatAvailabilityLabel(s)}
         </span>
       </button>
     </li>

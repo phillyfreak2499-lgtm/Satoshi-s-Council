@@ -1,3 +1,4 @@
+import { useDesk } from "@/lib/desk/store";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { RosterEvidence } from "./RosterEvidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
@@ -5,9 +6,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
-import { SEAT_IDS } from "@/lib/desk/types";
-import { CHAIR_NON_VOTER_IDS, RETIRED_SEAT_IDS } from "@/lib/desk/seats";
-import { COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { SEAT_IDS, type SeatRow } from "@/lib/desk/types";
+import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
@@ -107,18 +107,18 @@ function compactRepeatedWaits(exchanges: Exchange[]): Exchange[] {
   return compact;
 }
 
-const NON_VOTERS = new Set<string>(CHAIR_NON_VOTER_IDS);
-const RETIRED = new Set<string>(RETIRED_SEAT_IDS);
 
-function ChamberRoster() {
+export function ChamberRoster({ rows = [] }: { rows?: SeatRow[] }) {
+  const bySeat = new Map(rows.map((row) => [row.seat, row]));
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="chamber-roster-title">
       <div className="font-mono text-micro uppercase tracking-widest text-subtle">Quiet floor</div>
       <h2 id="chamber-roster-title" className="mt-1 font-sans text-title font-medium">Meet the Council</h2>
+      <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{availabilityLine(rows)}</p>
       <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}</p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7" role="list" aria-label="The 21 Council seats">
         {SEAT_IDS.map((seat) => {
-          const role = NON_VOTERS.has(seat) ? "pit crew" : RETIRED.has(seat) ? "retired" : "voting";
+          const role = seatAvailabilityLabel(bySeat.get(seat) ?? { seat });
           return (
             <div key={seat} role="listitem" className="rounded border border-border bg-canvas px-2 py-2">
               <div className="font-mono text-micro font-bold text-fg">{seat}</div>
@@ -413,6 +413,7 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
 }
 
 export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) {
+  const frame = useDesk();
   const [rows, setRows] = useState<ChamberStatement[]>(initial);
   const [loaded, setLoaded] = useState(true);
 
@@ -459,7 +460,7 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
         </section>
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={rows[0] ?? null} loaded={loaded} /> : null}
-        {quietFloor ? <ChamberRoster /> : null}
+        {quietFloor ? <ChamberRoster rows={frame.chair?.rows ?? []} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">

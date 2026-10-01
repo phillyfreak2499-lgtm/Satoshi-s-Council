@@ -76,7 +76,7 @@ test("the Pro meter prints the label, the number, the research side, the status 
   const t = text(html);
   assert.match(t, /DIRECTIONAL LEAN/);
   assert.match(t, /85 · Bullish/);
-  assert.match(t, /Bearish Bullish Research read: UP/, "the scale is labelled at both ends");
+  assert.match(t, /Bearish Bullish Authority unverified Research read: UP/, "the scale is labelled at both ends");
   assert.match(t, /Status: BELOW BAR/);
   assert.match(t, /Card: DRIFT\.aligned_3h/);
   assert.match(t, /Strength: 70/);
