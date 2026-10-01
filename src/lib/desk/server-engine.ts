@@ -1,3 +1,4 @@
+import { directionAlreadyBooked } from "./directional-regret";
 import { captureDirectionalRegret } from "./directional-regret.server";
 /**
  * The shared brain. One engine loop on the server: pulls the live tape,
@@ -1650,7 +1651,9 @@ async function tick(e: Eng) {
       if (!(ask > 0 && ask < 100)) reasons.push("executable ask unavailable");
       else if (!bookable(ask)) reasons.push(`${ask}¢ ask is below the 80¢ paper floor`);
       if (e.riskReservationPending) reasons.push("paper booking awaits durable risk reservation");
-      void captureDirectionalRegret(snap, chair, [...new Set(reasons)], hasPaperPosition(e.riskCalls, snap) && !e.riskReservationPending);
+      if (hasPaperPosition(e.riskCalls, snap) && !directionAlreadyBooked(e.riskCalls, snap, chair))
+        reasons.push("an existing paper position in the opposite direction blocks another booking");
+      void captureDirectionalRegret(snap, chair, [...new Set(reasons)], directionAlreadyBooked(e.riskCalls, snap, chair) && !e.riskReservationPending);
     }
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // MEASUREMENT ONLY (authority: none). Buffers per-seat + Chair-gating telemetry

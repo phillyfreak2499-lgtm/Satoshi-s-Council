@@ -70,3 +70,14 @@ export function regretBand(ask: number | null) {
               ? REGRET_BANDS[4]
               : REGRET_BANDS[5];
 }
+
+/** An existing opposite-side position does not turn this read into a fill. */
+export function directionAlreadyBooked(
+  calls: readonly { ticker: string; close_time: number; lean: string }[],
+  snap: Pick<Snapshot, "ticker" | "close_time">,
+  chair: Pick<ChairResult, "lean">,
+) {
+  return calls.some(
+    (r) => r.ticker === snap.ticker && r.close_time === snap.close_time && r.lean === chair.lean,
+  );
+}

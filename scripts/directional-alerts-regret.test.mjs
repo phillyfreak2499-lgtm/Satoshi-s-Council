@@ -85,6 +85,16 @@ test("every directional frame can be captured across all prices, exact ask prefe
       Math.round((-ask - row.fee) * 10) / 10,
     );
   }
+  const paid = [{ ticker: "T", close_time: close, lean: "UP" }];
+  assert.equal(
+    model.directionAlreadyBooked(paid, { ticker: "T", close_time: close }, { lean: "UP" }),
+    true,
+  );
+  assert.equal(
+    model.directionAlreadyBooked(paid, { ticker: "T", close_time: close }, { lean: "DOWN" }),
+    false,
+    "opposite unbooked reads remain in regret ledger",
+  );
   const s = { ticker: "T", as_of: close - 60000, close_time: close, yes_ask: 0, yes_mid: 80 };
   assert.equal(model.regretObservation(s, { lean: "WAIT" }, [], false), null);
   assert.equal(model.regretObservation(s, { lean: "UP" }, [], true), null);
@@ -180,6 +190,19 @@ test("actual report SQL: official settlement, real fees, bands, repeat-frame ded
       ]);
     }
     const r = await reportModule.directionalRegretReport();
+    const firstPage = await reportModule.directionalRegretReport(undefined, 1);
+    assert.equal(firstPage.observations.length, 1);
+    assert.equal(
+      firstPage.observation_bands.reduce((s, b) => s + b.observations, 0),
+      8,
+      "totals cover entire ledger, not receipt page",
+    );
+    const secondPage = await reportModule.directionalRegretReport(firstPage.next_cursor, 1);
+    assert.notDeepEqual(
+      secondPage.observations[0],
+      firstPage.observations[0],
+      "keyset page advances without duplicating a receipt",
+    );
     assert.equal(r.windows.length, 4);
     assert.equal(r.observations.length, 8, "every frame exposes its settled shadow result");
     assert.equal(r.observation_bands.find((b) => b.band === "70–79.9¢").net_cents, 46);
@@ -208,7 +231,10 @@ test("production wiring captures after both booking paths and never feeds resear
     s.indexOf("void captureDirectionalRegret(snap") >
       s.indexOf("await noteRecoveryPilotCall(e, snap, pilot)"),
   );
-  assert.match(s, /hasPaperPosition\(e.riskCalls, snap\) && !e.riskReservationPending/);
+  assert.match(
+    s,
+    /directionAlreadyBooked\(e.riskCalls, snap, chair\) && !e.riskReservationPending/,
+  );
   assert.doesNotMatch(s, /await captureDirectionalRegret/);
 });
 

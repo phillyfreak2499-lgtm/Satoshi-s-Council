@@ -56,7 +56,13 @@ export async function captureDirectionalRegret(
   });
   await appendSerial;
 }
-export async function directionalRegretReport() {
+export type RegretCursor = {
+  observed_at: string;
+  ticker: string;
+  close_time: string;
+  side: string;
+};
+export async function directionalRegretReport(cursor?: RegretCursor, pageSize = 1000) {
   const db = await getSql();
   // First observed unbooked direction per WINDOW, not every repeated tick as a new trade.
   // Exact ledger identity supplies official settlement and later-booking information,
@@ -121,25 +127,62 @@ export async function directionalRegretReport() {
     b.net_cents = Math.round(b.net_cents * 10) / 10;
     b.floor_only_net_cents = Math.round(b.floor_only_net_cents * 10) / 10;
   }
-  const observations = await db<{ ask_cents: number | null; net_cents: number | null }>`select r.*,
+  const size = Math.max(1, Math.min(1000, Math.trunc(pageSize)));
+  const page = await db<
+    RegretCursor & { ask_cents: number | null; net_cents: number | null }
+  >`select r.*,
     case when l.source='kalshi-result' and l.winner in ('UP','DOWN') and r.ask_cents is not null
       then (case when l.winner=r.side then 100 else 0 end)-r.ask_cents-r.fee_cents end as net_cents,
     case when l.source='kalshi-result' then l.winner end as winner,
     coalesce(l.entry_cents is not null,false) as booked_later
     from desk_directional_regret r left join desk_ledger_research l
-      on l.ticker=r.ticker and l.close_time=r.close_time order by r.observed_at desc,r.ticker,r.side`;
-  const observation_bands = REGRET_BANDS.map((band) => {
-    const reads = observations.filter((r) => regretBand(r.ask_cents) === band);
+      on l.ticker=r.ticker and l.close_time=r.close_time
+    where (r.observed_at,r.ticker,r.close_time,r.side) >
+      (${new Date(cursor?.observed_at ?? 0)},${cursor?.ticker ?? ""},${new Date(cursor?.close_time ?? 0)},${cursor?.side ?? ""})
+    order by r.observed_at,r.ticker,r.close_time,r.side limit ${size + 1}`;
+  const observations = page.slice(0, size);
+  const last = observations.at(-1);
+  const next_cursor =
+    page.length > size && last
+      ? {
+          observed_at: last.observed_at,
+          ticker: last.ticker,
+          close_time: last.close_time,
+          side: last.side,
+        }
+      : null;
+  // Aggregate the entire ledger in SQL, independently of the bounded receipt page.
+  const totals = await db<{
+    band_index: number;
+    observations: number;
+    settled: number;
+    net_cents: number;
+  }>`
+    with receipts as (select r.ask_cents,
+      case when l.source='kalshi-result' and l.winner in ('UP','DOWN') and r.ask_cents is not null
+        then (case when l.winner=r.side then 100 else 0 end)-r.ask_cents-r.fee_cents end as net
+      from desk_directional_regret r left join desk_ledger_research l
+        on l.ticker=r.ticker and l.close_time=r.close_time)
+    select case when ask_cents is null then 6 when ask_cents<70 then 0 when ask_cents<80 then 1
+      when ask_cents<85 then 2 when ask_cents<90 then 3 when ask_cents<95 then 4 else 5 end as band_index,
+      count(*)::int as observations, count(net)::int as settled, coalesce(sum(net),0)::double precision as net_cents
+      from receipts group by 1`;
+  const observation_bands = REGRET_BANDS.map((band, i) => {
+    const total = totals.find((t) => t.band_index === i);
     return {
       band,
-      observations: reads.length,
-      settled: reads.filter((r) => r.net_cents != null).length,
-      net_cents: Math.round(reads.reduce((sum, r) => sum + (r.net_cents ?? 0), 0) * 10) / 10,
+      observations: total?.observations ?? 0,
+      settled: total?.settled ?? 0,
+      net_cents: Math.round((total?.net_cents ?? 0) * 10) / 10,
     };
   });
   return {
     observation_bands,
     observations,
+    next_cursor,
+    next_page: next_cursor
+      ? `/api/regret?cursor=${encodeURIComponent(JSON.stringify(next_cursor))}`
+      : null,
     fee_engine: "KALSHI_TAKER_7PCT_CEIL_CENT_V1",
     prospective: true,
     historical_complete: false,
