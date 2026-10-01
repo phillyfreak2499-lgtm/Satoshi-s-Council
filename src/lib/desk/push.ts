@@ -152,3 +152,37 @@ export async function testPush(): Promise<void> {
   if (!sub) throw new Error("alerts are off in this browser");
   await post({ action: "test", endpoint: sub.endpoint });
 }
+
+export type OwnerAlertVerification = {
+  build_sha: string;
+  held: boolean;
+  verification_id?: string;
+  tiers?: { tier: string; outcome: string }[];
+};
+export async function verifyOwnerAlerts(
+  key: string,
+  action: "status" | "verify" | "release" | "hold",
+  verificationId?: string,
+): Promise<OwnerAlertVerification> {
+  const sub = await currentSubscription();
+  if (!sub) throw Error("turn alerts on and register this browser as owner first");
+  const response = await fetch("/api/alert-verification", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      key,
+      endpoint: sub.endpoint,
+      action,
+      verification_id: verificationId,
+      confirm_test_fixtures: action === "verify",
+      confirm_device_display: action === "release",
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  const result = (await response.json()) as OwnerAlertVerification & {
+    ok?: boolean;
+    error?: string;
+  };
+  if (!response.ok || !result.ok) throw Error(result.error || "owner verification failed");
+  return result;
+}

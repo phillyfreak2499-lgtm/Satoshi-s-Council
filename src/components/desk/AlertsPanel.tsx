@@ -8,6 +8,8 @@ import {
   pushSupported,
   setOwnerAlerts,
   testPush,
+  verifyOwnerAlerts,
+  type OwnerAlertVerification,
   type PushChoice,
   type PushPrefs,
 } from "@/lib/desk/push";
@@ -22,6 +24,9 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [verification, setVerification] = useState<OwnerAlertVerification | null>(null);
+  const [fixturesAcknowledged, setFixturesAcknowledged] = useState(false);
+  const [displayConfirmed, setDisplayConfirmed] = useState(false);
   const supported = pushSupported();
 
   useEffect(() => {
@@ -73,6 +78,33 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
         on
           ? "owner alerts on — enable call alerts, then send a test to verify this browser's owner call channel"
           : "owner alerts off in this browser",
+      );
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyTiers = async (action: "status" | "verify" | "release" | "hold") => {
+    const key = getAdminKey();
+    if (!key) {
+      setMsg("unlock owner controls first");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    if (action === "verify" || action === "hold") {
+      setDisplayConfirmed(false);
+      setVerification(null);
+    }
+    try {
+      const result = await verifyOwnerAlerts(key, action, verification?.verification_id);
+      setVerification(result);
+      setMsg(
+        result.held
+          ? "Subscriber paper/read alerts are held. Provider acceptance alone cannot release them."
+          : "Subscriber paper/read alerts released for this deployed build after owner confirmation.",
       );
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -167,6 +199,86 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
               </div>
             </div>
           ) : null}
+          {ownerMode ? (
+            <div className="my-3 rounded border border-border p-2 font-mono text-micro">
+              <div>Two-tier rollout · owner only</div>
+              <div className="my-1 text-subtle">
+                Both subscriber tiers start held on each new deployed commit. The test sends fixture
+                notifications only to this registered owner browser; it creates no paper position,
+                research call or follower signal. Watchdog alerts are unaffected.
+              </div>
+              <label className="flex gap-2 my-2">
+                <input
+                  type="checkbox"
+                  checked={fixturesAcknowledged}
+                  disabled={busy}
+                  onChange={(e) => setFixturesAcknowledged(e.target.checked)}
+                />
+                I understand both notifications use test fixtures and the exact approved alert copy.
+              </label>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={busy || !owner || !fixturesAcknowledged}
+                onClick={() => void verifyTiers("verify")}
+              >
+                Test both tiers on this owner device
+              </button>
+              <label className="flex gap-2 my-2">
+                <input
+                  type="checkbox"
+                  checked={displayConfirmed}
+                  disabled={
+                    busy ||
+                    !verification?.verification_id ||
+                    !verification.tiers?.every((t) => t.outcome === "accepted")
+                  }
+                  onChange={(e) => setDisplayConfirmed(e.target.checked)}
+                />
+                I saw both exact titles/messages and the filled BOOKED square versus hollow READ
+                ONLY diamond.
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || !owner || !displayConfirmed || !verification?.verification_id}
+                  onClick={() => void verifyTiers("release")}
+                >
+                  Confirm display and release subscriber tiers
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || !owner}
+                  onClick={() => void verifyTiers("hold")}
+                >
+                  Hold subscriber tiers
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || !owner}
+                  onClick={() => void verifyTiers("status")}
+                >
+                  Check rollout status
+                </button>
+              </div>
+              {verification ? (
+                <div className="mt-2">
+                  {verification.held ? "HELD" : "RELEASED"} · build{" "}
+                  {verification.build_sha.slice(0, 10)}
+                  {verification.tiers?.map((t) => (
+                    <div key={t.tier}>
+                      {t.tier}: {t.outcome} at push provider
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-subtle">Rollout status not yet checked.</div>
+              )}
+            </div>
+          ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -209,10 +321,10 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
           ) : null}
           {msg ? <div className="mt-2 font-mono text-micro text-muted">{msg}</div> : null}
           <div className="mt-2 font-mono text-micro text-subtle">
-            Paper-fill alerts fire when a position books. Optional READ ONLY alerts report an
-            unbooked direction and its recorded blockers, once per direction per window. A research
-            alert is never a fill or follower instruction. Alerts are per browser — turn them on
-            wherever you want them.
+            After owner rollout verification, paper-fill alerts fire when a position books. Optional
+            READ ONLY alerts report an unbooked direction and its recorded blockers, once per
+            direction per window. A research alert is never a fill or follower instruction. Alerts
+            are per browser — turn them on wherever you want them.
           </div>
         </>
       )}

@@ -1,3 +1,8 @@
+import {
+  ownerVerification,
+  rolloutReady,
+  type OwnerVerificationInput,
+} from "./alert-verification.server";
 import { paperAlert, readAlert } from "./alert-copy";
 /**
  * Push alerts (server only). A browser that opted in gets a web push when
@@ -103,14 +108,18 @@ export async function subscribePush(input: SubInput): Promise<PushResult> {
   const ua = typeof input.ua === "string" ? input.ua.slice(0, 200) : null;
   const db = await sql();
   const rows = await db<{ owner: boolean }>`
-    insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, on_read, ua)
-    values (${endpoint}, ${p256dh}, ${auth}, ${token}, ${on_call}, ${on_settle}, ${on_read}, ${ua})
+    with subscription as (insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, ua)
+    values (${endpoint}, ${p256dh}, ${auth}, ${token}, ${on_call}, ${on_settle}, ${ua})
     on conflict (endpoint) do update set
       owner = desk_push_subs.owner and desk_push_subs.p256dh = excluded.p256dh and desk_push_subs.auth = excluded.auth,
       p256dh = excluded.p256dh, auth = excluded.auth, token = coalesce(excluded.token, desk_push_subs.token),
-      on_call = excluded.on_call, on_settle = excluded.on_settle, on_read = excluded.on_read, ua = excluded.ua,
+      on_call = excluded.on_call, on_settle = excluded.on_settle, ua = excluded.ua,
       last_seen = now(), fails = 0
-    returning owner
+    returning id, owner)
+    insert into desk_push_read_prefs(subscription_id,on_read)
+    select id,${on_read} from subscription
+    on conflict(subscription_id) do update set on_read=excluded.on_read
+    returning (select owner from subscription) as owner
   `;
   return { ok: true, prefs: { on_call, on_settle, on_read, owner: rows[0]?.owner === true } };
 }
@@ -130,7 +139,7 @@ export async function setOwnerPush(endpointRaw: unknown, on: boolean): Promise<P
   const db = await sql();
   const rows = await db<PushPrefs>`
     update desk_push_subs set owner = ${on}, last_seen = now() where endpoint = ${endpoint}
-    returning on_call, on_settle, on_read, owner
+    returning on_call, on_settle, owner, coalesce((select p.on_read from desk_push_read_prefs p where p.subscription_id=desk_push_subs.id),false) as on_read
   `;
   if (!rows[0]) return { ok: false, error: "turn alerts on in this browser first", status: 404 };
   return { ok: true, prefs: rows[0] };
@@ -141,7 +150,7 @@ export async function pushPrefsFor(endpointRaw: unknown): Promise<PushPrefs | nu
   if (!endpoint) return null;
   const db = await sql();
   const rows =
-    await db<PushPrefs>`select on_call, on_settle, on_read, owner from desk_push_subs where endpoint = ${endpoint}`;
+    await db<PushPrefs>`select s.on_call,s.on_settle,s.owner,coalesce(p.on_read,false) as on_read from desk_push_subs s left join desk_push_read_prefs p on p.subscription_id=s.id where s.endpoint = ${endpoint}`;
   return rows[0] ?? null;
 }
 
@@ -205,6 +214,12 @@ async function recordReceipt(
     buildSha: BUILD_SHA,
     attemptedAtMs,
   });
+  if (event.kind === "read") {
+    await db`insert into desk_directional_read_receipts
+      (event_kind,event_key,subscription_id,outcome,provider_status,error_code,build_sha,attempted_at)
+      values (${r.event_kind},${r.event_key},${r.subscription_id},${r.outcome},${r.provider_status},${r.error_code},${r.build_sha},${r.attempted_at}::timestamptz)`;
+    return;
+  }
   await db`
     insert into desk_push_delivery_receipts
       (event_kind, event_key, subscription_id, outcome, provider_status, error_code, build_sha, attempted_at)
@@ -342,7 +357,7 @@ async function subsFor(kind: "call" | "read" | "settle" | "owner"): Promise<SubR
   if (kind === "owner")
     return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where owner and fails < ${MAX_FAILS}`;
   if (kind === "read")
-    return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_read and fails < ${MAX_FAILS}`;
+    return db<SubRow>`select s.id,s.endpoint,s.p256dh,s.auth,s.token from desk_push_subs s join desk_push_read_prefs p on p.subscription_id=s.id where p.on_read and s.fails < ${MAX_FAILS}`;
   return kind === "call"
     ? db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_call and fails < ${MAX_FAILS}`
     : db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_settle and fails < ${MAX_FAILS}`;
@@ -371,6 +386,7 @@ export async function notifyDirectionalRead(
   close: number,
   ticker: string,
 ): Promise<void> {
+  if (!(await subscriberAlertsReleased())) return;
   const db = await sql();
   const subs = await subsFor("read");
   if (!subs.length) return;
@@ -419,6 +435,10 @@ export function notifyCall(
 ): void {
   void (async () => {
     try {
+      if (!(await subscriberAlertsReleased())) {
+        lastLog = "paper alert held: owner two-tier verification required for this build";
+        return;
+      }
       const subs = await subsFor("call");
       if (!subs.length) return;
       const payload = callPayload(lean, cents, minsLeft, ticker, source, closeTime);
@@ -477,7 +497,7 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
   if (!endpoint) return { ok: false, error: "no endpoint", status: 400 };
   const db = await sql();
   const rows = await db<SubRow & PushPrefs>`
-    select id, endpoint, p256dh, auth, token, on_call, on_settle, on_read, owner from desk_push_subs where endpoint = ${endpoint}
+    select s.id,s.endpoint,s.p256dh,s.auth,s.token,s.on_call,s.on_settle,s.owner,coalesce(p.on_read,false) as on_read from desk_push_subs s left join desk_push_read_prefs p on p.subscription_id=s.id where s.endpoint = ${endpoint}
   `;
   const sub = rows[0];
   if (!sub) return { ok: false, error: "this browser is not subscribed", status: 404 };
@@ -516,3 +536,16 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
 }
 
 export const __test = { fanout, cleanEndpoint, cleanKey, applyDeliveryBookkeeping };
+
+/** Hold affects only subscriber paper/read notifications, never booking or watchdogs. */
+async function subscriberAlertsReleased(): Promise<boolean> {
+  try {
+    return await rolloutReady(await sql(), BUILD_SHA);
+  } catch {
+    return false;
+  }
+}
+/** Called only by the admin-authenticated owner verification route. */
+export async function ownerAlertVerification(input: OwnerVerificationInput) {
+  return ownerVerification(await sql(), sendOne, BUILD_SHA, input);
+}

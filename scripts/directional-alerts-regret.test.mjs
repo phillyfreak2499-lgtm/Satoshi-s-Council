@@ -45,12 +45,19 @@ test("drained journal compacts atomically and concurrent appends survive restart
     const j = new RegretJournal(root, 2);
     await j.append({ id: 1 });
     let release, started;
-    const waiting = new Promise((resolve) => { release = resolve; });
-    const entered = new Promise((resolve) => { started = resolve; });
+    const waiting = new Promise((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise((resolve) => {
+      started = resolve;
+    });
     const seen = [];
     const draining = j.drain(async (row) => {
       seen.push(row.id);
-      if (row.id === 1) { started(); await waiting; }
+      if (row.id === 1) {
+        started();
+        await waiting;
+      }
     });
     await entered;
     await j.append({ id: 2 });
@@ -66,7 +73,9 @@ test("drained journal compacts atomically and concurrent appends survive restart
     const recovered = new RegretJournal(root, 2);
     await recovered.drain(async (row) => seen.push(row.id));
     assert.deepEqual(seen, [1, 2, 3]);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 test("approved titles and bodies are exact; tier badges and tags remain distinct", () => {
   const booked = copy.paperAlert("UP", 83, close);
@@ -160,7 +169,7 @@ test("actual report SQL: official settlement, real fees, bands, repeat-frame ded
   const pg = new PGlite();
   try {
     await pg.exec(
-      "create table desk_push_subs(on_read boolean); create table desk_push_delivery_receipts(event_kind text constraint desk_push_delivery_receipts_event_kind_check check(event_kind in ('call','test')));",
+      "create table desk_push_subs(id bigint primary key); create table desk_push_delivery_receipts(event_kind text constraint desk_push_delivery_receipts_event_kind_check check(event_kind in ('call','test')));",
     );
     const migration = readFileSync("migrations/0069_directional_regret.sql", "utf8");
     await pg.exec(migration);
@@ -221,9 +230,16 @@ test("actual report SQL: official settlement, real fees, bands, repeat-frame ded
     }
     await pg.query("update desk_ledger set entry_cents=85,entry_lean='DOWN' where ticker='A'");
     const r = await reportModule.directionalRegretReport();
-    assert.equal(r.windows.find((w) => w.ticker === "A").booked_later, false, "opposite-side booking is not a booked read");
+    assert.equal(
+      r.windows.find((w) => w.ticker === "A").booked_later,
+      false,
+      "opposite-side booking is not a booked read",
+    );
     assert.equal(r.bands.find((b) => b.band === "70–79.9¢").never_booked_net_cents, 23);
-    assert.equal(r.observations.filter((w) => w.ticker === "A").every((w) => !w.booked_later), true);
+    assert.equal(
+      r.observations.filter((w) => w.ticker === "A").every((w) => !w.booked_later),
+      true,
+    );
     const firstPage = await reportModule.directionalRegretReport(undefined, 1);
     assert.equal(firstPage.observations.length, 1);
     assert.equal(
@@ -275,9 +291,9 @@ test("production wiring captures after both booking paths and never feeds resear
 test("real directional dispatch SQL: opt-in only, durable per-window/side dedupe, paper channel independent", async () => {
   const pg = new PGlite();
   try {
-    await pg.exec(`create table desk_push_subs(id int, endpoint text, p256dh text, auth text, token text, owner boolean, on_call boolean, on_settle boolean, on_read boolean, fails int);
+    await pg.exec(`create table desk_push_subs(id int, endpoint text, p256dh text, auth text, token text, owner boolean, on_call boolean, on_settle boolean, fails int);
       create table desk_directional_read_events(ticker text,close_time timestamptz,side text,primary key(ticker,close_time,side));
-      insert into desk_push_subs values(1,'https://push.invalid','key','auth',null,false,true,false,false,0)`);
+      create table desk_push_read_prefs(subscription_id bigint primary key,on_read boolean); insert into desk_push_subs values(1,'https://push.invalid','key','auth',null,false,true,false,0)`);
     const db = async (strings, ...args) =>
       (
         await pg.query(
@@ -304,6 +320,7 @@ test("real directional dispatch SQL: opt-in only, durable per-window/side dedupe
       "MAX_FAILS",
       "readAlert",
       "fanout",
+      "subscriberAlertsReleased",
       code + "\nreturn {subsFor,notifyDirectionalRead};",
     )(
       async () => db,
@@ -312,11 +329,14 @@ test("real directional dispatch SQL: opt-in only, durable per-window/side dedupe
       async (subs, pick) => {
         sent.push(...subs.map((s) => pick(s)));
       },
+      async () => true,
     );
     assert.equal((await real.subsFor("call")).length, 1);
     await real.notifyDirectionalRead("UP", "75¢ ask is below the 80¢ paper floor", close, "T");
     assert.equal(sent.length, 0, "legacy paper subscriber receives no new research tier");
-    await pg.exec("update desk_push_subs set on_call=false,on_read=true");
+    await pg.exec(
+      "update desk_push_subs set on_call=false; insert into desk_push_read_prefs values(1,true)",
+    );
     assert.equal((await real.subsFor("call")).length, 0);
     await real.notifyDirectionalRead("UP", "75¢ ask is below the 80¢ paper floor", close, "T");
     await real.notifyDirectionalRead("UP", "different blocker", close, "T");
