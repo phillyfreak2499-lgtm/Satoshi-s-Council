@@ -39,7 +39,7 @@ async function fixture(t) {
   const pg = new PGlite(); t.after(() => pg.close());
   await pg.exec(migration);
   await pg.exec(`create table desk_alert_rollout(build_sha text primary key,released_at timestamptz);
-    create table desk_ledger(ticker text,close_time timestamptz,entry_lean text,entry_source text,winner text,ev_cents double precision,graded_at timestamptz,research_quality text);
+    create table desk_ledger(ticker text,close_time timestamptz,entry_lean text,entry_source text,winner text,ev_cents double precision,graded_at timestamptz,research_quality text,entry_cents double precision default 83);
     create view desk_ledger_research as select * from desk_ledger where research_quality='valid';`);
   let now = Date.now() + 10000;
   await pg.query("insert into desk_alert_rollout values ($1,$2)", [build, new Date(now-1000)]);
@@ -111,7 +111,7 @@ test("read cursor survives restart, neutral reset permits a new lean, timestamp 
 });
 test("settlement follows a delivered fill only, exact window/source and stored after-fee P&L",async(t)=>{
   const f=await fixture(t);const e=f.event();await f.outbox.enqueue(e);await f.outbox.drain();
-  await f.db.query("insert into desk_ledger values ($1,$2,'UP',null,'UP',17,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
+  await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'UP',17,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
   await f.outbox.drain();await f.outbox.drain();assert.equal(f.calls.length,2);
   assert.match(f.calls[1].p.embeds[0].title,/SETTLED · WIN/);
   assert.ok(f.calls[1].p.embeds[0].fields.some(x=>x.value==="+17.0¢"));
@@ -195,4 +195,32 @@ test("full production engine and push source differ only by the two outbound pub
     .replace('  publishDiscordPaper(lean, cents, ticker, closeTime, source);\n','');
   assert.equal(crypto.createHash('sha256').update(engine).digest('hex'),'ac58ed7e3d21f99198457f0327a8d1978222f44112c6c290f77581d81e90317b');
   assert.equal(crypto.createHash('sha256').update(push).digest('hex'),'80615c0209a2a0435329ac934849df2d206d0238e9d7486145b49a766ddc0be2');
+});
+
+ test("settlement scoreboard matches Books all-time totals, includes current fill, survives retry without double counting", async(t)=>{
+  const f=await fixture(t), e=f.event(); await f.outbox.enqueue(e); await f.outbox.drain();
+  await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'UP',17,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
+  await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
+  let attempts=0;const posted=[];
+  const retry=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async(u,p)=>{
+    posted.push(p);return ++attempts===1?{...accepted,ok:false,status:503,retryMs:1000,code:'provider_or_receipt_failure'}:accepted;
+  });
+  await retry.drain();f.advance(1001);await retry.drain();await retry.drain();
+  assert.equal(posted.length,2);assert.deepEqual(posted[0],posted[1]);
+  const embed=posted[1].embeds[0];
+  assert.equal(embed.fields.find(x=>x.name==='Paper scoreboard · all-time').value,'2W–1L · -54.0¢ net after fees');
+  assert.equal((await f.rows()).filter(r=>r.kind==='settle').length,1);
+  // Pin arithmetic against the actual site's query, including its historical
+  // positive-net definition of wins (not an invented alternate win measure).
+  const books=readFileSync('src/lib/desk/books.server.ts','utf8');
+  for(const expression of ['(count(*) filter (where entry_cents is not null))::int','(count(*) filter (where entry_cents is not null and ev_cents > 0))::int','coalesce(sum(ev_cents), 0)::float','from desk_ledger_research']) {
+    assert.ok(books.includes(expression));assert.ok(readFileSync('src/lib/desk/discord-outbox.server.ts','utf8').includes(expression));
+  }
+});
+
+test("losing settlement scoreboard includes the current loss and stored fees",async(t)=>{
+  const f=await fixture(t),e=f.event();await f.outbox.enqueue(e);await f.outbox.drain();
+  await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'DOWN',-85,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
+  await f.outbox.drain();
+  assert.equal(f.calls[1].p.embeds[0].fields.find(x=>x.name==='Paper scoreboard · all-time').value,'0W–1L · -85.0¢ net after fees');
 });

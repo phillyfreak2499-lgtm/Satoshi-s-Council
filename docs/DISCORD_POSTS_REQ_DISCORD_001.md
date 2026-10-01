@@ -68,3 +68,5 @@ Delivery is **at least once**, not exactly once: if Discord accepts a POST but t
 5. Verify the first new seat lean in #directional-reads and first genuinely booked fill plus recorded settlement follow-up in #paper-calls; inspect private outbox rows/log codes. Do not manufacture a paper position to test publication.
 
 The September 14 recovery, owner-alert incident repair, and historical measurement issue #385 remain separate.
+
+Settlement embeds also show the all-time public Books paper scoreboard: W-L and cumulative recorded net after fees, including the just-settled fill. One SQL snapshot reads the same valid ledger population, entry count, positive-net wins and stored net sum as Books; no 30-second cache lag, hypothetical/shadow totals, or Discord-delivery-only record. Historical wins retain Books’ positive-net definition. Retries reuse the captured totals. No pre-call scoreboard is added.

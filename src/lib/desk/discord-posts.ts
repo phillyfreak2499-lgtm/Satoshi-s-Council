@@ -53,8 +53,9 @@ export function readEvent(l: SeatLean, build: string, target: string): DiscordEv
         { name: "Observed (UTC)", value: stamp(l.window.as_of) }, { name: "Status", value: l.statusPlain },
         { name: "Window", value: l.window.ticker }]) };
 }
+export type PaperScoreboard = { wins: number; losses: number; net: number };
 export function settlementEvent(parent: DiscordEvent, winner: "UP" | "DOWN", net: number,
-  graded: number, build: string): DiscordEvent {
+  graded: number, build: string, scoreboard?: PaperScoreboard): DiscordEvent {
   const won = parent.side === winner;
   return { ...parent, key: `settle|${parent.key}`, kind: "settle", parent: parent.key,
     build, observed: graded, expires: graded + 86400000,
@@ -62,6 +63,7 @@ export function settlementEvent(parent: DiscordEvent, winner: "UP" | "DOWN", net
       "Follow-up to the recorded paper fill. Net P&L includes the book's actual fee.", won ? 0x16a34a : 0xdc2626, graded,
       [{ name: "Seat", value: parent.seat, inline: true }, { name: "Booked direction", value: parent.side, inline: true },
         { name: "Outcome", value: winner, inline: true }, { name: "Net after fees", value: `${net >= 0 ? "+" : ""}${net.toFixed(1)}¢`, inline: true },
+        ...(scoreboard ? [{ name: "Paper scoreboard · all-time", value: `${scoreboard.wins}W–${scoreboard.losses}L · ${scoreboard.net >= 0 ? "+" : ""}${scoreboard.net.toFixed(1)}¢ net after fees` }] : []),
         { name: "Window closes (UTC)", value: stamp(parent.close) }, { name: "Window", value: parent.ticker }]) };
 }
 export type PostResult = { ok: boolean; status: number | null; retryMs: number; terminal: boolean; message: string | null; code: string };
