@@ -138,6 +138,26 @@ import {
 } from "./chair-v2";
 import type { CallLogRow, ChairResult, Learner, Lean, SeatId, SeatKnobs, Settings, Snapshot, Vote } from "./types";
 import type { Sql } from "@/lib/db";
+import {
+  armQuiet,
+  buildCapture,
+  freshQuietBook,
+  markQuietUncountable,
+  noteQuietMissed,
+  quietCallEnabled,
+  quietCaptureEligible,
+  quietCaptureKey,
+  quietHuddleReview,
+  quietWindowArmed,
+  recordKill,
+  sanitizeQuietBook,
+  sanitizeQuietCaptures,
+  QUIET_CAPTURE_CAP,
+  type QuietBook,
+  type QuietCapture,
+  type QuietGradeInput,
+} from "./quiet-call";
+import { runQuietKill, writeQuietCapture, writeQuietGrade, writeQuietMissed } from "./quiet-call.server";
 import { takerEvCents, takerSignal } from "./taker";
 import {
   addKeyed,
@@ -287,6 +307,12 @@ type Eng = {
   /** Distinct producer-path incident, repeated hourly until it clears. */
   producerAlertKey: string;
   producerAlertAt: number;
+  /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */
+  quietBook: QuietBook;
+  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, at most 8. */
+  quietCaptures: Record<string, QuietCapture>;
+  /** Process-local guard so one due kill evaluation runs once. Never persisted. */
+  quietKillRunning: boolean;
 };
 
 /** A window graded once its official Kalshi result arrives; held in a bounded
@@ -445,6 +471,9 @@ function freshEng(): Eng {
     watchdogTimer: null,
     producerAlertKey: "",
     producerAlertAt: 0,
+    quietBook: freshQuietBook(),
+    quietCaptures: {},
+    quietKillRunning: false,
   };
 }
 
@@ -499,6 +528,8 @@ async function loadState(e: Eng) {
           pending?: unknown;
           identity_faults?: unknown;
           graded_keys?: unknown;
+          quiet_book?: unknown;
+          quiet_captures?: unknown;
           active_window?: unknown;
           risk_calls?: unknown;
           risk_history_valid?: boolean;
@@ -554,6 +585,9 @@ async function loadState(e: Eng) {
     e.gradedKeys = Array.isArray(raw.graded_keys)
       ? raw.graded_keys.filter((k): k is string => typeof k === "string").slice(-GRADED_KEY_CAP)
       : [];
+    // QUIET_CALL_V1: malformed or absent → an empty, never-activated book. Never throws.
+    e.quietBook = sanitizeQuietBook(raw.quiet_book);
+    e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);
     e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
@@ -636,6 +670,9 @@ async function persistState(e: Eng, force = false) {
       pending: e.pending.slice(-PENDING_CAP),
       identity_faults: e.identityFaults.slice(-IDENTITY_FAULT_CAP),
       graded_keys: e.gradedKeys.slice(-GRADED_KEY_CAP),
+      // QUIET_CALL_V1 (research only): same durability boundary as the learner, its own key.
+      quiet_book: e.quietBook,
+      quiet_captures: e.quietCaptures,
       // A restart can straddle close BEFORE the pending-settlement list exists.
       // Persist the observed grading input while the window is still open.
       active_window: checkpointActiveWindow(
@@ -1268,9 +1305,12 @@ async function applyGrade(
   // desk_ledger_research / isCountable key on; no QTY_FIX/era cutoff. Prospective only: no
   // persisted learner state is touched, and the ledger row below is still enqueued so the
   // quarantined record is preserved — the row stays, it simply earns no learner credit.
+  // QUIET_CALL_V1 (research, authority NONE): undefined while dark, so gradeWindow is
+  // called exactly as before. Enabled, it carries this window's capture (or null).
+  const quiet = quietGradeInput(e, snap);
   if (isCountable(snap.close_time)) {
     e.learner.settle_tape = e.learner.settle_tape.filter((l) => !l.startsWith("PENDING "));
-    const gr = gradeWindow(e.learner, snap, votes, chair, finish);
+    const gr = gradeWindow(e.learner, snap, votes, chair, finish, quiet);
     e.learner = gr.learner;
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
     settleAll(e.learner, finish);
@@ -1281,7 +1321,9 @@ async function applyGrade(
     if (e.learner.settle_tape[0]) e.learner.settle_tape[0] = `${e.learner.settle_tape[0]} · ${source}`;
   } else {
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
+    if (quiet?.capture) markQuietUncountable(quiet.book);
   }
+  if (quiet) settleQuiet(e, snap, quiet, isCountable(snap.close_time));
   settleCallLog(e, snap.ticker, snap.close_time, finish);
   // buildLedgerRow consumes entry state; retain its immutable paid-policy
   // metadata for the asynchronous exit writer before that deletion.
@@ -1368,7 +1410,7 @@ async function applyGrade(
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
   });
   if (windowsHuddleDue(e.learner) || chicagoHuddleDue(e.learner.last_huddle)) {
-    { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
+    { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); runQuietReview(e); }
   }
   e.learner.window_memory.entry_spot = 0;
   // This is the durability boundary for the learner claim and ledger outbox.
@@ -1376,6 +1418,89 @@ async function applyGrade(
   // only copy of the completed window is still an unobserved promise.
   await persistState(e, true);
 }
+
+// ---------------------------------------------------------------- QUIET_CALL_V1
+// Research only, authority NONE (docs/QUIET_CALL_LEDGER_V1.md). Every function
+// below is fail-open: an error is recorded with noteErr and the tick, grade or
+// huddle carries on exactly as it would have. None of them writes to the
+// learner, a vote, the chair, the call log or anything getServerFrame returns.
+
+/** Read-only tap on the tick: capture each seat's quiet call once per window. */
+function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): void {
+  if (!quietCallEnabled()) return;
+  try {
+    // First enabled tick arms the ledger: capture starts with the NEXT window.
+    armQuiet(e.quietBook, snap, Date.now());
+    if (!quietWindowArmed(e.quietBook, snap.close_time)) return;
+    const key = quietCaptureKey(snap.ticker, snap.close_time);
+    if (e.quietCaptures[key] || e.quietBook.graded_keys.includes(key) || e.gradedKeys.includes(jobKey(snap.ticker, snap.close_time))) return;
+    if (!quietCaptureEligible(snap)) return;
+    const capture = buildCapture(snap, votes, e.learner, e.settings.mutes, runningBuildSha());
+    const kept = Object.entries({ ...e.quietCaptures, [key]: capture }).sort((a, b) => a[1].close_time - b[1].close_time);
+    e.quietCaptures = Object.fromEntries(kept.slice(-QUIET_CAPTURE_CAP));
+    void writeQuietCapture(capture).catch((err: unknown) => noteErr(e, "quiet", `capture ${key}: ${err instanceof Error ? err.message : String(err)}`));
+  } catch (err) {
+    noteErr(e, "quiet", `capture: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Undefined while dark (gradeWindow then runs exactly as before). */
+function quietGradeInput(e: Eng, snap: Snapshot): QuietGradeInput | undefined {
+  if (!quietCallEnabled()) return undefined;
+  return { book: e.quietBook, capture: e.quietCaptures[quietCaptureKey(snap.ticker, snap.close_time)] ?? null };
+}
+
+/** After the learner pass: retire the capture, note a MISSED window, write the row status. */
+function settleQuiet(e: Eng, snap: Snapshot, quiet: QuietGradeInput, countable: boolean): void {
+  try {
+    const key = quietCaptureKey(snap.ticker, snap.close_time);
+    const capture = quiet.capture;
+    if (capture) {
+      const { [key]: _done, ...rest } = e.quietCaptures;
+      e.quietCaptures = rest;
+      const r = quiet.result;
+      const status = !countable ? "SKIPPED_UNCOUNTABLE"
+        : r?.status === "GRADED" || r?.status === "SKIPPED_CHALK" || r?.status === "SKIPPED_IDENTITY" ? r.status : null;
+      if (status) {
+        void writeQuietGrade(capture, status, r?.rows ?? [], Date.now())
+          .catch((err: unknown) => noteErr(e, "quiet", `grade ${key}: ${err instanceof Error ? err.message : String(err)}`));
+      }
+    } else if (quietWindowArmed(e.quietBook, snap.close_time) && !e.quietBook.graded_keys.includes(key)) {
+      noteQuietMissed(e.quietBook);
+      void writeQuietMissed(snap.ticker, snap.close_time)
+        .catch((err: unknown) => noteErr(e, "quiet", `missed ${key}: ${err instanceof Error ? err.message : String(err)}`));
+    }
+  } catch (err) {
+    noteErr(e, "quiet", `settle: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Runs right after runHuddle at its call sites. Diagnose only; may start the one-shot kill check. */
+function runQuietReview(e: Eng): void {
+  if (!quietCallEnabled() || !(e.quietBook.activated_at > 0)) return;
+  try {
+    const r = quietHuddleReview(e.quietBook, e.learner, Date.now());
+    if (r.kill_due && !e.quietKillRunning) {
+      e.quietKillRunning = true;
+      const book = e.quietBook;
+      void runQuietKill(book, Date.now())
+        .then((v) => { recordKill(book, v); return persistState(e, true); })
+        .catch((err: unknown) => noteErr(e, "quiet", `kill: ${err instanceof Error ? err.message : String(err)}`))
+        .finally(() => { e.quietKillRunning = false; });
+    }
+  } catch (err) {
+    noteErr(e, "quiet", `review: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Admin research route only (header-authenticated). A deep copy: callers cannot mutate the engine. */
+export function quietLedgerSnapshot(): { enabled: boolean; book: QuietBook; pending_captures: number } {
+  const e = eng();
+  return { enabled: quietCallEnabled(), book: structuredClone(e.quietBook), pending_captures: Object.keys(e.quietCaptures).length };
+}
+
+/** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
+export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded };
 
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);
@@ -1614,7 +1739,7 @@ async function tick(e: Eng) {
   try {
     void maybeDigest(e);
     if (chicagoHuddleDue(e.learner.last_huddle)) {
-      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
+      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); runQuietReview(e); }
     }
     const snap = await liveSnap(e);
     if (!e.learner.window_memory.entry_spot) e.learner.window_memory.entry_spot = snap.spot;
@@ -1712,6 +1837,8 @@ async function tick(e: Eng) {
     const prev = previousDecision(e);
     await settleIfNeeded(e, snap, votes, chair, prev);
     noteGradeCand(e, snap, votes, chair);
+    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.
+    noteQuietCapture(e, snap, votes);
     if (!e.learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       e.learner.window_memory.entry_lean = chair.lean;
     }
@@ -2661,7 +2788,7 @@ export async function applyDeskOp(op: DeskOp): Promise<{ ok: true }> {
       e.lastCall = null;
       break;
     case "huddle":
-      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); }
+      { const statusesBeforeHuddle = skillStatusSnapshot(e.learner); e.learner = runHuddle(e.learner).learner; queueStatusTransitions(statusesBeforeHuddle, skillStatusSnapshot(e.learner), "runHuddle"); runQuietReview(e); }
       break;
     case "accept_candidate":
       e.learner = acceptCandidate(e.learner);

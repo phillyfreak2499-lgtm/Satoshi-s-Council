@@ -185,9 +185,33 @@ test("permanent 404 disables only its destination and DB failure never rejects t
 });
 
 
-test("full production engine and push source differ only by the two outbound publication hooks",()=>{
+// QUIET_CALL_LEDGER_V1 (research only, authority NONE) adds enumerated read-only taps to the
+// engine. Each hunk is removed by exact match (a count mismatch throws), and the remainder must
+// still hash to the ORIGINAL pinned value below — proof the engine is otherwise byte-identical.
+function stripQuiet(src) {
+  const once = (s, a, b = "") => { const n = s.split(a).length - 1; if (n !== 1) throw new Error(`quiet hunk count ${n}: ${a.slice(0, 70)}`); return s.replace(a, b); };
+  const cut = (s, from, to) => { const i = s.indexOf(from), j = s.indexOf(to); if (i < 0 || j < i) throw new Error(`quiet block missing: ${from.slice(0, 60)}`); return s.slice(0, i) + s.slice(j); };
+  let s = src;
+  s = cut(s, "import {\n  armQuiet,\n", "import { takerEvCents, takerSignal }");
+  s = once(s, "  /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */\n  quietBook: QuietBook;\n  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, at most 8. */\n  quietCaptures: Record<string, QuietCapture>;\n  /** Process-local guard so one due kill evaluation runs once. Never persisted. */\n  quietKillRunning: boolean;\n");
+  s = once(s, "    quietBook: freshQuietBook(),\n    quietCaptures: {},\n    quietKillRunning: false,\n");
+  s = once(s, "          quiet_book?: unknown;\n          quiet_captures?: unknown;\n");
+  s = once(s, "    // QUIET_CALL_V1: malformed or absent → an empty, never-activated book. Never throws.\n    e.quietBook = sanitizeQuietBook(raw.quiet_book);\n    e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);\n");
+  s = once(s, "      // QUIET_CALL_V1 (research only): same durability boundary as the learner, its own key.\n      quiet_book: e.quietBook,\n      quiet_captures: e.quietCaptures,\n");
+  s = once(s, "  // QUIET_CALL_V1 (research, authority NONE): undefined while dark, so gradeWindow is\n  // called exactly as before. Enabled, it carries this window's capture (or null).\n  const quiet = quietGradeInput(e, snap);\n");
+  s = once(s, "gradeWindow(e.learner, snap, votes, chair, finish, quiet);", "gradeWindow(e.learner, snap, votes, chair, finish);");
+  s = once(s, "    if (quiet?.capture) markQuietUncountable(quiet.book);\n");
+  s = once(s, "  if (quiet) settleQuiet(e, snap, quiet, isCountable(snap.close_time));\n");
+  s = cut(s, "// ---------------------------------------------------------------- QUIET_CALL_V1\n", "function markPending(e: Eng, snap: Snapshot) {");
+  s = once(s, "    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.\n    noteQuietCapture(e, snap, votes);\n");
+  const hooks = s.split(" runQuietReview(e); }").length - 1;
+  if (hooks !== 3) throw new Error(`expected 3 huddle hooks, found ${hooks}`);
+  s = s.split(" runQuietReview(e); }").join(" }");
+  return s;
+}
+test("full production engine and push source differ only by the two outbound publication hooks (and the enumerated quiet-ledger taps)",()=>{
   const crypto=require('node:crypto');
-  const engine=readFileSync('src/lib/desk/server-engine.ts','utf8')
+  const engine=stripQuiet(readFileSync('src/lib/desk/server-engine.ts','utf8'))
     .replace('import { publishDiscordLeans } from "./discord-events.server";\n','')
     .replace('    // Outbound publication only: this frame is now the public getServerFrame result.\n    publishDiscordLeans(snap, votes, chair, e.learner.knobs);\n','');
   const push=readFileSync('src/lib/desk/push.server.ts','utf8')

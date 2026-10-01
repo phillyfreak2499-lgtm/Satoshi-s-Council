@@ -3,7 +3,7 @@ import { INDEX_MIN_REGIME_N, type SkillGate } from "./skill-gate";
 import { SKILL_RULES } from "./dsl";
 import { SEAT_BY_ID } from "./seats";
 import { freshThresholds } from "./thresholds";
-import type { Learner, LearnPhase, SeatId, SeatKnobs, SkillCard, SkillStatus } from "./types";
+import type { Learner, LearnPhase, SeatId, SeatKnobs, SkillCard, SkillStats, SkillStatus } from "./types";
 import { SEAT_IDS } from "./types";
 
 export type SkillSeed = {
@@ -1045,7 +1045,7 @@ export function skillCounts(learner: Learner, seat: SeatId) {
   };
 }
 
-export function refreshDerived(card: SkillCard): SkillCard {
+export function refreshDerived<T extends SkillStats>(card: T): T {
   card.wilson = card.n > 0 ? wilsonLower(card.hits, card.n) : 0;
   card.brier = card.brier_n > 0 ? card.brier_sum / card.brier_n : 0;
   card.ev = card.ev_n > 0 ? card.ev_sum / card.ev_n : 0;

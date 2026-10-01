@@ -112,6 +112,9 @@ function harness(options = {}) {
     mergeLearner: (v) => plain(v), sliceLearner: (v) => plain(v),
     sanitizeShadowFills: (v) => v ?? {}, sanitizeBookedDecisionState: (v) => v ?? {},
     sanitizeIdentityFaults: (v) => v ?? [],
+    // QUIET_CALL_V1 ledger state is research-only and round-trips through its own key;
+    // its real persistence is exercised in scripts/quiet-call-integration.test.mjs.
+    freshQuietBook: () => ({}), sanitizeQuietBook: (v) => v ?? {}, sanitizeQuietCaptures: (v) => v ?? {},
     officialHit: (_e, snap, ticker, close) => {
       const result = identity.matchSettle(snap.official_settles ?? [], ticker, close);
       return result.ok ? result.settle : undefined;
