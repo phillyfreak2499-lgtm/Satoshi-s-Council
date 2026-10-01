@@ -81,7 +81,7 @@ export async function directionalRegretReport(cursor?: RegretCursor, pageSize = 
   }>`with first_reads as (
     select distinct on (ticker,close_time) *, count(*) over(partition by ticker,close_time)::int as observations
     from desk_directional_regret order by ticker,close_time,observed_at,side
-  ) select r.*, case when l.source = 'kalshi-result' then l.winner end as winner, coalesce(l.entry_cents is not null,false) as booked_later
+  ) select r.*, case when l.source = 'kalshi-result' then l.winner end as winner, coalesce(l.entry_cents is not null and l.entry_lean=r.side,false) as booked_later
     from first_reads r left join desk_ledger_research l on l.ticker=r.ticker and l.close_time=r.close_time
     order by r.close_time desc`;
   const bands = REGRET_BANDS.map((band) => ({
@@ -134,7 +134,7 @@ export async function directionalRegretReport(cursor?: RegretCursor, pageSize = 
     case when l.source='kalshi-result' and l.winner in ('UP','DOWN') and r.ask_cents is not null
       then (case when l.winner=r.side then 100 else 0 end)-r.ask_cents-r.fee_cents end as net_cents,
     case when l.source='kalshi-result' then l.winner end as winner,
-    coalesce(l.entry_cents is not null,false) as booked_later
+    coalesce(l.entry_cents is not null and l.entry_lean=r.side,false) as booked_later
     from desk_directional_regret r left join desk_ledger_research l
       on l.ticker=r.ticker and l.close_time=r.close_time
     where (r.observed_at,r.ticker,r.close_time,r.side) >
