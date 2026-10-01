@@ -7,7 +7,7 @@ import { COUNCIL_STRUCTURE_SENTENCE, COUNCIL_STRUCTURE_SHORT, COUNCIL_TOTAL_SEAT
 
 export const Route = createFileRoute("/about")({
   loader: () => publicBooksSnapshot().catch(() => null),
-  head: () => pageHead("/about", "About · Satoshi's Council", "Meet the Council: 21 seats, 15 voting seats, 3 retired from votes, 3 non-voting pit crew. Paper-only Bitcoin research."),
+  head: () => pageHead("/about", "About · Satoshi's Council", "Meet the Council: 21 research roles; eligible LIVE sources vote, quarantined seats remain in research. Paper-only Bitcoin research."),
   component: About,
 });
 
@@ -20,7 +20,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "2",
     title: "Vote",
-    body: `The 15 voting seats can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI. WARDEN, ORBIT and WIRE never count as votes; they provide guard and context signals to the Chair. ODDS, CHEAP and FADE are retired from votes — ${COUNCIL_RETIRED_MEANS} A voting specialist that is not sure enough sits. SATOSHI weighs the eligible voting seats by their graded record and agreement. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.`,
+    body: `The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI. WARDEN, ORBIT and WIRE never count as votes; they provide guard and context signals to the Chair. ODDS, CHEAP and FADE are retired from votes — ${COUNCIL_RETIRED_MEANS} A voting specialist that is not sure enough sits. SATOSHI weighs the eligible voting seats by their graded record and agreement. The score has to clear a bar or the desk waits. WAIT is the most common call, on purpose.`,
   },
   {
     n: "3",
@@ -37,7 +37,7 @@ function About() {
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Council structure</div>
         <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
           <div><div className="font-mono text-title tabular text-fg">{COUNCIL_TOTAL_SEATS}</div><div className="font-sans text-ui text-muted">seats total</div></div>
-          <div><div className="font-mono text-title tabular text-fg">{COUNCIL_VOTING_SEATS}</div><div className="font-sans text-ui text-muted">voting seats</div></div>
+          <div><div className="font-mono text-title tabular text-fg">{COUNCIL_VOTING_SEATS}</div><div className="font-sans text-ui text-muted">roles in voting roster</div></div>
           <div><div className="font-mono text-title tabular text-fg">{COUNCIL_RETIRED_SEATS}</div><div className="font-sans text-ui text-muted">retired from votes</div></div>
           <div><div className="font-mono text-title tabular text-fg">{COUNCIL_PIT_CREW_SEATS}</div><div className="font-sans text-ui text-muted">pit crew</div></div>
         </div>
@@ -61,7 +61,7 @@ function About() {
       </P>
       <H2>What the words mean</H2>
       <P>
-        A <strong className="text-fg">Council seat</strong> is one specialist role with one job. Fifteen currently vote; three are retired from votes; three are non-voting pit crew. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs eligible voting seats and makes the
+        A <strong className="text-fg">Council seat</strong> is one specialist role with one job. Fifteen roles belong to the voting roster; only eligible LIVE sources can vote; three are retired from votes; three are non-voting pit crew. The <strong className="text-fg">chair</strong> is SATOSHI, who weighs eligible voting seats and makes the
         call. A <strong className="text-fg">window</strong> is one 15-minute Kalshi market on Bitcoin: will the final-minute average finish above the strike or
         not. <strong className="text-fg">Paper</strong> means the desk books every call at the real ask, pays the real fee, and settles on the real result, without ever sending an
         order.

@@ -76,7 +76,7 @@ test("the Pro meter prints the label, the number, the research side, the status 
   const t = text(html);
   assert.match(t, /DIRECTIONAL LEAN/);
   assert.match(t, /85 · Bullish/);
-  assert.match(t, /Bearish Bullish Research read: UP/, "the scale is labelled at both ends");
+  assert.match(t, /Bearish Bullish Authority unverified Research read: UP/, "the scale is labelled at both ends");
   assert.match(t, /Status: BELOW BAR/);
   assert.match(t, /Card: DRIFT\.aligned_3h/);
   assert.match(t, /Strength: 70/);
@@ -212,7 +212,7 @@ test("the seat detail heard chip uses the shared admitted read, with an explicit
   const detail = read("src/routes/seat.$id.tsx");
   assert.match(detail, /SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/);
   assert.doesNotMatch(detail, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/);
-  assert.match(detail, /chairRow \? <>SATOSHI heard:/);
+  assert.match(detail, /lean.isAuthorizedSpeaker \? <>SATOSHI heard:/);
   assert.match(detail, /No Chair row yet — research read only\./);
 });
 

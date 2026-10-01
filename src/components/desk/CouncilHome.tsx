@@ -1,3 +1,4 @@
+import { availabilityLine } from "@/lib/desk/council-public";
 import { useEffect } from "react";
 import { useDesk } from "@/lib/desk/store";
 import { useCountdownText } from "@/lib/desk/hooks";
@@ -65,7 +66,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
             <div className="company-live-call" data-lean={chair?.lean.toLowerCase()}>{chair?.lean ?? "Connecting"}</div>
             <span className="company-muted">{book?.kind === "booked" ? `${book.source === "RECOVERY_FAV85_V1" ? "Recovery pilot · " : ""}${book.lean} paper position · ${book.cents.toFixed(1)}¢ entry` : book ? "No recorded paper position in this window" : "Paper-only research"}</span>
           </div>
-          <div className="company-live-context"><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} fill={fill} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
+          <div className="company-live-context"><p>{availabilityLine(chair?.rows ?? [])}</p><p>{snap && chair && book ? plainLine(chair, snap, book) : "The latest Council snapshot will appear here when the research feed connects."}</p>{still ? <HomeStill last={last} fill={fill} /> : null}<a href="/desk" className="company-text-link">Read the full decision <span aria-hidden="true">→</span></a></div>
           {snap ? (
             <dl className="company-live-numbers"><div><dt>Bitcoin spot</dt><dd>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(snap.spot)}</dd></div><div><dt>Window closes in</dt><dd>{countdown}</dd></div></dl>
           ) : (

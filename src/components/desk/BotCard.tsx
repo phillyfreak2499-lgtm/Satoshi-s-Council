@@ -1,3 +1,4 @@
+import { seatAvailabilityLabel } from "@/lib/desk/council-public";
 import { useState } from "react";
 import type { SeatId, Snapshot, Vote } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
@@ -46,6 +47,7 @@ export function BotCard({
           <span className="shrink-0 font-mono text-ui text-fg">
             {seat} <span className="text-subtle">{meta.callsign}</span>
           </span>
+          <span className="font-mono text-micro text-muted">{seatAvailabilityLabel(lean)}</span>
           <LeanChip lean={vote.lean} />
           <SeatLeanMini key={leanKey(lean)} lean={lean} className="shrink-0" />
           {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
