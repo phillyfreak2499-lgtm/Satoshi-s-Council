@@ -1,3 +1,4 @@
+import { availabilityLine } from "@/lib/desk/council-public";
 import { useMemo, useState } from "react";
 import type { ChairResult, CallLogRow, SeatKnobs, Snapshot, Vote } from "@/lib/desk/types";
 import { seatFacts } from "@/lib/desk/pro-floor";
@@ -188,6 +189,7 @@ export function GuidedFloor({
         </section>
       </div>
       {/* Directly under the SATOSHI verdict, never above it: during a WAIT stretch the specialist reads are the next thing to see. */}
+      <p className="font-sans text-ui text-muted">{availabilityLine(chair.rows)}</p>
       <SpecialistLeans leans={leans} waiting={read.label === "WAIT"} />
       {!demo && read.label === "WAIT" ? <WaitResearchNote /> : null}
       <section aria-label="Paper call notifications">

@@ -9,7 +9,7 @@
  * Tapping a family jumps to its existing specialist desk.
  */
 import { cn } from "@/lib/utils";
-import { COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { availabilityLine, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type FamilyFacts, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
 import type { SeatId, SeatTab } from "@/lib/desk/types";
 import { Chip, Panel } from "./panels";
@@ -43,7 +43,7 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
       >
         <span className="w-[4.5rem] shrink-0 font-mono text-micro text-fg">{s.seat}</span>
         <span className={cn("w-[5.25rem] shrink-0 whitespace-nowrap font-mono text-micro tabular", tone)}>
-          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : s.aggregated ? "WAIT" : VOICE_LABEL[s.voice]}
+          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : s.selectable_live_cards === 0 ? "RESEARCH" : s.authority_ready_cards === 0 ? "HELD" : s.aggregated ? "WAIT" : VOICE_LABEL[s.voice]}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-micro text-subtle">
           {suppressed
@@ -100,10 +100,10 @@ export function EvidenceFamilies({
     <Panel
       id="families"
       title="What the desk sees"
-      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did. WAIT counts only the 15 currently voting specialists."
+      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did. The roster is not the available-source count. Quarantined research seats do not vote."
       right={
         <span className="font-mono text-micro text-subtle">
-          {b.aggregated} currently voting · {facts.seats.length} seats
+          {b.speaking.up + b.speaking.down} speaking · {facts.seats.length} research roles
         </span>
       }
     >
@@ -124,7 +124,7 @@ export function EvidenceFamilies({
         </div>
         <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">{b.disclaimer}</p>
         <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
-          {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
+          {availabilityLine(facts.seats.filter((s) => s.aggregated))} {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
         </p>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

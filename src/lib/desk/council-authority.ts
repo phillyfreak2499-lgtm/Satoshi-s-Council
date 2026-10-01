@@ -93,3 +93,21 @@ export function countChairQuorum(
     wait: eligible.filter((vote) => vote.lean === "WAIT").length,
   };
 }
+
+/** Current-regime card inventory, independent of whether a rule fired this frame.
+ * No LIVE authority means an abstention cannot express an authorized opinion.
+ * Mirrors the producer's LIVE pool, research holds and exploit exclusion.
+ */
+export function seatCardAvailability(seat: SeatId, learner: AuthorityLearner & Partial<Pick<Learner, "learn_phase">>, regimeKey: string) {
+  const selectable = Object.values(learner.skills).filter((card) =>
+    card.owner === seat && card.status === "LIVE" && !CLOSED_DIRECTIONAL_CARDS.has(card.id) &&
+    !card.manual_hold &&
+    !(card.min_walkforward_n && card.n < card.min_walkforward_n) &&
+    !(card.min_regime_n && (card.pocket?.[regimeKey]?.n ?? 0) < card.min_regime_n) &&
+    !(learner.learn_phase === "EXPLOIT" && card.n >= 16 && card.wilson < 0.42),
+  );
+  const ready = selectable.filter((card) => directionalHoldReason(
+    { lean: "UP", skill_used: card.id, skill_status: "LIVE" }, learner, regimeKey,
+  ) == null);
+  return { selectable_live_cards: selectable.length, authority_ready_cards: ready.length };
+}

@@ -1,3 +1,4 @@
+import { availabilityLine } from "@/lib/desk/council-public";
 import { useEffect, useRef, useState } from "react";
 import { SEAT_IDS, type Lean, type SeatId, type SeatRow } from "@/lib/desk/types";
 import { SEAT_BY_ID } from "@/lib/desk/seats";
@@ -37,7 +38,7 @@ function Cell({
         id={`chamber-${r.seat}`}
         aria-expanded={active}
         aria-controls="chamber-thesis"
-        aria-label={`${r.seat} (${r.callsign}) ${voteWords(r.lean)} at ${r.conf} confidence`}
+        aria-label={`${r.seat} (${r.callsign}) ${r.selectable_live_cards === 0 ? "Research quarantine: no selectable LIVE card" : r.authority_ready_cards === 0 ? "Held from authority in this regime" : `${voteWords(r.lean)} at ${r.conf} confidence`}`}
         onMouseEnter={onHover}
         onMouseLeave={onLeave}
         onFocus={onHover}
@@ -54,8 +55,8 @@ function Cell({
         </div>
         <div className="mt-1 flex items-center gap-1.5">
           <span aria-hidden="true" className={cn("inline-block size-2 shrink-0 rounded-full", PIP[r.lean], sitting && "opacity-60", flash && "pip-flash")} />
-          <span className={cn("font-mono text-data font-medium", TONE[r.lean], sitting && "opacity-70")}>{r.lean}</span>
-          <span className="ml-auto font-mono text-micro tabular text-muted">{r.conf}</span>
+          <span className={cn("font-mono text-data font-medium", TONE[r.lean], sitting && "opacity-70")}>{r.selectable_live_cards === 0 ? "RESEARCH" : r.authority_ready_cards === 0 ? "HELD" : r.lean}</span>
+          <span className="ml-auto font-mono text-micro tabular text-muted">{r.authority_ready_cards === 0 ? "—" : r.conf}</span>
         </div>
         <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-sm bg-surface-3" aria-hidden="true">
           <div className={cn("h-full transition-[width] duration-[250ms] ease-out", PIP[r.lean], sitting && "opacity-50")} style={{ width: `${conf}%` }} />
@@ -142,6 +143,7 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
           {speakingIds.length} speaking · {sittingIds.length} sitting
         </span>
       </div>
+      <p className="mb-3 font-sans text-ui text-muted">{availabilityLine(rows)}</p>
       <ChamberSpeech />
       {speakingIds.length ? (
         <div role="list" aria-label="Seats speaking a direction" className={gridCls}>

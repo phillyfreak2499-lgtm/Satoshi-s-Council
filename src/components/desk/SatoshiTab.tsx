@@ -1,3 +1,4 @@
+import { availabilityLine } from "@/lib/desk/council-public";
 import { useEffect, useState, type ReactNode } from "react";
 import { type CallLogRow, type ChairResult, type Lean, type SeatId, type SeatRow, type Settings, type Snapshot, type Vote } from "@/lib/desk/types";
 import { cn } from "@/lib/utils";
@@ -782,7 +783,7 @@ export function SatoshiTab({
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
         <span className="text-subtle">
-          <Tip k="pane.seats">the voting seats</Tip> · {speaking} speaking · {chair.rows.length - speaking} sitting
+          <Tip k="pane.seats">research roster</Tip> · {speaking} speaking · {availabilityLine(chair.rows)}
         </span>
         <div role="group" aria-label="Which seats to show" className="ml-auto flex gap-1">
           {(["all", "speaking", "live"] as const).map((v) => (

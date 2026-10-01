@@ -69,6 +69,7 @@ export function SeatLeanMeter({
         <span className="seat-lean__end" aria-hidden="true">Bullish</span>
       </div>
       <div className="seat-lean__meta">
+        {lean.selectable_live_cards === 0 ? <span className="seat-lean__reason">Research quarantine — no selectable LIVE card.</span> : lean.authority_ready_cards === 0 ? <span className="seat-lean__reason">LIVE card held from authority in this regime.</span> : null}
         {mode === "pro" ? <span>Research read: <span className="seat-lean__status">{side}</span></span> : null}
         {lean.stale ? <span className="seat-lean__stale">STALE</span> : null}
         <span>

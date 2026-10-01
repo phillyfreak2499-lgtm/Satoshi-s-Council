@@ -6,7 +6,7 @@ import { readScalp, scalpAvg } from "./scalp";
 import { fadeVerdict } from "./fade";
 import { binKey, calibNOf, clamp, listenCalib, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { holdScore } from "./stick";
-import { admitCouncilVotes, countChairQuorum } from "./council-authority";
+import { admitCouncilVotes, countChairQuorum, seatCardAvailability } from "./council-authority";
 import type {
   ChairResult,
   FeedHealth,
@@ -277,9 +277,15 @@ export function runChair(
   // an uncalibrated seat's "I see nothing" used to raise the bar as much as
   // a proven seat's. Sits now count at 25% until a seat calibrates, ramping
   // to 100%; leans are unchanged. Dead seats stop making the chair quieter.
-  const sitAccs = liveAccs.filter((a) => !a.vote.forced_sit);
+  const cardAvailability = new Map(accs.map((a) => [a.vote.seat,
+    seatCardAvailability(a.vote.seat, learner, snap.regime_key)]));
+  const sitAccs = liveAccs.filter((a) => !a.vote.forced_sit &&
+    (cardAvailability.get(a.vote.seat)?.authority_ready_cards ?? 0) > 0);
   const sitW = (a: Acc) => (a.vote.lean === "WAIT" ? a.w * (0.25 + 0.75 * a.calib) : a.w);
-  const sumWSit = sitAccs.reduce((s, a) => s + sitW(a), 0);
+  // Every admitted direction remains in the denominator, even if its producer
+  // bypassed the generic selector. Only authorized abstentions add sit weight.
+  const sumWSit = sumWDir + sitAccs.filter((a) => a.vote.lean === "WAIT")
+    .reduce((s, a) => s + sitW(a), 0);
   const sitMass = sumWSit > 0 ? clamp((sumWSit - sumWDir) / sumWSit, 0, 1) : 0;
   let rawScore = sumWDir > 0 ? dirAccs.reduce((s, a) => s + a.signed * a.w, 0) / sumWDir : 0;
 
@@ -614,6 +620,7 @@ export function runChair(
         callsign: SEAT_BY_ID[a.vote.seat].callsign,
         lean: a.vote.lean,
         forced_sit: a.vote.forced_sit === true,
+        ...cardAvailability.get(a.vote.seat)!,
         conf: a.vote.confidence,
         skill_used: a.vote.skill_used,
         base_w: a.base,
@@ -637,6 +644,9 @@ export function runChair(
     });
 
   const quorum = countChairQuorum(votes, muted, CHAIR_NON_VOTERS);
+  quorum.wait = votes.filter((vote) => !CHAIR_NON_VOTERS.has(vote.seat) &&
+    !muted.has(vote.seat) && !vote.forced_sit && vote.lean === "WAIT" &&
+    (cardAvailability.get(vote.seat)?.authority_ready_cards ?? 0) > 0).length;
 
   const topSigned = [...rows]
     .filter((r) => r.lean !== "WAIT" && r.status !== "MUTED")

@@ -606,6 +606,8 @@ export type SeatFact = {
   speak_bar: number | null;
   /** True when this voting seat has a Chair row on the frame, including rows held from speaking. */
   aggregated: boolean;
+  selectable_live_cards?: number;
+  authority_ready_cards?: number;
   health: FeedHealth;
   status: SeatStatus | null;
   /** Effective weight presented to the Chair, and its signed contribution. */
@@ -720,6 +722,8 @@ function seatFact(seat: SeatId, vote: Vote | undefined, row: SeatRow | undefined
     health_warning: health === "STALE",
     speak_bar: knob || vote ? speakBar : null,
     aggregated: row != null && !NON_VOTERS.has(seat) && !RETIRED.has(seat),
+    selectable_live_cards: row?.selectable_live_cards,
+    authority_ready_cards: row?.authority_ready_cards,
     health,
     status,
     weight: num(row?.weight),
@@ -793,7 +797,7 @@ const FAMILY_EYES: Record<SeatTab, string> = {
 export function familyFacts(facts: readonly SeatFact[]): FamilyFacts[] {
   return (Object.keys(TAB_SEATS) as SeatTab[]).map((family) => {
     const seats = facts.filter((f) => f.family === family);
-    const voting = seats.filter((s) => s.aggregated);
+    const voting = seats.filter((s) => s.aggregated && s.authority_ready_cards !== 0);
     const up = voting.filter((s) => s.voice === "speaking" && s.final_lean === "UP").length;
     const down = voting.filter((s) => s.voice === "speaking" && s.final_lean === "DOWN").length;
     return {

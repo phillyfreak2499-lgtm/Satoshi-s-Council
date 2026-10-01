@@ -13,7 +13,7 @@ export const Route = createFileRoute("/faq")({
 const QA: { q: string; a: string }[] = [
   {
     q: "How many Council seats can vote?",
-    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. The 15 voting seats can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. ODDS, CHEAP and FADE are retired from votes. ${COUNCIL_RETIRED_MEANS} SATOSHI chairs the vote.`,
+    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. ODDS, CHEAP and FADE are retired from votes. ${COUNCIL_RETIRED_MEANS} SATOSHI chairs the vote.`,
   },
   {
     q: "Why does the desk say WAIT so often?",

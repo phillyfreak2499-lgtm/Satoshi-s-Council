@@ -82,6 +82,8 @@ export type SeatLean = {
   status: SeatLeanStatus;
   /** Plain-English status for the Guided Floor. */
   statusPlain: string;
+  selectable_live_cards?: number;
+  authority_ready_cards?: number;
   /** True only when the Chair aggregated this seat's directional vote on this frame. */
   isAuthorizedSpeaker: boolean;
   /** The feed under the seat is STALE. The read is shown, the warning beside it. */
@@ -197,6 +199,8 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
     stale: fact.health_warning === true,
     heardLean: isAuthorizedSpeaker ? fact.final_lean : "WAIT",
     reason: fact.why ?? "",
+    selectable_live_cards: fact.selectable_live_cards,
+    authority_ready_cards: fact.authority_ready_cards,
     skillId: fact.skill_used && fact.skill_used !== "SIT" ? fact.skill_used : null,
     window: { ticker: window.ticker, close_time: window.close_time, as_of: window.as_of },
     disclaimer: DIRECTIONAL_LEAN_DISCLAIMER,
