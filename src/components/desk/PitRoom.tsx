@@ -146,7 +146,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
     setAlert("busy");
     setAlertMsg(null);
     try {
-      const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true });
+      const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true, on_read: prefsRef.current?.on_read ?? false });
       prefsRef.current = p;
       setAlert("on");
       setAlertMsg(

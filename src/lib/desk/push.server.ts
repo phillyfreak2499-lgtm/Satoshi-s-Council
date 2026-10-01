@@ -1,3 +1,9 @@
+import {
+  ownerVerification,
+  rolloutReady,
+  type OwnerVerificationInput,
+} from "./alert-verification.server";
+import { paperAlert, readAlert } from "./alert-copy";
 /**
  * Push alerts (server only). A browser that opted in gets a web push when
  * the chair books a call and, if it asked, when a window settles — with its
@@ -61,16 +67,18 @@ export async function pushKeys(): Promise<Keys> {
   return keysInflight;
 }
 
-export type PushPrefs = { on_call: boolean; on_settle: boolean; owner: boolean };
+export type PushPrefs = { on_call: boolean; on_read?: boolean; on_settle: boolean; owner: boolean };
 export type SubInput = {
   subscription?: { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
   endpoint?: unknown;
   token?: unknown;
   on_call?: unknown;
   on_settle?: unknown;
+  on_read?: unknown;
   ua?: unknown;
 };
-export type PushResult = { ok: true; prefs: PushPrefs } | { ok: false; error: string; status: number };
+export type PushResult =
+  { ok: true; prefs: PushPrefs } | { ok: false; error: string; status: number };
 
 function cleanEndpoint(v: unknown): string | null {
   if (typeof v !== "string" || v.length > 1500) return null;
@@ -91,23 +99,29 @@ export async function subscribePush(input: SubInput): Promise<PushResult> {
   const endpoint = cleanEndpoint(input.subscription?.endpoint ?? input.endpoint);
   const p256dh = cleanKey(input.subscription?.keys?.p256dh);
   const auth = cleanKey(input.subscription?.keys?.auth, 64);
-  if (!endpoint || !p256dh || !auth) return { ok: false, error: "that subscription is missing its keys", status: 400 };
+  if (!endpoint || !p256dh || !auth)
+    return { ok: false, error: "that subscription is missing its keys", status: 400 };
   const token = typeof input.token === "string" && TOKEN_RE.test(input.token) ? input.token : null;
   const on_call = input.on_call !== false;
   const on_settle = input.on_settle === true;
+  const on_read = input.on_read === true;
   const ua = typeof input.ua === "string" ? input.ua.slice(0, 200) : null;
   const db = await sql();
   const rows = await db<{ owner: boolean }>`
-    insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, ua)
+    with subscription as (insert into desk_push_subs (endpoint, p256dh, auth, token, on_call, on_settle, ua)
     values (${endpoint}, ${p256dh}, ${auth}, ${token}, ${on_call}, ${on_settle}, ${ua})
     on conflict (endpoint) do update set
       owner = desk_push_subs.owner and desk_push_subs.p256dh = excluded.p256dh and desk_push_subs.auth = excluded.auth,
       p256dh = excluded.p256dh, auth = excluded.auth, token = coalesce(excluded.token, desk_push_subs.token),
       on_call = excluded.on_call, on_settle = excluded.on_settle, ua = excluded.ua,
       last_seen = now(), fails = 0
-    returning owner
+    returning id, owner)
+    insert into desk_push_read_prefs(subscription_id,on_read)
+    select id,${on_read} from subscription
+    on conflict(subscription_id) do update set on_read=excluded.on_read
+    returning (select owner from subscription) as owner
   `;
-  return { ok: true, prefs: { on_call, on_settle, owner: rows[0]?.owner === true } };
+  return { ok: true, prefs: { on_call, on_settle, on_read, owner: rows[0]?.owner === true } };
 }
 
 export async function unsubscribePush(endpointRaw: unknown): Promise<PushResult> {
@@ -125,7 +139,7 @@ export async function setOwnerPush(endpointRaw: unknown, on: boolean): Promise<P
   const db = await sql();
   const rows = await db<PushPrefs>`
     update desk_push_subs set owner = ${on}, last_seen = now() where endpoint = ${endpoint}
-    returning on_call, on_settle, owner
+    returning on_call, on_settle, owner, coalesce((select p.on_read from desk_push_read_prefs p where p.subscription_id=desk_push_subs.id),false) as on_read
   `;
   if (!rows[0]) return { ok: false, error: "turn alerts on in this browser first", status: 404 };
   return { ok: true, prefs: rows[0] };
@@ -135,15 +149,27 @@ export async function pushPrefsFor(endpointRaw: unknown): Promise<PushPrefs | nu
   const endpoint = cleanEndpoint(endpointRaw);
   if (!endpoint) return null;
   const db = await sql();
-  const rows = await db<PushPrefs>`select on_call, on_settle, owner from desk_push_subs where endpoint = ${endpoint}`;
+  const rows =
+    await db<PushPrefs>`select s.on_call,s.on_settle,s.owner,coalesce(p.on_read,false) as on_read from desk_push_subs s left join desk_push_read_prefs p on p.subscription_id=s.id where s.endpoint = ${endpoint}`;
   return rows[0] ?? null;
 }
 
-export type PushPayload = { title: string; body: string; tag: string; url?: string; icon?: string };
+export type PushPayload = {
+  title: string;
+  body: string;
+  tag: string;
+  url?: string;
+  icon?: string;
+  badge?: string;
+};
 
 type SubRow = { id: number; endpoint: string; p256dh: string; auth: string; token: string | null };
 
-type SendResult = { outcome: PushDeliveryOutcome; statusCode: number | null; errorCode: string | null };
+type SendResult = {
+  outcome: PushDeliveryOutcome;
+  statusCode: number | null;
+  errorCode: string | null;
+};
 
 async function sendOne(sub: SubRow, payload: PushPayload): Promise<SendResult> {
   const k = await pushKeys();
@@ -151,7 +177,11 @@ async function sendOne(sub: SubRow, payload: PushPayload): Promise<SendResult> {
     const response = await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify({ icon: ICON, url: "/", ...payload }),
-      { vapidDetails: { subject: SUBJECT, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: 900, urgency: "high" },
+      {
+        vapidDetails: { subject: SUBJECT, publicKey: k.publicKey, privateKey: k.privateKey },
+        TTL: 900,
+        urgency: "high",
+      },
     );
     return { outcome: "accepted", statusCode: response.statusCode ?? null, errorCode: null };
   } catch (err) {
@@ -184,6 +214,12 @@ async function recordReceipt(
     buildSha: BUILD_SHA,
     attemptedAtMs,
   });
+  if (event.kind === "read") {
+    await db`insert into desk_directional_read_receipts
+      (event_kind,event_key,subscription_id,outcome,provider_status,error_code,build_sha,attempted_at)
+      values (${r.event_kind},${r.event_key},${r.subscription_id},${r.outcome},${r.provider_status},${r.error_code},${r.build_sha},${r.attempted_at}::timestamptz)`;
+    return;
+  }
   await db`
     insert into desk_push_delivery_receipts
       (event_kind, event_key, subscription_id, outcome, provider_status, error_code, build_sha, attempted_at)
@@ -302,15 +338,26 @@ export async function pushDeliverySummary(): Promise<PushDeliverySummary> {
       (select attempted_at::text from latest) as last_attempted_at
     from desk_push_delivery_receipts r
   `;
-  return rows[0] ?? {
-    accepted_24h: 0, call_ready_accepted_24h: 0, failed_24h: 0, gone_24h: 0,
-    last_event_kind: null, last_event_key: null, last_outcome: null, last_attempted_at: null,
-  };
+  return (
+    rows[0] ?? {
+      accepted_24h: 0,
+      call_ready_accepted_24h: 0,
+      failed_24h: 0,
+      gone_24h: 0,
+      last_event_kind: null,
+      last_event_key: null,
+      last_outcome: null,
+      last_attempted_at: null,
+    }
+  );
 }
 
-async function subsFor(kind: "call" | "settle" | "owner"): Promise<SubRow[]> {
+async function subsFor(kind: "call" | "read" | "settle" | "owner"): Promise<SubRow[]> {
   const db = await sql();
-  if (kind === "owner") return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where owner and fails < ${MAX_FAILS}`;
+  if (kind === "owner")
+    return db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where owner and fails < ${MAX_FAILS}`;
+  if (kind === "read")
+    return db<SubRow>`select s.id,s.endpoint,s.p256dh,s.auth,s.token from desk_push_subs s join desk_push_read_prefs p on p.subscription_id=s.id where p.on_read and s.fails < ${MAX_FAILS}`;
   return kind === "call"
     ? db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_call and fails < ${MAX_FAILS}`
     : db<SubRow>`select id, endpoint, p256dh, auth, token from desk_push_subs where on_settle and fails < ${MAX_FAILS}`;
@@ -321,18 +368,37 @@ function fmtC(n: number | null | undefined): string {
   return `${n > 0 ? "+" : ""}${n.toFixed(1)}¢`;
 }
 
-function fmtLeft(mins: number): string {
-  const s = Math.max(0, Math.round(mins * 60));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+export function callPayload(
+  lean: "UP" | "DOWN",
+  cents: number,
+  minsLeft: number,
+  ticker: string,
+  source?: "RECOVERY_FAV85_V1",
+  closeTime = Date.now() + minsLeft * 60000,
+): PushPayload {
+  void source;
+  return { ...paperAlert(lean, cents, closeTime), tag: `call-${ticker}`, url: "/desk" };
 }
 
-export function callPayload(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string, source?: "RECOVERY_FAV85_V1"): PushPayload {
-  return {
-    title: source ? `Recovery pilot booked ${lean}` : `SATOSHI called ${lean}`,
-    body: `${cents.toFixed(0)}¢ ask · ${fmtLeft(minsLeft)} left in the window${source ? " · paper-only pilot" : ""}`,
-    tag: `call-${ticker}`,
-    url: "/",
+export async function notifyDirectionalRead(
+  side: "UP" | "DOWN",
+  reason: string,
+  close: number,
+  ticker: string,
+): Promise<void> {
+  if (!(await subscriberAlertsReleased())) return;
+  const db = await sql();
+  const subs = await subsFor("read");
+  if (!subs.length) return;
+  const claimed = await db`insert into desk_directional_read_events(ticker,close_time,side)
+    values (${ticker},${new Date(close)},${side}) on conflict do nothing returning ticker`;
+  if (!claimed.length) return;
+  const payload = {
+    ...readAlert(side, reason, close),
+    tag: `read-${ticker}-${side}`,
+    url: "/desk",
   };
+  await fanout(subs, () => payload, { kind: "read", key: `${ticker}|${close}|${side}` });
 }
 
 export function settlePayload(
@@ -341,9 +407,16 @@ export function settlePayload(
   mine: number | null | undefined,
   ticker: string,
 ): PushPayload {
-  const chairBit = chair ? `chair ${fmtC(chair.ev)} (${chair.entry.toFixed(0)}¢ → ${chair.settle.toFixed(0)}¢)` : "chair sat out";
+  const chairBit = chair
+    ? `chair ${fmtC(chair.ev)} (${chair.entry.toFixed(0)}¢ → ${chair.settle.toFixed(0)}¢)`
+    : "chair sat out";
   const mineBit = mine == null ? "" : ` · you ${fmtC(mine)}`;
-  return { title: `${winner} settled`, body: `${chairBit}${mineBit}`, tag: `settle-${ticker}`, url: "/" };
+  return {
+    title: `${winner} settled`,
+    body: `${chairBit}${mineBit}`,
+    tag: `settle-${ticker}`,
+    url: "/",
+  };
 }
 
 let lastLog = "";
@@ -352,12 +425,23 @@ export function pushLastLog(): string {
 }
 
 /** The chair just booked a call. Fire and forget. */
-export function notifyCall(lean: "UP" | "DOWN", cents: number, minsLeft: number, ticker: string, source?: "RECOVERY_FAV85_V1"): void {
+export function notifyCall(
+  lean: "UP" | "DOWN",
+  cents: number,
+  minsLeft: number,
+  ticker: string,
+  source?: "RECOVERY_FAV85_V1",
+  closeTime?: number,
+): void {
   void (async () => {
     try {
+      if (!(await subscriberAlertsReleased())) {
+        lastLog = "paper alert held: owner two-tier verification required for this build";
+        return;
+      }
       const subs = await subsFor("call");
       if (!subs.length) return;
-      const payload = callPayload(lean, cents, minsLeft, ticker, source);
+      const payload = callPayload(lean, cents, minsLeft, ticker, source, closeTime);
       const r = await fanout(subs, () => payload, { kind: "call", key: ticker });
       lastLog = `call ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
     } catch (err) {
@@ -380,7 +464,10 @@ export function notifySettle(
       // Only windows that mattered to this browser: its own lock, or a chair call. Quiet windows stay quiet.
       const r = await fanout(
         subs,
-        (sub) => (settleWanted(sub, chair != null, humans) ? settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker) : null),
+        (sub) =>
+          settleWanted(sub, chair != null, humans)
+            ? settlePayload(winner, chair, sub.token ? humans.get(sub.token) : null, ticker)
+            : null,
         { kind: "settle", key: ticker },
       );
       lastLog = `settle ${ticker}: ${r.sent} sent, ${r.gone} gone, ${r.failed} failed`;
@@ -410,12 +497,17 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
   if (!endpoint) return { ok: false, error: "no endpoint", status: 400 };
   const db = await sql();
   const rows = await db<SubRow & PushPrefs>`
-    select id, endpoint, p256dh, auth, token, on_call, on_settle, owner from desk_push_subs where endpoint = ${endpoint}
+    select s.id,s.endpoint,s.p256dh,s.auth,s.token,s.on_call,s.on_settle,s.owner,coalesce(p.on_read,false) as on_read from desk_push_subs s left join desk_push_read_prefs p on p.subscription_id=s.id where s.endpoint = ${endpoint}
   `;
   const sub = rows[0];
   if (!sub) return { ok: false, error: "this browser is not subscribed", status: 404 };
   const attemptedAtMs = Date.now();
-  const r = await sendOne(sub, { title: "Satoshi's Council", body: "Alerts are on. This is what a call looks like.", tag: "test", url: "/" });
+  const r = await sendOne(sub, {
+    title: "Satoshi's Council",
+    body: "Alerts are on. This is what a call looks like.",
+    tag: "test",
+    url: "/",
+  });
   let evidenceRecorded = false;
   try {
     await applyDeliveryBookkeeping(db, sub.id, r.outcome);
@@ -425,9 +517,14 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
     /* Delivery already happened. Readiness remains fail-closed without durable evidence. */
   }
   if (r.outcome === "gone") {
-    return { ok: false, error: "the push service says this subscription is gone — turn alerts off and on again", status: 410 };
+    return {
+      ok: false,
+      error: "the push service says this subscription is gone — turn alerts off and on again",
+      status: 410,
+    };
   }
-  if (r.outcome === "failed") return { ok: false, error: "the push service refused the test", status: 502 };
+  if (r.outcome === "failed")
+    return { ok: false, error: "the push service refused the test", status: 502 };
   if (!evidenceRecorded) {
     return {
       ok: false,
@@ -439,3 +536,16 @@ export async function testPush(endpointRaw: unknown): Promise<PushResult> {
 }
 
 export const __test = { fanout, cleanEndpoint, cleanKey, applyDeliveryBookkeeping };
+
+/** Hold affects only subscriber paper/read notifications, never booking or watchdogs. */
+async function subscriberAlertsReleased(): Promise<boolean> {
+  try {
+    return await rolloutReady(await sql(), BUILD_SHA);
+  } catch {
+    return false;
+  }
+}
+/** Called only by the admin-authenticated owner verification route. */
+export async function ownerAlertVerification(input: OwnerVerificationInput) {
+  return ownerVerification(await sql(), sendOne, BUILD_SHA, input);
+}
