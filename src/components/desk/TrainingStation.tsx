@@ -15,7 +15,7 @@ export function TrainingStation() {
       </div>
 
       <section className="gutter mx-auto w-full max-w-4xl py-8 sm:py-10" aria-labelledby="station-title">
-        <p className="font-mono text-micro uppercase tracking-widest text-wait">The apprentice desk</p>
+        <p className="font-sans text-micro uppercase tracking-widest text-wait">The apprentice desk</p>
         <h1 id="station-title" className="mt-3 font-sans text-display font-medium tracking-tight">{coach.name}’s station</h1>
         <p className="mt-3 max-w-2xl font-sans text-body leading-relaxed text-muted">{coach.lesson}</p>
         <p className="mt-2 max-w-2xl font-sans text-ui leading-relaxed text-subtle">{role} Paper only. No live orders. Open-ended AI conversation is not connected.</p>
@@ -43,7 +43,7 @@ export function TrainingStation() {
         {questions.length ? (
           <div className="mt-8">
             <h2 className="font-sans text-title font-medium">Guided questions</h2>
-            <p className="mt-2 font-mono text-micro text-subtle">These are the questions the station can answer. There is no open chat.</p>
+            <p className="mt-2 font-sans text-micro text-subtle">These are the questions the station can answer. There is no open chat.</p>
             <dl className="mt-4 space-y-4">
               {questions.map((item) => (
                 <div key={item.q} className="rounded-md border border-border bg-surface p-4">

@@ -97,6 +97,10 @@ export function AlertsPanel({ ownerMode = false }: { ownerMode?: boolean }) {
             ? "On iPhone and iPad, add this site to your Home Screen (Share → Add to Home Screen), open it there, then turn on alerts."
             : "This browser cannot receive push alerts."}
         </div>
+      ) : blocked ? (
+        <div role="status" className="font-sans text-ui leading-relaxed text-muted">
+          Notifications are blocked for this site. Open your browser’s site permissions, allow notifications, then reload this page to enable alerts.
+        </div>
       ) : (
         <>
           <label className="mb-2 flex items-center justify-between gap-2 font-mono text-ui text-muted">

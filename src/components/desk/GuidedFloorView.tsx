@@ -31,11 +31,11 @@ function WhatWouldChange({ chair, snap, callLog }: { chair: ChairResult; snap: S
   const waiting = w.stance === "WAIT";
   return (
     <section aria-labelledby="guided-change" className="rounded-md border border-border bg-surface p-5 sm:p-6">
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">The next question</p>
+      <p className="font-sans text-micro uppercase tracking-widest text-subtle">The next question</p>
       <h2 id="guided-change" className="mt-2 font-sans text-title font-medium text-fg">What would change the decision?</h2>
       {w.supports.length ? (
         <>
-          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">What supports this read</p>
+          <p className="mt-4 font-sans text-micro uppercase tracking-wider text-muted">What supports this read</p>
           <ul className="mt-2 flex flex-col gap-2">
             {w.supports.map((t) => (
               <li key={t} className="flex gap-2 font-sans text-body leading-relaxed text-fg">
@@ -47,7 +47,7 @@ function WhatWouldChange({ chair, snap, callLog }: { chair: ChairResult; snap: S
       ) : null}
       {w.conditions.length ? (
         <>
-          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">{waiting ? "What still needs to improve" : "What is still not met"}</p>
+          <p className="mt-4 font-sans text-micro uppercase tracking-wider text-muted">{waiting ? "What still needs to improve" : "What is still not met"}</p>
           <ul className="mt-2 flex flex-col gap-2">
             {w.conditions.map((t) => (
               <li key={t} className="flex gap-2 font-sans text-body leading-relaxed text-fg">
@@ -60,7 +60,7 @@ function WhatWouldChange({ chair, snap, callLog }: { chair: ChairResult; snap: S
       {w.multiple ? <p className="mt-3 max-w-[62ch] font-sans text-body leading-relaxed text-wait">{MULTI_BLOCKER_LINE}</p> : null}
       {w.invalidate ? (
         <>
-          <p className="mt-4 font-mono text-micro uppercase tracking-wider text-muted">What would end this read</p>
+          <p className="mt-4 font-sans text-micro uppercase tracking-wider text-muted">What would end this read</p>
           <p className="mt-2 max-w-[60ch] font-sans text-body leading-relaxed text-fg">{w.invalidate}</p>
         </>
       ) : null}
@@ -76,10 +76,10 @@ function WhatHappened({ last }: { last: BooksWindow | null | undefined }) {
     <section aria-labelledby="guided-happened" className="rounded-md border border-border bg-surface p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <p className="font-mono text-micro uppercase tracking-widest text-subtle">The window before this one</p>
+          <p className="font-sans text-micro uppercase tracking-widest text-subtle">The window before this one</p>
           <h2 id="guided-happened" className="mt-2 font-sans text-title font-medium text-fg">What happened?</h2>
         </div>
-        <p className="font-mono text-micro text-subtle">{h.when}</p>
+        <p className="font-sans text-micro text-subtle">{h.when}</p>
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-border bg-surface-2 p-3">
@@ -140,7 +140,7 @@ export function GuidedFloor({
           <Portrait name="Satoshi" src={portraits.satoshi} />
         </div>
         <div className="relative max-w-[65ch]">
-          <p className="font-mono text-micro uppercase tracking-widest text-wait">Guided Floor · {demo ? "Demo data" : "Live paper desk"}</p>
+          <p className="font-sans text-micro uppercase tracking-widest text-wait">Guided Floor · {demo ? "Demo data" : "Live paper desk"}</p>
           <h1 className="mt-3 font-sans text-hero font-medium tracking-tight text-fg">Welcome to the Council.</h1>
           <p className="mt-2 font-sans text-body leading-relaxed text-muted">
             Follow one real <Tip k="term.window">15-minute window</Tip>. See what the{" "}
@@ -157,7 +157,7 @@ export function GuidedFloor({
         <section aria-labelledby="guided-call" className="rounded-md border border-border bg-surface p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-mono text-micro uppercase tracking-widest text-subtle">Satoshi · the current read</p>
+              <p className="font-sans text-micro uppercase tracking-widest text-subtle">Satoshi · the current read</p>
               <h2 id="guided-call" aria-live="polite" className={cn("mt-2 font-sans text-title font-medium", read.tone)}>
                 {read.label === "WAIT" ? <Tip k="term.wait">WAIT</Tip> : read.label}
               </h2>
@@ -165,20 +165,20 @@ export function GuidedFloor({
             <div className="h-24 w-24 shrink-0 sm:h-32 sm:w-32"><Portrait name="Satoshi" src={portraits.satoshi} /></div>
           </div>
           <p className="mt-3 max-w-[60ch] font-sans text-body leading-relaxed text-fg">{read.why}</p>
-          <p className="mt-4 font-mono text-micro text-muted">{read.note}</p>
+          <p className="mt-4 font-sans text-micro text-muted">{read.note}</p>
           <button type="button" onClick={() => { beacon("guided_to_pro"); onPro(); }} className="mt-5 min-h-11 rounded-sm border border-border-strong px-4 font-mono text-ui text-fg hover:bg-surface-2">See the full Pro Floor →</button>
         </section>
         <section aria-labelledby="guided-price" className="rounded-md border border-border bg-surface p-5 sm:p-6">
-          <p className="font-mono text-micro uppercase tracking-widest text-subtle">One thing to watch</p>
+          <p className="font-sans text-micro uppercase tracking-widest text-subtle">One thing to watch</p>
           <h2 id="guided-price" className="mt-2 font-sans text-title font-medium text-fg">Bitcoin vs. the target</h2>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-sm border border-border bg-surface-2 p-3">
-              <p className="font-mono text-micro text-muted">Bitcoin now</p>
-              <p className="mt-2 font-mono text-ui text-fg">{priceFresh ? `$${snap.spot.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Awaiting fresh price"}</p>
+              <p className="font-sans text-micro text-muted">Bitcoin now</p>
+              <p className="mt-2 font-sans text-ui text-fg">{priceFresh ? `$${snap.spot.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Awaiting fresh price"}</p>
             </div>
             <div className="rounded-sm border border-border bg-surface-2 p-3">
-              <p className="font-mono text-micro text-muted">Target line</p>
-              <p className="mt-2 font-mono text-ui text-fg">{marketFresh ? `$${snap.strike.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Awaiting market quote"}</p>
+              <p className="font-sans text-micro text-muted">Target line</p>
+              <p className="mt-2 font-sans text-ui text-fg">{marketFresh ? `$${snap.strike.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Awaiting market quote"}</p>
             </div>
           </div>
           <p className="mt-4 font-sans text-ui leading-relaxed text-muted">The official result uses the market's settlement rule at the end of the window. A price you see right now does not settle it.</p>
@@ -203,7 +203,7 @@ export function GuidedFloor({
         <div className="grid items-center gap-5 sm:grid-cols-[auto_1fr]">
           <div className="h-36 w-36"><Portrait name="WICK" src={portraits.wick} /></div>
           <div>
-            <p className="font-mono text-micro uppercase tracking-widest text-wait">A tiny floor guide</p>
+            <p className="font-sans text-micro uppercase tracking-widest text-wait">A tiny floor guide</p>
             <h2 id="guided-lesson" className="mt-1 font-sans text-title font-medium text-fg">{steps[step].title}</h2>
             <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">{steps[step].body}</p>
             <p className="mt-2 max-w-[70ch] font-sans text-ui leading-relaxed text-subtle">{WICK_ROLE_LINE}</p>
@@ -218,7 +218,7 @@ export function GuidedFloor({
         <div className="flex items-center gap-3">
           <div className="h-24 w-24 shrink-0"><Portrait name="Alchemist" src={portraits.alchemist} /></div>
           <div>
-            <p className="font-mono text-micro uppercase tracking-widest text-subtle">Meet the research bench</p>
+            <p className="font-sans text-micro uppercase tracking-widest text-subtle">Meet the research bench</p>
             <p className="font-sans text-ui leading-relaxed text-muted">{ALCHEMIST_ROLE_LINE}</p>
             <a href="/lab" className="mt-2 inline-flex font-mono text-micro text-fg underline underline-offset-4">Open the Lab →</a>
           </div>

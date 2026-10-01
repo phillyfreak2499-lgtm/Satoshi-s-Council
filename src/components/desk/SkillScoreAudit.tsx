@@ -26,7 +26,7 @@ export function SkillScoreAudit({ skills, audit, at }: { skills: SkillCard[]; au
         return (
           <div key={card.id} className="mt-3 border-t border-border pt-3">
             <h3 className="font-mono text-ui text-fg">{card.id}</h3>
-            <p className="mt-1 font-mono text-micro text-muted">
+            <p className="mt-1 font-sans text-micro text-muted">
               Legacy signal-score error {legacy == null ? "MISSING" : legacy.toFixed(6)} · {card.brier_n} scored reads
               {at != null && Number.isFinite(at) ? ` · counters at ${stamp(at)}` : " · counter timestamp MISSING"}
             </p>
@@ -40,7 +40,7 @@ export function SkillScoreAudit({ skills, audit, at }: { skills: SkillCard[]; au
                   <p>{receipt.seconds_to_close.toFixed(1)} seconds before close · {receipt.credit_skip_reason ?? "grading permitted"} · {receipt.source}</p>
                   {!receipt.input_before_close ? <p className="text-wait">Input was at or after close; it is not an advance prediction.</p> : null}
                   {checked.observations.length ? checked.observations.map((row, i) => (
-                    <p key={i} className="mt-1 font-mono">
+                    <p key={i} className="mt-1 font-sans">
                       {row.path} {row.side} · strength {row.confidence ?? "MISSING"}/100 · {row.hit ? "right" : "wrong"} · squared error {row.legacy_squared_error?.toFixed(6) ?? "MISSING"}
                       {" · "}{cents(row.hypothetical_net_cents)} at recorded ask plus fee{row.credited ? "" : " · not credited"}
                       {row.legacy_quote_fallback ? " · legacy grader used a quote fallback" : ""}

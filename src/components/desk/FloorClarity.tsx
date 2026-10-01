@@ -169,7 +169,7 @@ export function WhyBlock({ why, chair }: { why: WhyFacts; chair: ChairResult }) 
         ) : null}
         {waitLine ? <p className="max-w-[68ch] font-sans text-ui leading-snug text-wait">{waitLine}</p> : null}
         {why.wait_note ? (
-          <p className="max-w-[68ch] font-mono text-micro leading-relaxed text-muted">{why.wait_note}</p>
+          <p className="max-w-[68ch] font-sans text-micro leading-relaxed text-muted">{why.wait_note}</p>
         ) : null}
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-micro text-subtle">
           <span>
@@ -201,7 +201,7 @@ export function EvidenceBlock({ why }: { why: WhyFacts }) {
   return (
     <Pane title={<Tip k="pane.gates">evidence · counterargument</Tip>} className="min-w-0">
       {nothing ? (
-        <p className="font-mono text-micro text-subtle">
+        <p className="font-sans text-micro text-subtle">
           Nothing recorded for this window yet.
         </p>
       ) : (
@@ -217,16 +217,16 @@ export function EvidenceBlock({ why }: { why: WhyFacts }) {
                 ))}
               </ul>
             ) : (
-              <p className="mt-1 font-mono text-micro text-subtle">none recorded</p>
+              <p className="mt-1 font-sans text-micro text-subtle">none recorded</p>
             )}
           </div>
           <div className="min-w-0">
             <div className="font-mono text-micro uppercase tracking-wider text-subtle">against</div>
-            <p className="mt-1 font-mono text-micro leading-relaxed text-fg">
+            <p className="mt-1 font-sans text-micro leading-relaxed text-fg">
               {why.counter || <span className="text-subtle">none recorded</span>}
             </p>
             {invalid ? (
-              <p className="mt-2 font-mono text-micro leading-relaxed text-wait">
+              <p className="mt-2 font-sans text-micro leading-relaxed text-wait">
                 {/*
                   invalidateLine only ever phrases this as what ENDS the read. It is
                   not an entry trigger and must never be presented as one.
@@ -285,7 +285,7 @@ export function LastReplayCard({
           </a>
         </div>
       ) : (
-        <p className="font-mono text-micro text-subtle">No settled window recorded yet.</p>
+        <p className="font-sans text-micro text-subtle">No settled window recorded yet.</p>
       )}
     </Pane>
   );

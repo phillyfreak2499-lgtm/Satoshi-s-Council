@@ -138,7 +138,7 @@ export function SeatLeanSummary({ lean, meterId, className }: { lean: SeatLean; 
       {lean.stale ? <> <span className="seat-lean__stale">STALE</span></> : null}
       <span className="seat-lean__summary-line">{leanPlainLine(lean)}</span>
       <span className="seat-lean__summary-line">{seatAvailabilityLabel(lean)}</span>
-      {meterId ? <a className="seat-lean__summary-link" href={`#${meterId}`}>Full meter ↓</a> : null}
+      {meterId ? <a className="seat-lean__summary-link" href={`#${meterId}`}>Full meter <span aria-hidden="true" className="ml-1">↓</span></a> : null}
       <span className="sr-only">{" "}{DIRECTIONAL_LEAN_DISCLAIMER}</span>
     </p>
   );

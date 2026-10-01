@@ -43,7 +43,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
           <p className="company-hero-chip">Paper research. Public prices. No live orders. · Not affiliated with Kalshi.</p>
           <p className="company-hero-lede">Follow the Council as it weighs Bitcoin’s next 15 minutes. See the decision, explore the evidence, and judge the record for yourself.</p>
           <div className="company-actions">
-            <a href="/desk?view=guided" onClick={() => beacon("home_guided_click")} className="company-button">Start with Guided Floor <span aria-hidden="true">↗</span></a>
+            <a href="/desk?view=guided" onClick={() => beacon("home_guided_click")} className="company-button">Open Guided Floor <span aria-hidden="true">↗</span></a>
             <a href="/desk?view=pro" onClick={() => beacon("home_pro_click")} className="company-button company-button-outline">Open Pro Floor <span aria-hidden="true">↗</span></a>
           </div>
           <p className="company-hero-note">
@@ -88,7 +88,7 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
           <div className="company-section-heading"><div><p className="company-eyebrow">The process</p><h2 id="method-title">Every call has a case.<br /><em>Every result has a record.</em></h2></div><a href="/about" className="company-text-link">How it works <span aria-hidden="true">↗</span></a></div>
           <div className="company-process-grid">
             <article><span className="company-step">01 / Observe</span><h3>See the whole picture.</h3><p>Specialist seats read price structure, order flow, derivatives, market odds, and context.</p><a href="/?tab=structure">Explore the specialists <span aria-hidden="true">→</span></a></article>
-            <article><span className="company-step">02 / Decide</span><h3>Know when to wait.</h3><p>The Chair brings the evidence together. A directional read must also clear the paper book’s price and safety rules.</p><a href="/desk">Follow the decision <span aria-hidden="true">→</span></a></article>
+            <article><span className="company-step">02 / Decide</span><h3>Know when to wait.</h3><p>SATOSHI brings the evidence together. A directional read must also clear the paper book’s price and safety rules.</p><a href="/desk">Open the floor <span aria-hidden="true">→</span></a></article>
             <article><span className="company-step">03 / Review</span><h3>Let the record speak.</h3><p>Review recorded paper positions, fees, settlement results, and the experiments being tested alongside them.</p><a href="/books" onClick={() => beacon("results_open")}>Open the results <span aria-hidden="true">↗</span></a></article>
           </div>
         </section>
@@ -96,8 +96,9 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
         <section className="company-explore" aria-labelledby="explore-title">
           <div className="company-section-heading"><div><p className="company-eyebrow">Go deeper</p><h2 id="explore-title">The work behind the call.</h2></div></div>
           <div className="company-editorial-grid">
-            <a href="/lab" className="company-editorial-card"><span className="company-eyebrow">Research / The Lab</span><h3>Evidence before<br />improvement.</h3><p>Follow prospective experiments and compare candidates against a frozen control.</p><span className="company-card-link">Explore the research <span aria-hidden="true">↗</span></span></a>
-            <a href="/chamber" className="company-editorial-card"><span className="company-eyebrow">Council / The Chamber</span><h3>Understand<br />the conversation.</h3><p>Read the Council’s structured commentary and the evidence behind each exchange.</p><span className="company-card-link">Meet the Council <span aria-hidden="true">↗</span></span></a>
+            <a href="/training/wick" className="company-editorial-card"><img className="visual-guide-image" src="/floor/guides/wick.png" alt="" loading="lazy" /><span className="company-eyebrow">Training / WICK</span><h3>Practice the candle read.</h3><p>Study closed candles with WICK. Training is practice, separate from the Council’s paper book.</p><span className="company-card-link">Open training ↗</span></a>
+            <a href="/lab" className="company-editorial-card"><img className="visual-guide-image" src="/floor/guides/satoshi.png" alt="" loading="lazy" /><span className="company-eyebrow">Research / The Lab</span><h3>Evidence before<br />improvement.</h3><p>Follow prospective experiments and compare candidates against a frozen control.</p><span className="company-card-link">Explore the research <span aria-hidden="true">↗</span></span></a>
+            <a href="/about" className="company-editorial-card"><img className="visual-guide-image" src="/floor/council-chamber-v1.webp" alt="" loading="lazy" /><span className="company-eyebrow">Council / The story</span><h3>Understand<br />the desk.</h3><p>Read how specialist research, SATOSHI’s decision, and the paper record fit together.</p><span className="company-card-link">Open the story <span aria-hidden="true">↗</span></span></a>
           </div>
         </section>
         <section className="company-shop" aria-labelledby="shop-title"><div><p className="company-eyebrow">The Council collection</p><h2 id="shop-title">Stillness is a decision.</h2><p>The ideas behind the floor, made to wear and keep.</p></div><a href={SHOP_URL} target="_blank" rel="noopener noreferrer" className="company-button company-button-outline" aria-label="Visit the shop (opens in a new tab)">Visit the shop <span aria-hidden="true">↗</span></a></section>

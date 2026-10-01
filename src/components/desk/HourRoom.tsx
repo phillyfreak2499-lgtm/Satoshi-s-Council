@@ -48,7 +48,7 @@ function LiveWindow({ data }: { data: HourBrief }) {
             <Stat label="Posture" value={data.posture.lean} sub={data.posture.live_rule ? "hourly rule live" : "no hourly rule exists"} />
           </dl>
           <p className="mt-3 max-w-[78ch] font-sans text-ui leading-relaxed text-muted">{live.question}</p>
-          <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             A strike ladder, not the 15-minute UP/DOWN contract.{live.strike != null ? ` This rung: ${usd(live.strike)}.` : ""} Settles on the CF Benchmarks value at the top of the hour. {data.posture.reason} Authority: {data.authority}.
           </p>
         </>
@@ -68,7 +68,7 @@ export function HourRoom({ initial, research = null }: { initial: HourBrief | nu
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">Results · The hour</div>
           <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">The hour on the record.</h1>
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">Same index. Longer window. Paper only.</p>
-          {data ? <p className="mt-2 font-mono text-micro text-subtle">Kalshi series {data.series} · hourly book authority {data.authority} · as of {utcStamp(data.at)}.</p> : null}
+          {data ? <p className="mt-2 font-sans text-micro text-subtle">Kalshi series {data.series} · hourly book authority {data.authority} · as of {utcStamp(data.at)}.</p> : null}
         </section>
 
         {research ? <HourClockHero data={research} /> : null}
@@ -82,13 +82,13 @@ export function HourRoom({ initial, research = null }: { initial: HourBrief | nu
             <HourResearchBoard data={research} />
 
             <Block n="08" title="Score">
-              <p className="mt-2 font-mono text-micro text-subtle">{data.window.label}. Hourly ledger only; no 15-minute row is counted here.</p>
+              <p className="mt-2 font-sans text-micro text-subtle">{data.window.label}. Hourly ledger only; no 15-minute row is counted here.</p>
               {data.ledger_unavailable ? (
                 <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">The hourly ledger could not be read this request. That is not a zero record.</p>
               ) : data.score.fills === 0 ? (
                 <>
                   <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-fg">{data.copy.empty}</p>
-                  <p className="mt-2 font-mono text-micro text-subtle">{data.score.windows} hourly {data.score.windows === 1 ? "window" : "windows"} graded, {data.score.sits} sat. No fill, so no win rate, no net and no drawdown to print.</p>
+                  <p className="mt-2 font-sans text-micro text-subtle">{data.score.windows} hourly {data.score.windows === 1 ? "window" : "windows"} graded, {data.score.sits} sat. No fill, so no win rate, no net and no drawdown to print.</p>
                 </>
               ) : (
                 <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -103,7 +103,7 @@ export function HourRoom({ initial, research = null }: { initial: HourBrief | nu
 
             <Block n="09" title="One right WAIT">
               <p className="mt-3 max-w-[72ch] font-sans text-ui leading-relaxed text-muted">{data.right_wait ? data.right_wait.reason : "There is no hourly WAIT to show yet. A sit becomes evidence only when a recorded lean never filled and the other side paid."}</p>
-              {data.right_wait ? <p className="mt-2 font-mono text-micro text-subtle">{data.right_wait.ticker} · {utcStamp(data.right_wait.close_time)}</p> : null}
+              {data.right_wait ? <p className="mt-2 font-sans text-micro text-subtle">{data.right_wait.ticker} · {utcStamp(data.right_wait.close_time)}</p> : null}
             </Block>
 
             <Block n="10" title="One wrong fill">

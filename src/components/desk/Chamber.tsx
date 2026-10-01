@@ -150,7 +150,7 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
           {speakingIds.map(cell)}
         </div>
       ) : (
-        <p className="rounded-md border border-border bg-surface px-3 py-2 font-mono text-micro text-subtle">
+        <p className="rounded-md border border-border bg-surface px-3 py-2 font-sans text-micro text-subtle">
           The desk is sitting — no seat is speaking a direction this window. That is a call, not a fault.
         </p>
       )}
@@ -204,7 +204,7 @@ export function Chamber({ rows, onJump }: { rows: SeatRow[]; onJump: (seat: Seat
             </p>
           </>
         ) : (
-          <p className="font-mono text-micro text-subtle">
+          <p className="font-sans text-micro text-subtle">
             Each cell is one seat: its vote in words, a pip in the vote&apos;s colour, how sure, and a thin bar for confidence. Hover or tap a seat to read its
             thesis; the pip beats once when a vote changes.
           </p>

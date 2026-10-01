@@ -89,3 +89,17 @@ test('rendering: absent authority metadata stays unverified rather than voting',
  fixture();const room=text(render(ChamberRoster,{rows:[]}));
  assert.match(room,/Authority unverified/);assert.doesNotMatch(room,/LIVE authority available/);
 });
+test('CONTEXT availability labels have separate wrapping rows, including pit crew and non-voters',()=>{
+ const {chair,votes,snap}=fixture();
+ for(const seat of ['ORBIT','CLOCK','WIRE']) {
+  chair.rows.push({...chair.rows[3],seat,callsign:seat});
+  votes.push({...votes[3],seat});
+ }
+ const seats=models.seatFacts(chair,votes,{},snap.as_of);
+ const families=models.familyFacts(seats);
+ const html=render(EvidenceFamilies,{facts:{seats,families,balance:models.balanceFacts(chair,seats,families)},onJump:()=>{}});
+ for(const seat of ['ORBIT','CLOCK','WIRE'])assert.match(html,new RegExp('>'+seat+'<'));
+ assert.match(html,/flex min-w-0 flex-1 flex-col gap-1 py-2/);
+ assert.doesNotMatch(html,/w-\[5\.25rem\].*whitespace-nowrap/);
+ assert.match(html,/break-words font-sans/);
+});

@@ -9,8 +9,10 @@ export function LeanChip({
   lean,
   cents,
   className,
+  research = false,
 }: {
   lean: Lean;
+  research?: boolean;
   cents?: number | null;
   className?: string;
 }) {
@@ -25,7 +27,7 @@ export function LeanChip({
       <span
         className={cn(
           "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-micro font-medium tracking-wide",
-          map[lean],
+          research && lean === "WAIT" ? "bg-surface-2 text-muted border-border" : map[lean],
           className,
         )}
       >

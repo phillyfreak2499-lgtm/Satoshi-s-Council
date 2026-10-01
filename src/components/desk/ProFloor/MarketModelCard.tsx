@@ -27,6 +27,8 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
   const { quotes, model, market } = facts;
   const sideWord = model.side == null ? null : model.side === "UP" ? "YES" : "NO";
 
+  const modelUnavailable = [model.fair_yes, model.fee, model.priced_ask, model.edge, model.diagnostic_edge, ...(full ? [model.lab_fair_yes] : [])].every((f) => f.cents == null) && model.breakeven_pct == null;
+
   return (
     <Panel
       id="market-model"
@@ -77,6 +79,7 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
             Model <span className="text-subtle">— derived, not quoted</span>
           </div>
           <div className="mt-2">
+            {modelUnavailable ? <p className="font-sans text-ui text-subtle">Model values unavailable on this frame. No executable edge is inferred.</p> : <>
             <Row
               label="fair YES"
               value={
@@ -166,6 +169,7 @@ export function MarketModelCard({ facts, full }: { facts: ProFloorFacts; full: b
                 }
               />
             ) : null}
+            </>}
           </div>
         </div>
       </div>

@@ -63,15 +63,17 @@ export function StatBox({
   sub,
   tone,
   title,
+  className,
 }: {
   label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   tone?: string;
   title?: string;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-sm border border-border bg-bg/40 px-2.5 py-2" title={title}>
+    <div className={cn("min-w-0 rounded-sm border border-border bg-bg/40 px-2.5 py-2", className)} title={title}>
       <div className="font-mono text-micro uppercase tracking-wider text-subtle">{label}</div>
       <div className={cn("truncate font-mono text-data tabular", tone ?? "text-fg")}>{value}</div>
       {sub ? <div className="mt-0.5 font-mono text-micro leading-snug text-subtle">{sub}</div> : null}
@@ -94,7 +96,7 @@ export function KindTag({ kind }: { kind: CentsKind }) {
   return (
     <span
       className={cn(
-        "ml-1 rounded-sm border px-1 py-px align-middle font-mono text-micro uppercase tracking-wide",
+        "ml-1 inline-flex whitespace-nowrap rounded-sm border px-1 py-px align-middle font-mono text-micro uppercase tracking-wide",
         kind === "executable" ? "border-border text-muted" : "border-gold/40 text-gold-dim",
       )}
     >

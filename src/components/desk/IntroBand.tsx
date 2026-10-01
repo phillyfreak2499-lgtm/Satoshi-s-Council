@@ -41,7 +41,7 @@ export function IntroBand({
         >
           <span aria-hidden="true">×</span>
         </button>
-        <p className="flex items-center gap-2 pr-12 font-mono text-micro uppercase tracking-widest text-subtle">
+        <p className="flex items-center gap-2 pr-12 font-sans text-micro uppercase tracking-widest text-subtle">
           <span aria-hidden="true" className={cn("inline-block size-1.5 rounded-full", demo ? "bg-wait" : "bg-up")} />
           The Council is in session{demo ? " · demo tape" : ""}
         </p>

@@ -29,13 +29,13 @@ export function SpecialistLeans({ leans, waiting = false }: { leans: SeatLean[];
   const more = directional.slice(GUIDED_LEAN_VISIBLE);
   return (
     <section aria-labelledby="guided-leans" className="rounded-md border border-border bg-surface p-5 sm:p-6">
-      <p className="font-mono text-micro uppercase tracking-widest text-subtle">Follow a specialist</p>
+      <p className="font-sans text-micro uppercase tracking-widest text-subtle">Follow a specialist</p>
       <h2 id="guided-leans" className="mt-2 font-sans text-title font-medium text-fg">What each specialist sees</h2>
       {waiting ? <p className="mt-2 max-w-[68ch] font-sans text-body leading-relaxed text-fg">{GUIDED_WAITING_LEAD}</p> : null}
       <p className="mt-2 max-w-[68ch] font-sans text-body leading-relaxed text-muted">
         Every seat reads the window on its own. A seat can lean while the Council waits: its read is research, not a call, and it is not a paper position.
       </p>
-      <p className="mt-2 max-w-[68ch] font-mono text-micro leading-relaxed text-subtle">{DIRECTIONAL_LEAN_DISCLAIMER}</p>
+      <p className="mt-2 max-w-[68ch] font-sans text-micro leading-relaxed text-subtle">{DIRECTIONAL_LEAN_DISCLAIMER}</p>
       {shown.length ? (
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {shown.map((l) => <LeanCard key={leanKey(l)} l={l} />)}

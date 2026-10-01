@@ -450,10 +450,10 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
           <p className="mt-2 max-w-[70ch] font-sans text-body leading-relaxed text-muted">
             Follow the Council’s response to what the desk observes. Each exchange is tied to a recorded event, with its supporting evidence available to read.
           </p>
-          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-3 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
           </p>
-          <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             Optional playback uses AI-generated fictional character voices. The recorded text and evidence remain the canonical record.
           </p>
           <a href="/training/wick" className="btn btn-secondary mt-4">Train with WICK ↗</a>

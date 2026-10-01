@@ -115,9 +115,9 @@ export function AiCostPanel() {
         </button>
       </div>
 
-      {err ? <p role="status" className="mt-3 font-mono text-micro text-down">{err}</p> : null}
+      {err ? <p role="status" className="mt-3 font-sans text-micro text-down">{err}</p> : null}
       {loading && !snap ? (
-        <p className="mt-3 font-mono text-micro text-subtle">reading the usage ledger…</p>
+        <p className="mt-3 font-sans text-micro text-subtle">reading the usage ledger…</p>
       ) : null}
 
       {snap ? (
@@ -165,13 +165,13 @@ export function AiCostPanel() {
           </div>
 
           {!snap.accounting.complete ? (
-            <p role="status" className="mt-3 font-mono text-micro text-wait">
+            <p role="status" className="mt-3 font-sans text-micro text-wait">
               Estimate coverage is incomplete: {snap.totals.price_missing_calls} call(s) lack a price and{" "}
               {snap.totals.usage_missing_calls} call(s) lack token usage. Missing cost is never treated as $0.
             </p>
           ) : null}
 
-          <p className="mt-3 max-w-[90ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-3 max-w-[90ch] font-sans text-micro leading-relaxed text-subtle">
             {snap.accounting.note} This is not the OpenAI invoice.
           </p>
         </>

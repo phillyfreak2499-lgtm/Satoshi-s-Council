@@ -135,7 +135,7 @@ test("the home page offers both doors explicitly, and claims no advantage for ei
   const home = read(HOME);
   assert.match(home, /href="\/desk\?view=guided"/, "Guided has its own canonical entry");
   assert.match(home, /href="\/desk"/, "Pro remains one click away");
-  assert.match(home, /Start with Guided Floor/);
+  assert.match(home, /Open Guided Floor/);
   assert.match(home, /Open Pro Floor/);
   assert.match(home, /See the Council’s live decision in plain English/);
   assert.match(home, /Full evidence, prices, model, gates and diagnostics/);
