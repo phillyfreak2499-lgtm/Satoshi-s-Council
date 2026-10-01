@@ -120,9 +120,9 @@ export function GuidedFloor({
   knobs?: Record<string, SeatKnobs>;
 }) {
   const [step, setStep] = useState(0);
-  // The same read model the Pro Floor uses, filtered to the seats the Chair aggregates.
+  // The same read model the Pro Floor uses, including all research roles, with no roster-only filter.
   const leans = useMemo(
-    () => seatDirectionalLeans(seatFacts(chair, votes, knobs, snap.as_of).filter((f) => f.aggregated), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of }),
+    () => seatDirectionalLeans(seatFacts(chair, votes, knobs, snap.as_of), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of }),
     [chair, votes, knobs, snap.as_of, snap.ticker, snap.close_time],
   );
   const read = guidedRead(chair, snap, callLog);
