@@ -16,6 +16,7 @@ import { ALCHEMIST_ROLE_LINE, WICK_ROLE_LINE } from "@/lib/desk/training";
 import { Tip } from "./Tip";
 import { LastCallPanel } from "./LastCallPanel";
 import { AlertsPanel } from "./AlertsPanel";
+import { DecisionLayerMark } from "./DecisionLayerMark";
 import { WaitResearchNote } from "./WaitResearchNote";
 
 const portraits = {
@@ -83,7 +84,7 @@ function WhatHappened({ last }: { last: BooksWindow | null | undefined }) {
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-border bg-surface-2 p-3">
-          <dt className="font-mono text-micro text-muted"><Tip k="term.paper-fill">Paper position</Tip></dt>
+          <dt><Tip k="term.paper-fill"><DecisionLayerMark layer="position" /></Tip></dt>
           <dd className="mt-1 font-mono text-ui text-fg">{h.position}</dd>
         </div>
         <div className="rounded-sm border border-border bg-surface-2 p-3">
@@ -157,7 +158,7 @@ export function GuidedFloor({
         <section aria-labelledby="guided-call" className="rounded-md border border-border bg-surface p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-sans text-micro uppercase tracking-widest text-subtle">Satoshi · the current read</p>
+              <p><DecisionLayerMark layer="decision" /></p>
               <h2 id="guided-call" aria-live="polite" className={cn("mt-2 font-sans text-title font-medium", read.tone)}>
                 {read.label === "WAIT" ? <Tip k="term.wait">WAIT</Tip> : read.label}
               </h2>

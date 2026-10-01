@@ -1,5 +1,6 @@
 import { DIRECTIONAL_LEAN_DISCLAIMER, GUIDED_LEAN_VISIBLE, GUIDED_WAITING_LEAD, guidedLeanOrder, leanKey, type SeatLean } from "@/lib/desk/seat-lean";
 import { SeatLeanMeter } from "./SeatLeanMeter";
+import { DecisionLayerMark } from "./DecisionLayerMark";
 
 function LeanCard({ l }: { l: SeatLean }) {
   return (
@@ -32,6 +33,7 @@ export function SpecialistLeans({ leans, waiting = false }: { leans: SeatLean[];
       <p className="font-sans text-micro uppercase tracking-widest text-subtle">Follow a specialist</p>
       <h2 id="guided-leans" className="mt-2 font-sans text-title font-medium text-fg">What each specialist sees</h2>
       {waiting ? <p className="mt-2 max-w-[68ch] font-sans text-body leading-relaxed text-fg">{GUIDED_WAITING_LEAD}</p> : null}
+      <p className="mt-3"><DecisionLayerMark layer="research" /></p>
       <p className="mt-2 max-w-[68ch] font-sans text-body leading-relaxed text-muted">
         Every seat reads the window on its own. A seat can lean while the Council waits: its read is research, not a call, and it is not a paper position.
       </p>

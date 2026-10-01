@@ -9,6 +9,7 @@ import { ChairEyes } from "./Eyes";
 import { Chamber } from "./Chamber";
 import { ArenaPanel } from "./ArenaPanel";
 import { Tip } from "./Tip";
+import { DecisionLayerMark } from "./DecisionLayerMark";
 import { readMarket } from "@/lib/desk/market-hours";
 import { FULL_N } from "@/lib/desk/math";
 import { markSide, readScalp, scalpAvg } from "@/lib/desk/scalp";
@@ -149,8 +150,8 @@ function ChairBoard({ snap, chair, tz, callLog }: { snap: Snapshot; chair: Chair
     >
       <div className="council-chair-summary">
         <div className="min-w-0">
-          <div className="font-mono text-micro uppercase tracking-widest text-subtle">
-            <Tip k="pane.board">SATOSHI · standing read</Tip>
+          <div data-trust-label="SATOSHI · standing read" className="font-mono text-micro uppercase tracking-widest text-subtle">
+            <DecisionLayerMark layer="decision" /> <Tip k="pane.board">standing read</Tip>
           </div>
           <h1 className={cn("council-chair-verdict font-sans font-medium leading-none tracking-tight", tone)} aria-live="polite" aria-atomic="true">
             <span className="sr-only">Chair call: </span>
