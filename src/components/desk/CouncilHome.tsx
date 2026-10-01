@@ -35,11 +35,13 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
     ? `${book.source === "RECOVERY_FAV85_V1" ? "RECOVERY PILOT · " : ""}${book.lean} @ ${book.cents.toFixed(1)}¢`
     : book ? "NONE" : "—";
   const operationalDead = frame.operational?.state === "DEAD";
-  const statusLine = !snap || !chair || operationalDead
-    ? "Feed/data issue — not a WAIT"
-    : chair.lean === "WAIT"
-      ? "WAIT is an intentional sit, not an outage"
-      : "Directional research read is live";
+  const statusLine = operationalDead
+    ? "Feed/data outage — not a WAIT"
+    : !snap || !chair
+      ? "Connecting to live data — not a WAIT"
+      : chair.lean === "WAIT"
+        ? "WAIT is an intentional sit, not an outage"
+        : "Directional research read is live";
   const freshnessLine = snap
     ? `${snap.ticker} · updated ${new Date(snap.as_of).toISOString().slice(11, 19)} UTC`
     : "Waiting for the next live snapshot";
