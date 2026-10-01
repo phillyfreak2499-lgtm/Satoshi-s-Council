@@ -15,20 +15,8 @@ export function ensureDeskRuntime(): void {
   void import("./call-quality.server")
     .then((m) => m.ensureCallQualityObserver())
     .catch(() => {});
-  void import("./forced-v4.server")
-    .then((m) => m.ensureForcedV4Observer())
-    .catch(() => {});
   void import("./ask-lead.server")
     .then((m) => m.ensureAskLeadObserver())
-    .catch(() => {});
-  void import("./openai-shadow.server")
-    .then((m) => m.ensureOpenAIShadowObserver())
-    .catch(() => {});
-  void import("./openai-blind.server")
-    .then((m) => m.ensureOpenAIBlindObserver())
-    .catch(() => {});
-  void import("./openai-luna.server")
-    .then((m) => m.ensureOpenAILunaObserver())
     .catch(() => {});
   void import("./chair-ablation.server")
     .then((m) => m.ensureChairAblationObserver())

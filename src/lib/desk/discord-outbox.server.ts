@@ -48,15 +48,16 @@ export class DiscordOutbox {
   private async settlements() {
     if (!this.config.paper) return;
     // Exact window + source + recorded entry side. Invalid research rows are never announced.
-    const rows = await this.db<Row & { winner: "UP" | "DOWN"; ev_cents: number; graded_at: string; scoreboard_wins: number; scoreboard_calls: number; scoreboard_net: number }>`
-      select o.*,l.winner,l.ev_cents,l.graded_at, totals.scoreboard_wins, totals.scoreboard_calls, totals.scoreboard_net from desk_discord_outbox o
+    const rows = await this.db<Row & { winner: "UP" | "DOWN"; ev_cents: number; graded_at: string; scoreboard_wins: number; scoreboard_losses: number; scoreboard_net: number }>`
+      select o.*,l.winner,l.ev_cents,l.graded_at, totals.scoreboard_wins, totals.scoreboard_losses, totals.scoreboard_net from desk_discord_outbox o
       join desk_ledger_research l on l.ticker=o.ticker and l.close_time=o.close_time
         and l.entry_lean=o.side and l.entry_source is not distinct from o.source
       cross join (
         -- Same all-time population and arithmetic as Books: valid ledger only,
-        -- positive recorded net defines a win; actual stored fees are retained.
+        -- positive/negative recorded net defines wins/losses; pending and zero
+        -- net entries count as neither. Actual stored fees are retained.
         -- One statement snapshot includes the settlement and excludes cache lag.
-        select (count(*) filter (where entry_cents is not null))::int as scoreboard_calls,
+        select (count(*) filter (where entry_cents is not null and ev_cents < 0))::int as scoreboard_losses,
           (count(*) filter (where entry_cents is not null and ev_cents > 0))::int as scoreboard_wins,
           coalesce(sum(ev_cents), 0)::float as scoreboard_net
         from desk_ledger_research
@@ -68,7 +69,7 @@ export class DiscordOutbox {
     for (const row of rows) {
       // Created now from an already-recorded settlement; timestamp stays the actual grade time.
       const e = settlementEvent(eventOf(row), row.winner, row.ev_cents, new Date(row.graded_at).getTime(), this.config.build,
-        { wins: row.scoreboard_wins, losses: row.scoreboard_calls - row.scoreboard_wins, net: row.scoreboard_net });
+        { wins: row.scoreboard_wins, losses: row.scoreboard_losses, net: row.scoreboard_net });
       // A held/restarted build may resume an earlier accepted fill's follow-up once released.
       // Use current release eligibility instead of treating an earlier grade time as a held capture.
       if (await this.released()) {
