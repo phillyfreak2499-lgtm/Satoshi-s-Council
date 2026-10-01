@@ -2,7 +2,7 @@ const origin = (process.env.PUBLIC_ORIGIN || "https://satoshiscouncil.com").repl
 const timeoutMs = Number(process.env.PUBLIC_SMOKE_TIMEOUT_MS || 20000);
 
 const surfaces = [
-  ["/", ["A clearer view.", "Paper research. Public prices. No live orders."]],
+  ["/", ["Bitcoin every 15 minutes.", "Every paper call gets graded.", "Paper only", "Public prices", "No live orders", "Not affiliated with Kalshi."]],
   ["/desk", ["Satoshi", "Paper position"]],
   ["/books", ["Results, on the record.", "outages, not sits"]],
   ["/record", ["The week on the record.", "One fill that was wrong"]],
