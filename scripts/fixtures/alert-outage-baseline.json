@@ -8,7 +8,10 @@
         "engineHealth": "cbb6f3c59843362db4af0b976dba4d1e353b2006c34568f546d239bfcce51973",
         "criticalFeedReasons": "28a6f5f1c4070d640ab8b1d5cd0c548e6c800c5e392641857f1fccd6f12ddceb",
         "producerPathVerdict": "0d19c04252125be3f7ca4a868ec9c7d8bac6bff5c45cd6b32d631e6518776196",
-        "reconcile": "eb77bf695e39548ab9108295c25f432e2ad97c187738205a7311e04246160937",
+        "reconcile": [
+          "eb77bf695e39548ab9108295c25f432e2ad97c187738205a7311e04246160937",
+          "a34e02b998d3aea85adaaed98892b4b72991f3d9906795f4a1fbcbcdcc28a5ae"
+        ],
         "deskOperational": "6a16a7183b3cf1961eb185733e808ceca4a1ed2c2a98d065921fb803ac3e0e84"
       }
     },
@@ -24,5 +27,7 @@
         "pushDeliverySummary": "9ce4ebb3e199003a176055013968aee26591a083153a533702cb0fe97e2b36b1"
       }
     }
-  ]
+  ],
+  "integration_commit": "c058b11218f449bbeaafacf8e5a2b8348403a10b",
+  "integration_note": "PR #394 already merged before this revision adds only approved classification diagnostics to reconcile; its alert trigger is unchanged. Accept exactly the original and this audited main version; all other function fingerprints remain single-version."
 }

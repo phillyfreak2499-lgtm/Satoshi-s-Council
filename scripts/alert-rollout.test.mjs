@@ -510,11 +510,13 @@ test("outage trigger and delivery semantics are unchanged from pre-PR production
     const ast = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
     for (const [name, digest] of Object.entries(names)) {
       const n = ast.statements.find((n) => ts.isFunctionDeclaration(n) && n.name?.text === name);
-      assert.equal(
-        hash("sha256")
-          .update(JSON.stringify(shape(n)))
-          .digest("hex"),
-        digest,
+      const allowed = Array.isArray(digest) ? digest : [digest];
+      assert.ok(
+        allowed.includes(
+          hash("sha256")
+            .update(JSON.stringify(shape(n)))
+            .digest("hex"),
+        ),
         name,
       );
     }

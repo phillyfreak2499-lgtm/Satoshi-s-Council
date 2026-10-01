@@ -38,4 +38,6 @@ The authenticated POST `/api/alert-verification` supports status, verify, releas
 
 Integration coverage exercises strict migration structure, idempotency and failure rollback; actual subscriber dispatch before/after the hold; owner-only fixtures; partial/expired/unrecorded verification; human confirmation; new-build/rekey/lost-owner holds; default false read preferences; separate read receipts; auth rejection; and owner-only rendering.
 
+The reconcile fingerprint accepts exactly two audited versions: the pre-PR function and main `c058b11218f449bbeaafacf8e5a2b8348403a10b`, whose already merged PR #394 adds approved venue-pause classification diagnostics without changing the reconciliation alert trigger. Every other protected function has one pinned fingerprint. This prevents the synthetic PR merge from rejecting separately approved main changes.
+
 A pinned AST baseline from pre-PR commit `54794babe91778233c731219c75f61965156ab24` protects the outage trigger, health decisions, reconciliation, watchdog dispatch, shared transport/fanout, subscription failure bookkeeping, VAPID key handling and owner readiness queries. The known owner-alert incident is neither fixed nor hidden here.
