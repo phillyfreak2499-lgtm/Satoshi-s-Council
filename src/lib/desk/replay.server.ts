@@ -29,6 +29,7 @@ import { lookupOneWindow, payloadKey } from "./replay-lookup";
 import { measureWindowPath, type WindowPathStats } from "./window-path";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
+import { replayJournal, replayRow } from "./replay-journal.server";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -156,6 +157,7 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
       c.seats[id].push(v ? leanCode(v) : 0);
     }
     noteShadow(c, snap.ticker);
+    replayJournal.note(replayRow(snap.ticker, snap.close_time, slot.series.strike, c));
   } catch {
     /* a replay must never cost a tick */
   }
@@ -217,6 +219,9 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
   // One operation: it cannot read one window and delete another.
   const s = series.take(ticker, closeMs);
   if (!s) return;
+  // Restore earlier samples from this exact window after a process restart.
+  // Journal failure falls back to the in-memory segment; nothing affects decisions.
+  s.cols = await replayJournal.restore(ticker, closeMs, s.cols);
   if (s.cols.t.length < 3) return;
   const partial = s.cols.t0 - (s.close_time - WINDOW_MS) > 60_000;
   const pathStats = measureWindowPath({
@@ -239,6 +244,7 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
 export async function pruneReplays(): Promise<void> {
   const db = await sql();
   await db`delete from desk_replay where close_time < now() - (${KEEP_DAYS} || ' days')::interval`;
+  await replayJournal.prune(Date.now());
 }
 
 export type Replay = {
