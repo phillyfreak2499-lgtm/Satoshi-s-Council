@@ -122,9 +122,26 @@ export function CouncilHome({ last = null, books = null, fill = null }: { last?:
         <section className="company-explore" aria-labelledby="explore-title">
           <div className="company-section-heading"><div><p className="company-eyebrow">Go deeper</p><h2 id="explore-title">The work behind the call.</h2></div></div>
           <div className="company-editorial-grid">
-            <a href="/training/wick" className="company-editorial-card"><img className="visual-guide-image" src="/floor/guides/wick.png" alt="" loading="lazy" /><span className="company-eyebrow">Training / WICK</span><h3>Practice the candle read.</h3><p>Study closed candles with WICK. Training is practice, separate from the Council’s paper book.</p><span className="company-card-link">Open training ↗</span></a>
-            <a href="/lab" className="company-editorial-card"><img className="visual-guide-image" src="/floor/guides/satoshi.png" alt="" loading="lazy" /><span className="company-eyebrow">Research / The Lab</span><h3>Evidence before<br />improvement.</h3><p>Follow prospective experiments and compare candidates against a frozen control.</p><span className="company-card-link">Explore the research <span aria-hidden="true">↗</span></span></a>
-            <a href="/about" className="company-editorial-card"><img className="visual-guide-image" src="/floor/council-chamber-v1.webp" alt="" loading="lazy" /><span className="company-eyebrow">Council / The story</span><h3>Understand<br />the desk.</h3><p>Read how specialist research, SATOSHI’s decision, and the paper record fit together.</p><span className="company-card-link">Open the story <span aria-hidden="true">↗</span></span></a>
+            <a href="/training/wick" className="company-editorial-card">
+              <span className="visual-guide-media visual-guide-media--portrait visual-guide-media--wick" aria-hidden="true">
+                <img className="visual-guide-image visual-guide-image--backdrop" src="/floor/guides/wick.png" alt="" loading="lazy" />
+                <img className="visual-guide-image visual-guide-image--subject" src="/floor/guides/wick.png" alt="" loading="lazy" />
+              </span>
+              <span className="company-eyebrow">Training / WICK</span><h3>Practice the candle read.</h3><p>Study closed candles with WICK. Training is practice, separate from the Council’s paper book.</p><span className="company-card-link">Open training ↗</span>
+            </a>
+            <a href="/lab" className="company-editorial-card">
+              <span className="visual-guide-media visual-guide-media--portrait visual-guide-media--satoshi" aria-hidden="true">
+                <img className="visual-guide-image visual-guide-image--backdrop" src="/floor/guides/satoshi.png" alt="" loading="lazy" />
+                <img className="visual-guide-image visual-guide-image--subject" src="/floor/guides/satoshi.png" alt="" loading="lazy" />
+              </span>
+              <span className="company-eyebrow">Research / The Lab</span><h3>Evidence before<br />improvement.</h3><p>Follow prospective experiments and compare candidates against a frozen control.</p><span className="company-card-link">Explore the research <span aria-hidden="true">↗</span></span>
+            </a>
+            <a href="/about" className="company-editorial-card">
+              <span className="visual-guide-media visual-guide-media--scene" aria-hidden="true">
+                <img className="visual-guide-image visual-guide-image--scene" src="/floor/council-chamber-v1.webp" alt="" loading="lazy" />
+              </span>
+              <span className="company-eyebrow">Council / The story</span><h3>Understand<br />the desk.</h3><p>Read how specialist research, SATOSHI’s decision, and the paper record fit together.</p><span className="company-card-link">Open the story <span aria-hidden="true">↗</span></span>
+            </a>
           </div>
         </section>
         <section className="company-shop" aria-labelledby="shop-title"><div><p className="company-eyebrow">The Council collection</p><h2 id="shop-title">Stillness is a decision.</h2><p>The ideas behind the floor, made to wear and keep.</p></div><a href={SHOP_URL} target="_blank" rel="noopener noreferrer" className="company-button company-button-outline" aria-label="Visit the shop (opens in a new tab)">Visit the shop <span aria-hidden="true">↗</span></a></section>

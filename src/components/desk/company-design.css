@@ -74,9 +74,9 @@
 .council-home .obs-guide summary { font-size: 13px; min-height: 44px; }
 .council-home .obs-guide-art { height: 250px; }
 .company-editorial-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.company-editorial-card { display: flex; flex-direction: column; align-items: flex-start; padding: 34px; background: #121a21; border: 1px solid var(--company-rule); border-radius: 3px; transition: border-color .15s; }
-.company-editorial-card:hover { border-color: #d6b78370; }
-.company-editorial-card h3 { margin: 22px 0 18px; font-family: Georgia, serif; font-size: 36px; font-weight: 400; line-height: 1.15; letter-spacing: -.03em; }
+.company-editorial-card { display: flex; flex-direction: column; align-items: flex-start; overflow: hidden; padding: 34px; background: #121a21; border: 1px solid var(--company-rule); border-radius: 3px; transition: border-color .15s, transform .15s; }
+.company-editorial-card:hover { border-color: #d6b78370; transform: translateY(-2px); }
+.company-editorial-card h3 { min-height: 2.3em; margin: 20px 0 16px; font-family: Georgia, serif; font-size: clamp(30px, 2.1vw, 36px); font-weight: 400; line-height: 1.15; letter-spacing: -.03em; }
 .company-editorial-card p { max-width: 44ch; margin-bottom: 24px; color: var(--company-muted); font-size: 15px; line-height: 1.8; }
 .company-card-link { display: flex; width: 100%; justify-content: space-between; align-items: center; min-height: 44px; margin-top: auto; border-top: 1px solid var(--company-rule); padding-top: 18px; color: var(--company-gold); font-size: 13px; }
 .company-shop { display: flex; justify-content: space-between; align-items: center; gap: 30px; border-top: 1px solid var(--company-rule); padding-block: 55px 80px; }
@@ -197,6 +197,8 @@
   .council-home .obs-guide-art { height: 230px; }
   .council-home .obs-guide-copy { padding: 22px; }
   .company-editorial-card { padding: 26px; }
+  .visual-guide-media { width: calc(100% + 52px); height: 176px; margin: -26px -26px 22px; }
+  .company-editorial-card h3 { min-height: 0; font-size: 32px; }
   .company-shop { align-items: flex-start; flex-direction: column; padding-block: 42px 56px; gap: 25px; }
   .company-shop h2 { font-size: 34px; }
   .company-shop p:not(.company-eyebrow) { line-height: 1.8; }
@@ -225,13 +227,27 @@
   .books-content .books-period { padding: 10px; }
   .books-content .books-period-value { font-size: 24px; }
 }
-@media (prefers-reduced-motion: reduce) { .company-button, .company-editorial-card { transition: none; } }
-html[data-motion="reduce"] .company-button, html[data-motion="reduce"] .company-editorial-card { transition: none; }
+@media (prefers-reduced-motion: reduce) { .company-button, .company-editorial-card { transition: none; } .company-editorial-card:hover { transform: none; } }
+html[data-motion="reduce"] .company-button, html[data-motion="reduce"] .company-editorial-card { transition: none; } html[data-motion="reduce"] .company-editorial-card:hover { transform: none; }
 
-/* Finished research entry cards; pictures carry no market meaning. */
-.visual-guide-image { display: block; width: 100%; height: 150px; object-fit: cover; object-position: center; margin-bottom: 22px; border-radius: 3px; }
+/* Finished research entry cards; pictures carry no market meaning.
+   Portrait assets get an atmospheric backdrop so they read as editorial panels,
+   not small stickers floating inside oversized cards. */
+.visual-guide-media { position: relative; display: block; width: calc(100% + 68px); height: 190px; margin: -34px -34px 26px; overflow: hidden; border-bottom: 1px solid var(--company-rule); background: #0c1218; }
+.visual-guide-media::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, #08101708 0%, #08101722 55%, #081017b8 100%), linear-gradient(90deg, #0710174d 0%, transparent 24%, transparent 76%, #0710174d 100%); }
+.visual-guide-media--portrait::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(circle at 50% 54%, #d6b78324 0%, #d6b7830d 28%, transparent 64%); }
+.visual-guide-image { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; border-radius: 0; }
+.visual-guide-image--backdrop { width: 145%; height: 145%; inset: -22.5%; object-fit: cover; opacity: .62; filter: blur(24px) brightness(.38) saturate(.72); transform: scale(1.08); }
+.visual-guide-image--subject { z-index: 2; object-fit: contain; object-position: 50% 57%; filter: drop-shadow(0 18px 26px #000b); }
+.visual-guide-media--wick .visual-guide-image--subject { transform: scale(1.62); transform-origin: 50% 58%; }
+.visual-guide-media--satoshi .visual-guide-image--subject { transform: scale(1.34); transform-origin: 50% 60%; }
+.visual-guide-image--scene { object-fit: cover; object-position: 50% 52%; filter: brightness(.72) contrast(1.08) saturate(.82); transform: scale(1.02); }
 .company-editorial-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 700px) { .company-editorial-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .company-editorial-grid { grid-template-columns: 1fr; }
+  .visual-guide-media { width: calc(100% + 52px); height: 176px; margin: -26px -26px 22px; }
+  .company-editorial-card h3 { min-height: 0; font-size: 32px; }
+}
 .company-hero-lede, .company-hero-doors, .company-process p, .company-editorial-card p { font-family: var(--font-sans); line-height: 1.75; }
 
 /* Clip room art without creating a scroll ancestor for the sticky status. */
