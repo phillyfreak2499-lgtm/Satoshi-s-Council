@@ -448,7 +448,7 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
 }
 
 /**
- * REVIEW FREEZE (approval-required activation; default OFF = today's behaviour).
+ * REVIEW FREEZE (owner-activated; default ON).
  *
  * The 500-call review below demotes a seat whose rolling 20-leg scalp average is
  * under EDGE_FLOOR (15¢): it re-zeroes the seat's calibration and benches its
@@ -459,14 +459,15 @@ function rethinkSeat(learner: Learner, owner: SeatId, avg: number): string[] {
  * same way on 2026-09-15/16 (docs/EVIDENCE_REPORT_2026-09-22.md).
  *
  * Setting this true keeps the review RUNNING and PRINTING its verdict (the
- * huddle line still says what it would have done) but stops it from changing a
- * status or a calibration debt. It restores nothing already benched. It is a
- * production status-writer change, so it stays false until the owner activates
- * it; the rail test pins the default.
+ * review line still says what it would have done) but stops a failing review
+ * from changing a status or resetting calibration debt. Passing reviews may
+ * still pay down debt. It restores nothing already benched. The production
+ * review freeze is active; the rail test pins the true default.
+ * This switch covers reviewSeats only, not the separate runHuddle bench gates.
  */
 export const SEAT_REVIEW_DEMOTION_FROZEN = true;
 
-/** Every 500 calls after 700: keep 15¢ avg or lose calibration and swap the play. */
+/** Every 500 calls after 700: measure the 15¢ review; frozen reviews cannot demote. */
 export function reviewSeats(learner: Learner, opts: { frozen?: boolean } = {}): string[] {
   const frozen = opts.frozen ?? SEAT_REVIEW_DEMOTION_FROZEN;
   if (!learner.seat_calib_debt) learner.seat_calib_debt = {};
