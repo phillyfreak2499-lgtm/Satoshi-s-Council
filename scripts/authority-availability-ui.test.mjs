@@ -103,3 +103,12 @@ test('CONTEXT availability labels have separate wrapping rows, including pit cre
  assert.doesNotMatch(html,/w-\[5\.25rem\].*whitespace-nowrap/);
  assert.match(html,/break-words font-sans/);
 });
+
+test('compact Pro status keeps a directional opinion separate from the actual book',()=>{
+ const {StickyDecisionHeader}=load('src/components/desk/ProFloor/StickyDecisionHeader.tsx');
+ const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP'},paper:{held:false}};
+ const empty=text(render(StickyDecisionHeader,{facts}));
+ assert.match(empty,/SATOSHI decision UP/);assert.match(empty,/Paper position NONE/);
+ const held=text(render(StickyDecisionHeader,{facts:{...facts,paper:{held:true}}}));
+ assert.match(held,/Paper position HELD/);assert.match(held,/Window closes in/);
+});
