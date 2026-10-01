@@ -212,7 +212,7 @@ test("the seat detail heard chip uses the shared admitted read, with an explicit
   const detail = read("src/routes/seat.$id.tsx");
   assert.match(detail, /SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/);
   assert.doesNotMatch(detail, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/);
-  assert.match(detail, /chairRow \? <>SATOSHI heard:/);
+  assert.match(detail, /lean.isAuthorizedSpeaker \? <>SATOSHI heard:/);
   assert.match(detail, /No Chair row yet — research read only\./);
 });
 

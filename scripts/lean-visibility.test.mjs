@@ -116,7 +116,8 @@ test("3. the seat page top area carries a compact lean summary linking to the fu
   assert.match(read("src/components/desk/BotCard.tsx"), /<div id=\{`seat-lean-\$\{seat\}`\} className="border-t border-border px-3 py-2">\s*<SeatLeanMeter key=\{leanKey\(lean\)\}/, "the full meter block keeps its place lower on the card and is the link target");
   const heard = page.indexOf("SATOSHI heard:");
   assert.ok(heard > summary && heard < card, "the admitted hearing label stays beside the research summary, before the full seat card");
-  assert.match(page, /chairRow \? <>SATOSHI heard: <LeanChip lean=\{lean\.heardLean\} \/><\/> : "No Chair row yet — research read only\."/, "the shared admitted read drives the heard chip, with an explicit research-only state when there is no Chair row");
+  assert.match(page, /lean.isAuthorizedSpeaker \? <>SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/, "only an authorized speaker can be labelled as heard");
+  assert.match(page, /Authorized WAIT — no directional vote\.|Research only — no vote counted\./, "held and authorized WAIT states are explicit");
   assert.doesNotMatch(page, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/, "a producer opinion cannot be labelled as a Chair hearing");
   const html = renderToString(React.createElement(SeatLeanSummary, { lean: lean({ raw_lean: "DOWN", raw_conf: 74 }), meterId: "seat-lean-DRIFT" }));
   const t = text(html);
