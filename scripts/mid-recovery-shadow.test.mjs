@@ -282,8 +282,15 @@ test("the recorder is env-gated default OFF, kicked fire-and-forget by healthz, 
   assert.equal(mod.midRecoveryHealth().enabled, false);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/shadow-lab-mid-recovery\.server"\)\s*\.then\(\(m\) => m\.ensureMidRecoveryObserver\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   for (const f of walk("src/").concat(walk("server/"))) {
+    if (f === "src/lib/desk/mid-recovery-locks-v2-cohort.ts") {
+      // The shared provenance leaf imports the receipt type only. It may not
+      // gain a runtime evaluator, clock, environment dependency or book writer.
+      const leaf = codeOf(f).replace(/^import type .*$/gm, "");
+      assert.doesNotMatch(leaf, /^\s*import\b|process\.env|Date\.now\(|noteCall\(/m);
+      continue;
+    }
     // The LOCKS experiment's report route reads its own module (shadow-lab-mid-recovery-locks.server), never this recorder.
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery")) continue;
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f === "server/routes/research/mid-recovery-locks-v2.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery")) continue;
     assert.ok(!read(f).includes("shadow-lab-mid-recovery"), `${f} imports the experiment`);
   }
   const src = codeOf(OBSERVER);

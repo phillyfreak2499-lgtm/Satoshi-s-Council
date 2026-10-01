@@ -14,7 +14,9 @@ export type EntrySkillRoster = {
   ask_cents: number;
   fee_cents: number;
   /** Both sides observed on the same tick. Null means no executable quote. */
-  book: { yes_bid_cents: number | null; yes_ask_cents: number | null; no_bid_cents: number | null; no_ask_cents: number | null; yes_fee_cents: number | null; no_fee_cents: number | null };
+  book: { yes_bid_cents: number | null; yes_ask_cents: number | null; no_bid_cents: number | null; no_ask_cents: number | null; yes_fee_cents: number | null; no_fee_cents: number | null;
+    /** Actual paid policy, preserved if the held position settles after a policy change. */
+    entry_policy?: string; floor_policy?: string; prospective_start?: number };
   quote_age_s: number | null;
   quote_seq: number | null;
   regime: string;

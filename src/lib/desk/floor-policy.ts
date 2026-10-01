@@ -33,7 +33,7 @@
  */
 
 /** Which slot of the Floor policy a component fills. */
-export const SELECTIVE_ENTRY_ID = "ENTRY_SELECTIVE_V3";
+export const SELECTIVE_ENTRY_ID = "ENTRY_OWNER_ROLLBACK_V1";
 export const SELECTIVE_FROZEN_AT = "2026-09-15T14:05:13.000Z";
 export const SELECTIVE_V1_PARAMS = Object.freeze({
   floor_cents: 80,
@@ -72,9 +72,43 @@ export const SELECTIVE_V2_PARAMS = Object.freeze({
 });
 
 export const SELECTIVE_V3_FROZEN_AT = "2026-09-17T12:09:31.000Z";
-export const SELECTIVE_PARAMS = Object.freeze({
+export const SELECTIVE_V3_PARAMS = Object.freeze({
   ...SELECTIVE_V2_PARAMS,
   min_speaking: 2,
+});
+
+/**
+ * Owner-requested prospective rollback of the post-loss admission narrowing.
+ *
+ * This is intentionally not a source-tree revert.  The current booking-boundary
+ * team, edge, quote, persistence and risk invariants remain in force.  Normal
+ * mode removes only the restrictions added by ENTRY_SELECTIVE_V1 after the four
+ * September 15 losses.  The existing loss-day tightening is retained verbatim.
+ */
+export const OWNER_ROLLBACK_V1_FROZEN_AT = "2026-09-30T21:00:00.000Z";
+export const SELECTIVE_PARAMS = Object.freeze({
+  floor_cents: 80,
+  min_speaking: 2, min_families: 1, max_opposing: 17,
+  min_seconds_left: 1, max_seconds_left: 720,
+  min_edge_cents: 0, edge_must_exceed_min: true,
+  require_index_edge: false, min_index_edge_cents: 0,
+  max_spread_cents: 2, max_receipt_age_s: 10, max_spot_age_s: 15, max_index_age_s: 5,
+  confirmation_seconds: 0, confirmation_frames: 1,
+  tighten_at_net_cents: SELECTIVE_V3_PARAMS.tighten_at_net_cents,
+  tight_min_speaking: SELECTIVE_V3_PARAMS.tight_min_speaking,
+  tight_min_families: SELECTIVE_V3_PARAMS.tight_min_families,
+  tight_max_opposing: SELECTIVE_V3_PARAMS.max_opposing,
+  tight_min_seconds_left: SELECTIVE_V3_PARAMS.min_seconds_left,
+  tight_max_seconds_left: SELECTIVE_V3_PARAMS.max_seconds_left,
+  tight_min_edge_cents: SELECTIVE_V3_PARAMS.tight_min_edge_cents,
+  tight_edge_must_exceed_min: false,
+  tight_require_index_edge: true,
+  tight_min_index_edge_cents: SELECTIVE_V3_PARAMS.tight_min_index_edge_cents,
+  tight_confirmation_seconds: SELECTIVE_V3_PARAMS.tight_confirmation_seconds,
+  tight_confirmation_frames: SELECTIVE_V3_PARAMS.tight_confirmation_frames,
+  protect_after_wins: SELECTIVE_V3_PARAMS.protect_after_wins,
+  protect_after_net_cents: SELECTIVE_V3_PARAMS.protect_after_net_cents,
+  timezone: "America/Chicago",
 });
 
 export type PolicyKind = "signal" | "entry" | "exit" | "risk";
@@ -179,10 +213,17 @@ export const ENTRY_SELECTIVE_V2 = c({
 });
 
 export const ENTRY_SELECTIVE_V3 = c({
-  id: SELECTIVE_ENTRY_ID, family: "ENTRY_SELECTIVE", version: 3, kind: "entry",
+  id: "ENTRY_SELECTIVE_V3", family: "ENTRY_SELECTIVE", version: 3, kind: "entry",
   label: "Selective 80¢ · balanced two-family quorum",
-  params: SELECTIVE_PARAMS, frozen_at: SELECTIVE_V3_FROZEN_AT,
+  params: SELECTIVE_V3_PARAMS, frozen_at: SELECTIVE_V3_FROZEN_AT,
   why: "owner-selected correction after the V2 three-speaker quorum blocked every observed directional read; preserves the 80¢ floor, two evidence families, zero opposition, edge, freshness and tightened loss-day safeguards",
+});
+
+export const ENTRY_OWNER_ROLLBACK_V1 = c({
+  id: SELECTIVE_ENTRY_ID, family: "ENTRY_OWNER_ROLLBACK", version: 1, kind: "entry",
+  label: "Owner rollback · pre-selective admission with safety rails",
+  params: SELECTIVE_PARAMS, frozen_at: OWNER_ROLLBACK_V1_FROZEN_AT,
+  why: "owner-requested prospective rollback of the post-four-loss entry narrowing; retains the 80¢ floor, current Chair/team and positive-edge checks, executable quotes, durable risk reservation and loss-day tightening",
 });
 
 // ---------------------------------------------------------------------------
@@ -278,6 +319,7 @@ export const COMPONENTS: readonly Component[] = Object.freeze([
   ENTRY_SELECTIVE_V1,
   ENTRY_SELECTIVE_V2,
   ENTRY_SELECTIVE_V3,
+  ENTRY_OWNER_ROLLBACK_V1,
   EXIT_HOLD_V1,
   EXIT_PROVE120_V1,
   EXIT_PROVE180_V1,
@@ -370,7 +412,13 @@ export const FLOOR_SELECTIVE_V3: FloorPolicyVersion = Object.freeze({
   created_at: SELECTIVE_V3_FROZEN_AT, prospective_start_at: SELECTIVE_V3_FROZEN_AT,
 });
 
-export const SAFE_FALLBACK_POLICY = FLOOR_SELECTIVE_V3.policy_id;
+export const FLOOR_OWNER_ROLLBACK_V1: FloorPolicyVersion = Object.freeze({
+  ...FLOOR_SELECTIVE_V3, policy_id: "FLOOR_OWNER_ROLLBACK_V1", version: 5,
+  entry_policy: ENTRY_OWNER_ROLLBACK_V1.id,
+  created_at: OWNER_ROLLBACK_V1_FROZEN_AT, prospective_start_at: OWNER_ROLLBACK_V1_FROZEN_AT,
+});
+
+export const SAFE_FALLBACK_POLICY = FLOOR_OWNER_ROLLBACK_V1.policy_id;
 
 /**
  * Compose a new policy version by replacing ONE component of an existing one.

@@ -74,6 +74,16 @@ test("an active recovery study appears in the running summary once it is collect
   assert.equal(door.running[0].sample, 12);
 });
 
+test("the earlier recovery cohort remains separately identifiable", () => {
+  const earlier = LAB_RESEARCH_REGISTRY.find((s) => s.id === "mid-recovery-v1");
+  const locks = LAB_RESEARCH_REGISTRY.find((s) => s.id === "recovery-locks");
+  assert.ok(earlier && locks);
+  assert.match(earlier.label, /MID_RECOVERY_V1_INACTIVE/);
+  assert.match(locks.purpose, /MID_RECOVERY_V1_INACTIVE/);
+  assert.match(locks.purpose, /not pooled/);
+  assert.equal(earlier.lifecycle, "infrastructure");
+});
+
 test("a zero sample prints no number at all rather than a zero", () => {
   const door = labFrontDoor([row({ sample_n: 0, health: "no-sample" })]);
   assert.equal(door.not_ready[0].sample, null);

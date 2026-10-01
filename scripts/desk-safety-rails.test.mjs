@@ -2663,4 +2663,40 @@ test("public Settings hides shared-desk controls until the owner key is verified
     /\{ownerMode \? \([\s\S]*Desk watchdog[\s\S]*\) : null\}/,
     "the owner watchdog stays inside verified owner mode",
   );
+  assert.match(alerts, /Owner call channel \+/, "owner-channel purpose is visible beside watchdog");
+  assert.match(alerts, /This browser is not registered as an owner channel/, "non-owner browsers explain the missing owner channel");
+  assert.match(alerts, /Provider acceptance alone does not confirm delivery or activate calls/, "accepted tests never claim delivery or activation");
+  assert.match(alerts, /owner && onCall/, "test feedback distinguishes an enabled owner call channel");
+  assert.match(alerts, /await setOwnerAlerts\(on, key\)/, "owner enrollment retains authenticated server action");
+});
+
+test("call-notification readiness is independently visible and never gates canonical Chair booking", () => {
+  const engine = read("src/lib/desk/server-engine.ts");
+  const push = read("src/lib/desk/push.server.ts");
+  const noteCall = between(engine, "async function noteCall(", "/**\n * Publish the bounded recovery pilot");
+  const health = between(engine, "export async function getHealth(", "/** The shared brain's latest snapshot");
+
+  assert.match(push, /export async function pushRecipientCounts/,
+    "push readiness counts the same bounded recipient population as fanout");
+  assert.match(push, /on_call and fails < \$\{MAX_FAILS\}/,
+    "failed subscriptions are excluded from call readiness");
+  assert.match(push, /where s\.id = r\.subscription_id and s\.owner and s\.on_call and s\.fails < \$\{MAX_FAILS\}/,
+    "anonymous accepted tests cannot satisfy owner notification readiness");
+  assert.match(push, /async function applyDeliveryBookkeeping[\s\S]*last_sent = now\(\), fails = 0/,
+    "provider acceptance repairs stale subscription failures");
+  const testPush = between(push, "export async function testPush(", "export const __test");
+  assert.match(testPush, /applyDeliveryBookkeeping\(db, sub\.id, r\.outcome\)/,
+    "a public test uses the same subscription bookkeeping as real fanout");
+  assert.match(testPush, /if \(!evidenceRecorded\)[\s\S]*readiness proof was not recorded/,
+    "an accepted test cannot claim readiness when durable evidence failed");
+  assert.match(health, /call_notifications:[\s\S]*configured: e\.alertCallSubs > 0/,
+    "deep health names whether call alerts have any eligible recipient");
+  assert.match(health, /recovery_pilot_ready:[\s\S]*e\.alertCallSubs > 0[\s\S]*call_ready_accepted_24h/,
+    "deep health names the pilot's subscriber-plus-owner-provider-acceptance interlock");
+  assert.match(health, /provider-accepted owner call\/test receipt proves the owner channel/,
+    "public readiness copy states that the owner channel is the required evidence");
+  assert.match(health, /do not rely on call notifications for rollout/,
+    "zero-recipient readiness fails honestly");
+  assert.doesNotMatch(noteCall, /alertCallSubs|pushRecipientCounts/,
+    "notification readiness cannot create or gate a canonical Chair booking");
 });

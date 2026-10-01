@@ -1,0 +1,135 @@
+{
+  "captured_at": "2026-10-01T11:22:28.558Z",
+  "database": "satoshi-council-db",
+  "sql": "SELECT to_char(c.close_time AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') close_time,count(*) chair_rows,string_agg(DISTINCT c.ticker,',') recorded_tickers,string_agg(DISTINCT c.final_lean,',') chair_leans,string_agg(DISTINCT c.wait_reason,',') wait_reasons,(SELECT count(*) FROM desk_seat_reads s WHERE s.close_time=c.close_time) seat_rows FROM desk_chair_evals c WHERE (c.close_time BETWEEN '2026-09-24 07:15Z' AND '2026-09-24 09:00Z') OR (c.close_time BETWEEN '2026-10-01 07:15Z' AND '2026-10-01 09:00Z') GROUP BY c.close_time ORDER BY c.close_time",
+  "records": [
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T07:15:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T07:30:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T07:45:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T08:00:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T08:15:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T08:30:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T08:45:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-09-24T09:00:00Z",
+      "recorded_tickers": "KXBTC15M-26SEP240300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T07:15:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T07:30:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T07:45:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T08:00:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T08:15:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T08:30:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T08:45:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    },
+    {
+      "chair_leans": "WAIT",
+      "chair_rows": 75,
+      "close_time": "2026-10-01T09:00:00Z",
+      "recorded_tickers": "KXBTC15M-26OCT010300-00",
+      "seat_rows": 1575,
+      "wait_reasons": "hard:leftover"
+    }
+  ]
+}

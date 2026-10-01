@@ -1,15 +1,18 @@
 import type { ChairResult, CallLogRow, Snapshot } from "./types";
-import { bookState } from "./book-floor";
+import { bookState } from "./book-floor.ts";
 
 /** These sentences describe recorded Chair state; they never make a call. */
 export function guidedRead(chair: ChairResult, snap: Snapshot, callLog: CallLogRow[]) {
   const book = bookState(snap, chair.lean, callLog);
   const feedBad = snap.health.spot !== "LIVE" || snap.health.kalshi !== "LIVE";
   if (book.kind === "booked") {
+    const pilot = book.source === "RECOVERY_FAV85_V1";
     return {
-      label: `Paper call: ${book.lean}`,
-      why: `The Council recorded a ${book.lean} paper call at ${book.cents.toFixed(0)}¢ for this window. It stays on the books until the official result. The current read can change while that call is held.`,
-      note: "Already recorded · awaiting the official result",
+      label: `${pilot ? "Recovery pilot" : "Paper call"}: ${book.lean}`,
+      why: pilot
+        ? `The recovery pilot recorded a ${book.lean} paper position at ${book.cents.toFixed(0)}¢ for this window. It is a bounded price-favourite test, separate from the Council's current read, and stays on the books until the official result.`
+        : `The Council recorded a ${book.lean} paper call at ${book.cents.toFixed(0)}¢ for this window. It stays on the books until the official result. The current read can change while that call is held.`,
+      note: pilot ? "Pilot position recorded · paper only · awaiting result" : "Already recorded · awaiting the official result",
       tone: book.lean === "UP" ? "text-up" : "text-down",
     };
   }

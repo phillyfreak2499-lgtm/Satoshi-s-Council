@@ -12,8 +12,8 @@ export const Route = createFileRoute("/faq")({
 /** Every answer is a plain string, so the first-paint HTML carries it as readable text with no JSX to hydrate. */
 const QA: { q: string; a: string }[] = [
   {
-    q: "How many Council seats actually vote?",
-    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. Only the 15 currently voting specialists can cast UP, DOWN or WAIT votes. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. ODDS, CHEAP and FADE are retired from votes. ${COUNCIL_RETIRED_MEANS} SATOSHI chairs the vote.`,
+    q: "How many Council seats can vote?",
+    a: `${COUNCIL_STRUCTURE_SENTENCE} Each seat has one job: WICK reads candles, TAPE reads the Kalshi book, CARRY reads funding, CLOCK reads the session, and so on. The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI. The three pit-crew seats never count as votes. WARDEN, ORBIT and WIRE provide guard and context signals. ODDS, CHEAP and FADE are retired from votes. ${COUNCIL_RETIRED_MEANS} SATOSHI chairs the vote.`,
   },
   {
     q: "Why does the desk say WAIT so often?",
@@ -25,11 +25,11 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "What does selective mode require?",
-    a: "There is no daily call quota and one loss does not automatically stop the desk. Each new entry still needs three healthy supporters from two evidence groups, no opposing vote, 3–10 minutes remaining, fresh feeds, a tight spread and resting size. The main model needs at least 3¢ after fees; a fresh settlement-index estimate must cover the ask and fee. Confirmation takes three observations over at least eight seconds. If the Central day's net after fees reaches −100¢, tighter checks stay on for the rest of that day: four healthy supporters from three groups, at least 5¢ main-model edge, more than 2¢ settlement-index margin, and five observations over at least twenty seconds. Once the day is profitable and has five wins or has reached +100¢ net, each new entry must leave the day positive even if it and all pending positions lose their full cost plus fees. A thin profit cushion can therefore mean WAIT. −100¢ is a tightening trigger, not a maximum possible daily loss. These owner-selected rules do not guarantee wins. Existing positions settle normally; Lab research stays separate.",
+    a: "The owner rolled back the normal-mode restrictions added after the four September 15 losses. The new policy applies only to complete market windows opening at or after September 30, 2026, 21:00 UTC (4:00 p.m. Central); a later process restart can move that boundary to the next complete window. A new paper entry still needs the current Chair to clear its bar and hard gates, at least two speaking seats in a strict majority, fresh feeds, a real 80¢-plus ask, a tight spread, resting size and positive main-model edge after fees. Normal mode no longer adds a separate 3–10 minute band, distinct-family veto, 3¢ minimum, settlement-index veto or multi-frame delay. There is no daily call quota and one loss does not automatically stop the desk. If the Central day's net after fees reaches −100¢, the existing tighter checks stay on for the rest of that day: four healthy supporters from three groups, no opposition, 3–10 minutes remaining, at least 5¢ main-model edge, more than 2¢ settlement-index margin, and five observations over at least twenty seconds. Profit protection and durable one-position-per-window risk reservations are unchanged. These paper rules do not guarantee wins; Lab research stays separate.",
   },
   {
     q: "The chair shows UP or DOWN but the log has no fill. Why?",
-    a: "The book needs a real ask at 80¢ or above and every selective-mode check must still pass when it pays. Reaching 80¢ alone is not permission to fill. The shared desk shows WAIT when the current setup, confirmation, feeds or daily limits block entry. A read and a booked position remain separate records, and an existing position stays locked until settlement. The 70¢ shadow comparison is research and never authorizes a fill.",
+    a: "The book needs a real ask at 80¢ or above and every active booking check must still pass when it pays. Reaching 80¢ alone is not permission to fill. The shared desk shows WAIT when the current Chair/team, economics, feeds, quote or daily risk blocks entry. A read and a booked position remain separate records, and an existing position stays locked until settlement. The 70¢ shadow comparison is research and never authorizes a fill.",
   },
   {
     q: "What does paper mean?",
@@ -45,7 +45,7 @@ const QA: { q: string; a: string }[] = [
   },
   {
     q: "What do the seat and skill status labels mean?",
-    a: "There are two layers. A seat status says how the chair hears a specialist: LIVE votes normally; UNCALIBRATED is still earning history; MUTED is owner-silenced; FADED is discounted; FOLDED or DOWN does not vote; VETO is a hard block; INVERT is retired and never flips a side. A skill status says where one rule sits: CANDIDATE is proposed, SHADOW is being evaluated, LIVE is eligible to speak, and BENCH is parked. WAIT and SIT are current-window reads, not status levels.",
+    a: "There are two layers. A seat status says how the chair hears a specialist: LIVE retains normal seat authority, subject to rule eligibility; UNCALIBRATED is still earning history; MUTED is owner-silenced; FADED is discounted; FOLDED combines correlated evidence or removes a standalone context read; it is not separate entry support. DOWN does not vote; VETO is a hard block; INVERT is retired and never flips a side. A skill status says where one rule sits: CANDIDATE is proposed, SHADOW is being evaluated, LIVE is eligible to speak once its guards pass, and BENCH is parked. WAIT and SIT are current-window reads, not status levels.",
   },
   {
     q: "Where do the prices come from?",

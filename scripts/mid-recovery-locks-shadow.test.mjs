@@ -152,8 +152,8 @@ test("wiring and isolation: healthz kicks it fire-and-forget; no production modu
   // The V1 kick is still there, unchanged.
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/shadow-lab-mid-recovery\.server"\)\s*\.then\(\(m\) => m\.ensureMidRecoveryObserver\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   for (const f of walk("src/").concat(walk("server/"))) {
-    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery-locks")) continue;
-    assert.ok(!read(f).includes("mid-recovery-locks"), `${f} imports the LOCKS experiment`);
+    if (f === "server/routes/healthz.get.ts" || f === "server/routes/research/mid-recovery-locks.get.ts" || f === "server/routes/research/mid-recovery-locks-v2.get.ts" || f.startsWith("src/lib/desk/shadow-lab-mid-recovery-locks")) continue;
+    assert.ok(!read(f).replaceAll("mid-recovery-locks-v2-cohort", "provenance-leaf").includes("mid-recovery-locks"), `${f} imports the LOCKS experiment`);
   }
   for (const prod of ["chair.ts", "bots.ts", "server-engine.ts", "selective-entry.ts", "book-floor.ts", "gate-vector.ts", "support-eligibility.ts", "floor-policy.ts", "fee-engine.ts", "call-recovery-candidate.ts", "persist.ts"]) {
     assert.doesNotMatch(read(`src/lib/desk/${prod}`), /MID_RECOVERY_LOCKS|mid-recovery-locks|shadow-lab-mid-recovery/, `${prod} knows nothing of the experiment`);

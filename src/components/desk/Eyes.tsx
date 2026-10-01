@@ -663,7 +663,7 @@ function drawDrift(ctx: CanvasRenderingContext2D, w: number, h: number, snap: Sn
   ctx.textBaseline = "bottom";
   ctx.fillStyle = WAIT;
   const tag = d.aligned ? "ALIGNED" : d.pullback ? "PULLBACK" : d.accel ? "ACCEL" : d.decay ? "DECAY" : "CHOP";
-  ctx.fillText(`${tag} · ${d.trend} · RSI ${Math.round(d.rsi)}`, 8, h - 3);
+  ctx.fillText(`${tag} returns ${d.lean} · 1m structure ${d.trend} · RSI ${Math.round(d.rsi)}`, 8, h - 3);
 }
 
 function drawExhaust(ctx: CanvasRenderingContext2D, w: number, h: number, snap: Snapshot) {
@@ -904,7 +904,7 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
     const d = readDrift(snap);
     const chips: [string, boolean, "up" | "down" | "wait"][] = [
       ["ALIGNED", d.aligned, d.lean === "DOWN" ? "down" : "up"],
-      ["ACCEL", d.accel, "up"],
+      ["ACCEL", d.accel, d.sign15 === "DOWN" ? "down" : "up"],
       ["DECAY", d.decay, "wait"],
       ["PULLBACK", d.pullback, d.sign15 === "DOWN" ? "down" : "up"],
       ["STACK", d.stack, d.ema1mBull ? "up" : "down"],
@@ -933,7 +933,7 @@ export function Eyes({ seat, snap, vote }: { seat: SeatId; snap: Snapshot; vote:
             ) : null,
           )}
           <span className="ml-auto font-mono text-micro text-muted">
-            {d.trend} · RSI {Math.round(d.rsi)} · 1m {d.ema1mBull ? "EMA↑" : "EMA↓"} · 5m{" "}
+            returns {d.lean} · 1m structure {d.trend} · RSI {Math.round(d.rsi)} · 1m {d.ema1mBull ? "EMA↑" : "EMA↓"} · 5m{" "}
             {d.ema5mBull ? "EMA↑" : "EMA↓"}
           </span>
         </div>

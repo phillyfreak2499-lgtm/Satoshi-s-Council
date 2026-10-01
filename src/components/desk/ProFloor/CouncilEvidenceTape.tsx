@@ -160,7 +160,7 @@ export function CouncilEvidenceTape({ facts, onJump, window }: { facts: ProFloor
         })}
       </ul>
 
-      <p className="mt-2 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-2 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">
         A RAW read that never became a FINAL voice did not reach the Chair and is not part of the house conclusion. Where
         the frame cannot prove why a read was held back, the status reads simply &ldquo;suppressed&rdquo;.
       </p>

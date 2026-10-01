@@ -64,9 +64,10 @@ test("audit retains simultaneous blockers and agrees with authoritative entry pe
   const s = snap({ quote_age_s: 999, edge_up: -1, lab_age_s: 20, no_bid_size: 0, spot_age_s: 999 });
   const c = chair({ quorum: { up: 1, down: 2 }, rows: [] });
   const a = audit.auditAdmission(s, c, context());
-  for (const id of ["team", "supporters", "families", "opposition", "feeds", "quote", "model_edge", "index_fresh"]) {
+  for (const id of ["team", "supporters", "families", "feeds", "quote", "model_edge"]) {
     assert.equal(a.checks.find(g => g.id === id).pass, false, id);
   }
+  assert.equal(a.checks.find(g => g.id === "index_fresh").pass, true, "normal rollback records the waived index veto");
   assert.equal(a.eligible, false);
   assert.equal(audit.auditAdmission(snap(), chair(), context()).eligible, entry.selectiveBookOk(snap(), chair(), context()));
   const wait = audit.auditAdmission(snap(), chair({ lean: "WAIT" }), context());

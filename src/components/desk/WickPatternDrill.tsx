@@ -161,16 +161,16 @@ export function WickPatternDrill() {
 
   return (
     <section aria-labelledby="pattern-drill" className="mt-8 rounded-md border border-wait/30 bg-surface p-5 sm:p-6">
-      <p className="font-mono text-micro uppercase tracking-widest text-wait">Lesson 02 · drill</p>
+      <p className="font-sans text-micro uppercase tracking-widest text-wait">Lesson 02 · drill</p>
       <h2 id="pattern-drill" className="mt-2 font-sans text-title font-medium">Name the shape</h2>
       <p className="mt-2 max-w-2xl font-sans text-body leading-relaxed text-muted">
         Eight frozen closed candles. Name what WICK would print. Do not lean UP or DOWN yet. Location is the next lesson.
       </p>
-      <p className="mt-2 font-mono text-micro text-subtle">Card {card.id} of {CARDS.length} · {scoreLine} · paper only</p>
+      <p className="mt-2 font-sans text-micro text-subtle">Card {card.id} of {CARDS.length} · {scoreLine} · paper only</p>
       <div className="mt-4 overflow-hidden rounded border border-border bg-bg">
         <CandleTape bars={card.bars} />
       </div>
-      <p className="mt-3 font-mono text-micro text-wait">{card.hint}</p>
+      <p className="mt-3 font-sans text-micro text-wait">{card.hint}</p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {card.choices.map((choice) => {
           const selected = pick === choice;

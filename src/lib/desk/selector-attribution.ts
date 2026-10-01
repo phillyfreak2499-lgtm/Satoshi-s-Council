@@ -28,17 +28,34 @@
  */
 import { GATE_VARIANTS } from "./counterfactuals.ts";
 import { DEFAULT_FEE_ENGINE, feeCents, realAskCents, type FeeEngineId } from "./fee-engine.ts";
-import { DEPLOYED_POLICY, gateVector, reachableQuorum, supporterRows, type GateVector, type ReachableQuorum } from "./gate-vector.ts";
+import { gateVector, reachableQuorum, supporterRows, type AdmissionPolicy, type GateVector, type ReachableQuorum } from "./gate-vector.ts";
+import { ENTRY_SELECTIVE_V3, SELECTIVE_V3_PARAMS } from "./floor-policy.ts";
 import { EVIDENCE_OF } from "./seats.ts";
 import type { SelectiveContext } from "./selective-entry.ts";
 import { nullFavIntention, scheduledCheckpoint } from "./shadow-arms.ts";
 import type { CallLogRow, ChairResult, SeatId, Snapshot } from "./types";
 
 export const SELECTOR_ATTRIBUTION_VERSION = "SELECTOR_ATTRIBUTION_V1";
+/** This V1 study remains a V3 re-evaluation even when the production Champion changes. */
+export const SELECTOR_ATTRIBUTION_POLICY: AdmissionPolicy = Object.freeze({
+  id: ENTRY_SELECTIVE_V3.id,
+  label: "frozen V3 selector attribution",
+  kind: "owner_reference",
+  params: Object.freeze({
+    ...SELECTIVE_V3_PARAMS,
+    edge_must_exceed_min: false,
+    require_index_edge: true,
+    tight_max_opposing: SELECTIVE_V3_PARAMS.max_opposing,
+    tight_min_seconds_left: SELECTIVE_V3_PARAMS.min_seconds_left,
+    tight_max_seconds_left: SELECTIVE_V3_PARAMS.max_seconds_left,
+    tight_edge_must_exceed_min: false,
+    tight_require_index_edge: true,
+  }),
+});
 /** The research band: the same 3–10 minutes the selective policy and the E1 package decide in. */
 export const ATTRIBUTION_BAND_SECS = Object.freeze({ min: 180, max: 600 });
-/** The blind opportunity's floor is the deployed policy's own floor (80¢), never a tuned number. */
-export const ATTRIBUTION_FLOOR_CENTS: number = DEPLOYED_POLICY.params.floor_cents;
+/** The blind opportunity's floor remains the study's frozen V3 floor (80¢). */
+export const ATTRIBUTION_FLOOR_CENTS: number = SELECTOR_ATTRIBUTION_POLICY.params.floor_cents;
 /** The external auditor's proposed hard block, recorded as a counterfactual only. */
 export const CAP_COUNTERFACTUAL_CENTS = 92;
 /** A side already at 99¢ is chalk: the WAIT rate is reported with and without it. */
@@ -203,10 +220,10 @@ export function chairState(snap: Snapshot, chair: ChairResult, ctx: SelectiveCon
   const seats: SeatFact[] = rows.map((r) => ({ seat: r.seat, lean: r.lean, status: r.status, health: r.health, conf: r.conf, weight: r.weight, skill_used: r.skill_used, folded: !!r.folded, forced_sit: !!r.forced_sit, family: EVIDENCE_OF[r.seat] ?? "?" }));
   const up = supporterRows(chair, "UP").map((r) => r.seat), down = supporterRows(chair, "DOWN").map((r) => r.seat);
   let gate: GateVector | null = null;
-  if (ctx) { try { gate = gateVector(snap, chair, ctx, DEPLOYED_POLICY); } catch { gate = null; } }
+  if (ctx) { try { gate = gateVector(snap, chair, ctx, SELECTOR_ATTRIBUTION_POLICY); } catch { gate = null; } }
   const mode: "normal" | "tight" = gate?.mode ?? "normal";
   let quorumState: ChairState["quorum_state"] = null;
-  try { quorumState = { up: reachableQuorum(chair, "UP", DEPLOYED_POLICY, mode), down: reachableQuorum(chair, "DOWN", DEPLOYED_POLICY, mode) }; } catch { quorumState = null; }
+  try { quorumState = { up: reachableQuorum(chair, "UP", SELECTOR_ATTRIBUTION_POLICY, mode), down: reachableQuorum(chair, "DOWN", SELECTOR_ATTRIBUTION_POLICY, mode) }; } catch { quorumState = null; }
   const receiptAge = snap.obs && Number.isFinite(snap.obs.receipt_ts) ? (snap.as_of - snap.obs.receipt_ts) / 1000 : null;
   return {
     lean: chair.lean, confidence: chair.confidence, score: chair.score, bar: chair.bar,

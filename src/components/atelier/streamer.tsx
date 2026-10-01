@@ -5,6 +5,7 @@ import { pulseSkewMs } from "@/lib/desk/pulse";
 import { streamMillis, streamPoints } from "@/lib/atelier/streamer";
 import type { SatoshiPaint } from "./gallery";
 import { CouncilVoiceButton } from "@/components/desk/CouncilVoiceButton";
+import { DecisionLayerMark } from "@/components/desk/DecisionLayerMark";
 import "./streamer.css";
 
 const CONCEPT = "/atelier/streamer-concept.png";
@@ -34,7 +35,8 @@ function Spotlight({
       </div>
       <div className="streamer-seat-copy">
         <span className="streamer-eyebrow">
-          {fresh ? "Specialist spotlight" : "Last known read"}
+          <DecisionLayerMark layer="research" />
+          {fresh ? " Specialist spotlight" : " Last known read"}
         </span>
         <h3>{seat}</h3>
         <strong className="streamer-lean">{vote?.lean ?? "—"}</strong>
@@ -277,7 +279,8 @@ export function Streamer({ satoshi, concept }: { satoshi: SatoshiPaint; concept:
               <img src="/seal-figure.png" alt="" width="48" height="48" />
               <div>
                 <span className="streamer-eyebrow">
-                  {fresh ? "Chair’s published call" : "Chair · last known call"}
+                  <DecisionLayerMark layer="decision" />
+                  {fresh ? " SATOSHI’s published decision" : " SATOSHI · last known decision"}
                 </span>
                 <strong>{satoshi.asOf > 0 ? satoshi.lean : "—"}</strong>
                 <small>

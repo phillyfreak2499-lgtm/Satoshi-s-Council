@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { feeCents } from "./fee-engine.ts";
-import { SELECTIVE_PARAMS } from "./floor-policy.ts";
-import { DEPLOYED_POLICY } from "./gate-vector.ts";
+import { SELECTIVE_V3_PARAMS } from "./floor-policy.ts";
 import { E1_FAMILY_OVERRIDE, E1_ROSTER_CARDS, nullFavIntention } from "./shadow-arms.ts";
 import {
-  MID_RECOVERY_ENV_FLAG, MID_RECOVERY_EXPERIMENT, MID_RECOVERY_STAGES, armQuality, evaluateMidRecovery, evaluationFields, summarizeMidRecovery,
+  MID_RECOVERY_ENV_FLAG, MID_RECOVERY_EXPERIMENT, MID_RECOVERY_POLICY, MID_RECOVERY_STAGES, armQuality, evaluateMidRecovery, evaluationFields, summarizeMidRecovery,
   type MidRecoveryDeps, type MidRecoveryEvaluation, type MidRecoveryInput, type MidRecoveryRow,
 } from "./shadow-lab-mid-recovery.ts";
 import type { ChairResult, Learner, SeatId, SeatRow, Snapshot, Vote } from "./types";
@@ -93,8 +92,8 @@ test("the experiment is frozen, inactive by default, and uses exactly the frozen
   assert.deepEqual({ ...MID_RECOVERY_EXPERIMENT.family_override }, { STREAK: "book" });
   assert.deepEqual({ ...MID_RECOVERY_EXPERIMENT.band_secs }, { min: 180, max: 600 });
   assert.equal(MID_RECOVERY_EXPERIMENT.floor_cents, 80);
-  assert.equal(MID_RECOVERY_EXPERIMENT.floor_cents, SELECTIVE_PARAMS.floor_cents, "the floor is the deployed floor, never lower");
-  assert.equal(MID_RECOVERY_EXPERIMENT.policy_id, DEPLOYED_POLICY.id);
+  assert.equal(MID_RECOVERY_EXPERIMENT.floor_cents, SELECTIVE_V3_PARAMS.floor_cents, "the frozen floor is never lower");
+  assert.equal(MID_RECOVERY_EXPERIMENT.policy_id, MID_RECOVERY_POLICY.id);
   assert.equal(MID_RECOVERY_EXPERIMENT.recovery_version, "E1_RECOVERY_V1_INACTIVE");
   assert.deepEqual({ ...MID_RECOVERY_EXPERIMENT.arms }, { baseline: "BASELINE", recovered: "RECOVERED_MID", null_fav: "NULL_FAV_80" });
   assert.equal(MID_RECOVERY_ENV_FLAG, "MID_RECOVERY_SHADOW_ENABLED");
@@ -208,10 +207,10 @@ test("fees and the settlement index gate the recovered side: the margin is fair 
   assert.equal(check(uncovered, "index_edge"), false);
   assert.equal(uncovered.recovered.eligible, false);
   assert.equal(uncovered.flags.funnel_stage, "quote");
-  const staleIndex = run(snap({ lab_age_s: SELECTIVE_PARAMS.max_index_age_s + 1 }));
+  const staleIndex = run(snap({ lab_age_s: SELECTIVE_V3_PARAMS.max_index_age_s + 1 }));
   assert.equal(check(staleIndex, "index_fresh"), false);
   assert.equal(staleIndex.recovered.eligible, false);
-  const thinEdge = run(snap({ edge_up: SELECTIVE_PARAMS.min_edge_cents - 1 }));
+  const thinEdge = run(snap({ edge_up: SELECTIVE_V3_PARAMS.min_edge_cents - 1 }));
   assert.equal(check(thinEdge, "model_edge"), false);
   assert.equal(thinEdge.recovered.eligible, false);
 });
@@ -221,7 +220,7 @@ test("stale or inconsistent feeds block the recovered read", () => {
   assert.equal(stale.economics.feeds_ok, false, "a STALE source blocks even when its age is inside the limit");
   assert.equal(stale.recovered.eligible, false);
   assert.equal(stale.flags.funnel_stage, "quote");
-  const old = run(snap({ spot_age_s: SELECTIVE_PARAMS.max_spot_age_s + 1 }));
+  const old = run(snap({ spot_age_s: SELECTIVE_V3_PARAMS.max_spot_age_s + 1 }));
   assert.equal(old.economics.feeds_ok, false);
   const kalshiStale = run(snap({ health: { ...snap().health, kalshi: "STALE" } }));
   assert.equal(kalshiStale.economics.feeds_ok, false);
@@ -300,8 +299,8 @@ test("confirmation needs three genuine frames over at least eight seconds; only 
   assert.equal(ev.simulated.booked, true);
   assert.deepEqual(ev.simulated, { qualified: true, booked: true, side: "UP", price_cents: 85, fee_cents: feeCents(85), settlement: null, win: null, net_cents: null, authority: "research-only-simulated" });
   assert.equal(ev.flags.funnel_stage, "simulated_booked");
-  assert.equal(ev.confirmation.need_frames, SELECTIVE_PARAMS.confirmation_frames);
-  assert.equal(ev.confirmation.need_seconds, SELECTIVE_PARAMS.confirmation_seconds);
+  assert.equal(ev.confirmation.need_frames, SELECTIVE_V3_PARAMS.confirmation_frames);
+  assert.equal(ev.confirmation.need_seconds, SELECTIVE_V3_PARAMS.confirmation_seconds);
 });
 
 test("the latch never leaks across windows or sides, and a repeated timestamp is not a new frame", () => {

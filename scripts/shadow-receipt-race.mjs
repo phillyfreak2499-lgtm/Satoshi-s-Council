@@ -20,6 +20,7 @@ assert.match(schema, /^shadow_receipt_test_[a-f0-9]{16}$/);
 const root = new URL("../", import.meta.url);
 const baseline = readFileSync(new URL("migrations/0057_desk_shadow_lab.sql", root), "utf8");
 const migration = readFileSync(new URL("migrations/0060_desk_shadow_receipt_decisions.sql", root), "utf8");
+const v2Lifecycle = readFileSync(new URL("migrations/0065_v2_terminal_receipt_lifecycle.sql", root), "utf8");
 const admin = new pg.Client(config), a = new pg.Client(config), b = new pg.Client(config);
 const clients = [admin, a, b];
 let created = false, passes = 0;
@@ -116,6 +117,8 @@ try {
   const history = await snapshot();
   await admin.query(migration);
   await admin.query(migration);
+  await admin.query(v2Lifecycle);
+  await admin.query(v2Lifecycle);
   assert.equal(await snapshot(), history, "migration and reapply never change a historical receipt");
   assert.equal((await admin.query("select count(*)::int as n from desk_shadow_receipt_decisions where decision_class='conflicted'")).rows[0].n, 2);
   await assert.rejects(write(admin, "before-fill-no_fill", "veto", false), (e) => e.code === "23514");
@@ -141,6 +144,16 @@ try {
   // mutually exclusive. A same-kind PK conflict must not disguise a class clash.
   await overlap("no_fill", "no_fill", { firstPayload: temporary });
   await overlap("no_fill", "no_fill", { secondPayload: temporary, legacy: true });
+
+  const v2 = { evaluator_revision: "V2_CANDIDATE_PROVENANCE_V1" };
+  const v2Sit = { ...v2, checkpoint: 180 };
+  await overlap("intention", "fill", { compatible: true, firstPayload: v2, secondPayload: v2 });
+  await overlap("intention", "no_fill", { compatible: true, firstPayload: v2, secondPayload: v2Sit });
+  await overlap("intention", "veto", { compatible: true, firstPayload: v2, secondPayload: v2 });
+  await overlap("no_fill", "fill", { firstPayload: v2Sit, secondPayload: v2 });
+  await overlap("fill", "no_fill", { firstPayload: v2, secondPayload: v2Sit });
+  await overlap("fill", "veto", { firstPayload: v2, secondPayload: v2 });
+  ok("corrected V2 advances intention to one terminal receipt and serializes competing terminals");
 
   const failed = "failed-after-claim";
   await assert.rejects(write(admin, failed, "fill", false, 120), (e) => e.code === "23514");

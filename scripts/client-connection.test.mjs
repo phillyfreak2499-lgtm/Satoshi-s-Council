@@ -225,3 +225,26 @@ test("the notice renders accessible recovery text only when needed", () => {
   assert.match(html, /role="status"/); assert.match(html, /aria-live="polite"/);
   assert.match(html, /last received desk snapshot/); assert.match(html, /Retry now/);
 });
+
+test("the desk visibly distinguishes ordinary QUIET from a DEAD producer path", () => {
+  const { LiveConnectionNotice } = load("src/components/desk/LiveConnectionNotice.tsx", {
+    react: React, "react/jsx-runtime": jsx,
+    "@/lib/desk/connection-state": connection,
+    "@/lib/desk/engine": { retryLiveConnection: () => {} },
+  });
+  const producer = { ok: true, reasons: [], cards: [] };
+  const quiet = renderToString(React.createElement(LiveConnectionNotice, { frame: view({
+    operational: { ok: true, state: "QUIET", summary: "WAIT is a real decision, not an outage.", reasons: [], producer },
+  }) }));
+  assert.match(quiet, /data-operational-state="QUIET"/);
+  assert.match(quiet, /role="status"/);
+  assert.match(quiet, /real decision, not an outage/);
+
+  const dead = renderToString(React.createElement(LiveConnectionNotice, { frame: view({
+    operational: { ok: false, state: "DEAD", summary: "outage", reasons: ["STRIKE.itm_time is SHADOW, not LIVE"], producer },
+  }) }));
+  assert.match(dead, /data-operational-state="DEAD"/);
+  assert.match(dead, /role="alert"/);
+  assert.match(dead, /aria-live="assertive"/);
+  assert.match(dead, /STRIKE\.itm_time is SHADOW, not LIVE/);
+});

@@ -24,12 +24,15 @@ type StatRow = {
 
 export type PublicLabRegistryRow = LabStudySpec & {
   sample_n: number;
+  sample_approximate: boolean;
   last_evidence_at: string | null;
   health: LabStudyHealth;
 };
 
 export type PublicLabRegistrySnapshot = {
   at: string;
+  /** Last successful whole-Lab scan; recovery rows can be refreshed independently. */
+  base_scan_at?: string;
   rows: PublicLabRegistryRow[];
   tally: Record<LabStudyHealth, number>;
   authority: { changes_nothing: true };
@@ -95,6 +98,11 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
       max(extract(epoch from recorded_at) * 1000)::bigint as last_ms
       from desk_shadow_receipts
       where experiment = 'MID_RECOVERY_LOCKS_V1_INACTIVE'
+    union all
+    select 'mid-recovery-v1' as id, count(distinct (ticker, close_time))::int as n,
+      max(extract(epoch from recorded_at) * 1000)::bigint as last_ms
+      from desk_shadow_receipts
+      where experiment = 'MID_RECOVERY_V1_INACTIVE'
     union all
     select 'chair-v2' as id, count(*)::int as n,
       max(extract(epoch from taken_at) * 1000)::bigint as last_ms
@@ -168,13 +176,15 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
   `;
 
   // Keep the largest ledgers in separate statements. Production enforces a
-  // 15-second statement timeout; each query below is comfortably below it,
-  // while one giant UNION of every exact count can cross the limit.
+  // 15-second statement timeout. The absorption ledger exceeds that budget
+  // for an exact count, so its inventory uses Postgres' row estimate; the
+  // latest evidence timestamp remains exact through the close_time index.
   const absorption = await db<StatRow>`
     with a as (
-      select count(*)::int as n,
-             max(extract(epoch from close_time) * 1000)::bigint as last_ms
-        from desk_absorption
+      select greatest(c.reltuples, 0)::bigint as n,
+             (select (extract(epoch from max(close_time)) * 1000)::bigint from desk_absorption) as last_ms
+        from pg_class c
+       where c.oid = 'desk_absorption'::regclass
     )
     select 'whale2' as id, n, last_ms from a
     union all
@@ -206,6 +216,7 @@ async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
     return {
       ...spec,
       sample_n: sampleN,
+      sample_approximate: spec.id === "whale2" || spec.id === "absorption",
       last_evidence_at: lastEvidenceAt,
       health: labStudyHealth(spec, sampleN, lastEvidenceAt, now),
     };
@@ -264,4 +275,49 @@ export async function labRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> 
   if (cache) return cache.value;
   void refreshLabRegistrySnapshot();
   throw new Error("Lab registry snapshot is warming");
+}
+
+export type RecoveryCounts = {
+  at: string;
+  locks: { windows: number; last_at: string | null };
+  original: { windows: number; last_at: string | null };
+};
+
+/** Small independent read: it succeeds even while the whole-Lab cache warms. */
+export async function recoveryRegistryCounts(): Promise<RecoveryCounts> {
+  const db = await getSql();
+  const stats = await db<StatRow>`
+    select case experiment
+      when 'MID_RECOVERY_LOCKS_V1_INACTIVE' then 'recovery-locks'
+      else 'mid-recovery-v1' end as id,
+      count(distinct (ticker, close_time))::int as n,
+      max(extract(epoch from recorded_at) * 1000)::bigint as last_ms
+    from desk_shadow_receipts
+    where experiment in ('MID_RECOVERY_LOCKS_V1_INACTIVE', 'MID_RECOVERY_V1_INACTIVE')
+    group by experiment`;
+  const byId = new Map(stats.map((row) => [row.id, row]));
+  const value = (id: string) => ({ windows: Math.max(0, Number(byId.get(id)?.n ?? 0) || 0), last_at: msExpr(byId.get(id)?.last_ms) });
+  return { at: new Date().toISOString(), locks: value("recovery-locks"), original: value("mid-recovery-v1") };
+}
+
+/** Overlay the independent recovery receipts when the broad cache is ready. */
+export function recoveryRegistrySnapshot(snapshot: PublicLabRegistrySnapshot, counts: RecoveryCounts): PublicLabRegistrySnapshot {
+  const byId = new Map([
+    ["recovery-locks", counts.locks], ["mid-recovery-v1", counts.original],
+  ]);
+  const now = Date.now();
+  const rows = snapshot.rows.map((row) => {
+    if (row.id !== "recovery-locks" && row.id !== "mid-recovery-v1") return row;
+    const stat = byId.get(row.id);
+    const sampleN = stat?.windows ?? 0;
+    const lastEvidenceAt = stat?.last_at ?? null;
+    return { ...row, sample_n: sampleN, last_evidence_at: lastEvidenceAt, health: labStudyHealth(row, sampleN, lastEvidenceAt, now) };
+  });
+  const tally = { ...snapshot.tally };
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i] === snapshot.rows[i]) continue;
+    tally[snapshot.rows[i]!.health] -= 1;
+    tally[rows[i]!.health] += 1;
+  }
+  return { ...snapshot, at: new Date(now).toISOString(), base_scan_at: snapshot.at, rows, tally };
 }

@@ -15,9 +15,11 @@ import {
   ENTRY_SELECTIVE_V1,
   ENTRY_SELECTIVE_V2,
   ENTRY_SELECTIVE_V3,
+  ENTRY_OWNER_ROLLBACK_V1,
   FLOOR_SELECTIVE_V1,
   FLOOR_SELECTIVE_V2,
   FLOOR_SELECTIVE_V3,
+  FLOOR_OWNER_ROLLBACK_V1,
   FLOOR_V1,
   RISK_NONE_V1,
   SAFE_FALLBACK_POLICY,
@@ -45,6 +47,7 @@ test("FREEZE: every component's parameters are exactly as defined", () => {
     ENTRY_SELECTIVE_V1: "ENTRY_SELECTIVE_V1|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_calls_per_day=3,max_index_age_s=5,max_losses_per_day=1,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=3,timezone=America/Chicago",
     ENTRY_SELECTIVE_V2: "ENTRY_SELECTIVE_V2|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=3,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
     ENTRY_SELECTIVE_V3: "ENTRY_SELECTIVE_V3|entry|confirmation_frames=3,confirmation_seconds=8,floor_cents=80,max_index_age_s=5,max_opposing=0,max_receipt_age_s=10,max_seconds_left=600,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=3,min_families=2,min_index_edge_cents=0,min_seconds_left=180,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_speaking=4,tighten_at_net_cents=-100,timezone=America/Chicago",
+    ENTRY_OWNER_ROLLBACK_V1: "ENTRY_OWNER_ROLLBACK_V1|entry|confirmation_frames=1,confirmation_seconds=0,edge_must_exceed_min=true,floor_cents=80,max_index_age_s=5,max_opposing=17,max_receipt_age_s=10,max_seconds_left=720,max_spot_age_s=15,max_spread_cents=2,min_edge_cents=0,min_families=1,min_index_edge_cents=0,min_seconds_left=1,min_speaking=2,protect_after_net_cents=100,protect_after_wins=5,require_index_edge=false,tight_confirmation_frames=5,tight_confirmation_seconds=20,tight_edge_must_exceed_min=false,tight_max_opposing=0,tight_max_seconds_left=600,tight_min_edge_cents=5,tight_min_families=3,tight_min_index_edge_cents=2,tight_min_seconds_left=180,tight_min_speaking=4,tight_require_index_edge=true,tighten_at_net_cents=-100,timezone=America/Chicago",
     HOLD_V1: "HOLD_V1|exit|",
     PROVE120_V1: "PROVE120_V1|exit|horizon_s=120,target_cents=10",
     PROVE180_V1: "PROVE180_V1|exit|horizon_s=180,target_cents=10",
@@ -98,12 +101,25 @@ test("the named entry policy agrees with the live floor constant", () => {
   assert.equal(Number(ENTRY_80_V1.params.floor_cents), FLOOR_LIVE_CENTS);
 });
 
-test("the safe fallback keeps the owner's stricter admission; the original policy remains distinct", () => {
-  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_SELECTIVE_V3.policy_id);
+test("the safe fallback names the prospective owner rollback; frozen predecessors remain distinct", () => {
+  assert.equal(SAFE_FALLBACK_POLICY, FLOOR_OWNER_ROLLBACK_V1.policy_id);
+  assert.equal(FLOOR_OWNER_ROLLBACK_V1.entry_policy, ENTRY_OWNER_ROLLBACK_V1.id);
   assert.equal(FLOOR_SELECTIVE_V3.entry_policy, ENTRY_SELECTIVE_V3.id);
   assert.equal(FLOOR_SELECTIVE_V2.entry_policy, ENTRY_SELECTIVE_V2.id);
   assert.equal(FLOOR_SELECTIVE_V1.entry_policy, ENTRY_SELECTIVE_V1.id);
   assert.equal(FLOOR_V1.entry_policy, ENTRY_80_V1.id);
+});
+
+test("owner rollback removes only normal-mode post-loss narrowing", () => {
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.floor_cents), 80);
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.min_speaking), 2);
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.min_families), 1);
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.min_edge_cents), 0);
+  assert.equal(ENTRY_OWNER_ROLLBACK_V1.params.edge_must_exceed_min, true);
+  assert.equal(ENTRY_OWNER_ROLLBACK_V1.params.require_index_edge, false);
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.confirmation_frames), 1);
+  assert.equal(Number(ENTRY_OWNER_ROLLBACK_V1.params.tight_min_speaking), 4);
+  assert.equal(ENTRY_OWNER_ROLLBACK_V1.params.tight_require_index_edge, true);
 });
 
 test("V3 restores normal two-family admission without loosening defensive mode", () => {

@@ -39,7 +39,7 @@ const vote = (seat) => ({
   invalidate_if: "", health: "LIVE", feed_age_s: 1, eyes: "", phase: "MID",
 });
 
-test("real Chair family fold confirms once and persists one paper position", async (t) => {
+test("real Chair family fold books the first revalidated rollback frame and persists one paper position", async (t) => {
   const { createServer } = await import("vite");
   const vite = await createServer({ envDir: false, server: { middlewareMode: true }, appType: "custom" });
   t.after(() => vite.close());
@@ -76,7 +76,7 @@ test("real Chair family fold confirms once and persists one paper position", asy
     assert.equal(family.filter((row) => row.folded).length, 1);
     const chair = __entryIntegration.applyEntryMode(e, snap, rawChair);
     await __entryIntegration.noteCall(e, snap, chair, votes);
-    assert.equal(e.riskCalls.length, elapsed < 8_000 ? 0 : 1, "booking waits for three frames over eight seconds");
+    assert.equal(e.riskCalls.length, 1, "owner rollback books once on the first fully revalidated frame");
   }
 
   const confirmedSnap = snapshot(now + 8_000);
@@ -87,6 +87,12 @@ test("real Chair family fold confirms once and persists one paper position", asy
   assert.equal(rows.length, 1);
   assert.equal(rows[0].state.risk_calls.length, 1, "normal persistence stores exactly one paper position");
   assert.equal(rows[0].state.risk_calls[0].ticker, confirmedSnap.ticker);
+  const paid = rows[0].state.entry_state[`${confirmedSnap.ticker}:${confirmedSnap.close_time}`];
+  assert.equal(paid.entry_policy, "ENTRY_OWNER_ROLLBACK_V1", "actual payment captures its policy before settlement");
+  assert.equal(paid.floor_policy, "FLOOR_OWNER_ROLLBACK_V1");
+  assert.equal(paid.prospective_start, e.selectiveStart);
+  assert.equal(paid.entry_roster.book.entry_policy, paid.entry_policy, "durable roster carries the same paid identity");
+  assert.equal(paid.entry_roster.book.prospective_start, e.selectiveStart);
 });
 
 test("integration refuses DATABASE_URL before Vite or SQL startup", () => {

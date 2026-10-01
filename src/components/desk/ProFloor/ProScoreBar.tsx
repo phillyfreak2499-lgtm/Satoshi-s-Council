@@ -85,7 +85,7 @@ export function ProScoreBar({ facts }: { facts: ProFloorFacts }) {
                 : "The specialists do not currently agree hard enough for the weighted evidence to reach its bar. Closing that gap is necessary, not sufficient: the gates below still apply."}
           </p>
 
-          <p className="mt-2 font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-2 font-sans text-micro leading-relaxed text-subtle">
             {s.gate_value ? `Chair gate: ${s.gate_value}. ` : ""}
             Raw score {fmtScore(s.score)} × aggressiveness {s.aggressiveness == null ? "—" : s.aggressiveness.toFixed(2)}.
             This is a decision standard, not a chance of winning.

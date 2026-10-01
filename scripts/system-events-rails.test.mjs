@@ -203,7 +203,7 @@ test("server-engine may observe but cannot import recordSystemEvent", () => {
   assert.ok(iGuard >= 0 && iReturn > iGuard, "identity reject+return present");
   assert.ok(iObs > iReturn, "observer is after tickerAgrees false return");
   assert.ok(iRecord > iObs, "decision snapshot persistence still follows observer");
-  assert.match(nds, /void observeChairWaitMilestone\(snap, chair, e\.callLog\)\.catch\(/);
+  assert.match(nds, /void observeChairWaitMilestone\(snap, chair, chairOnlyCalls\(e\.callLog\)\)\.catch\(/);
   assert.doesNotMatch(nds, /await observeChairWaitMilestone/);
 });
 

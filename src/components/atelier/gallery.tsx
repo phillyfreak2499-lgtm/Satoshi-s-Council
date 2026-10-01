@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Maximize2, Minimize2, RefreshCw, Settings, X } from "lucide-react";
 import { Streamer } from "./streamer";
+import { DecisionLayerMark } from "@/components/desk/DecisionLayerMark";
 import {
   formatRemain,
   leanToStance,
@@ -417,6 +418,7 @@ export function Gallery({ satoshi }: { satoshi: SatoshiPaint }) {
         className="atelier-signal"
         aria-label={`SATOSHI ${word}, ${formatRemain(remaining)} remaining`}
       >
+        <DecisionLayerMark layer="decision" />
         <div className="atelier-signal-topline">
           <span className="atelier-signal-status">
             <i aria-hidden="true" />

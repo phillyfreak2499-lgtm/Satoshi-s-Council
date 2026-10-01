@@ -114,10 +114,14 @@ test("3. the seat page top area carries a compact lean summary linking to the fu
   assert.ok(summary > 0 && summary < card && card < record, "summary, then the seat card with the full meter, then the record");
   assert.match(page, /meterId=\{`seat-lean-\$\{id\}`\}/);
   assert.match(read("src/components/desk/BotCard.tsx"), /<div id=\{`seat-lean-\$\{seat\}`\} className="border-t border-border px-3 py-2">\s*<SeatLeanMeter key=\{leanKey\(lean\)\}/, "the full meter block keeps its place lower on the card and is the link target");
-  assert.match(page, /SATOSHI heard: <LeanChip lean=\{vote\.lean\} \/>/, "what SATOSHI decided sits beside the research lean, labelled as such");
+  const heard = page.indexOf("SATOSHI heard:");
+  assert.ok(heard > summary && heard < card, "the admitted hearing label stays beside the research summary, before the full seat card");
+  assert.match(page, /lean.isAuthorizedSpeaker \? <>SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/, "only an authorized speaker can be labelled as heard");
+  assert.match(page, /Authorized WAIT — no directional vote\.|Research only — no vote counted\./, "held and authorized WAIT states are explicit");
+  assert.doesNotMatch(page, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/, "a producer opinion cannot be labelled as a Chair hearing");
   const html = renderToString(React.createElement(SeatLeanSummary, { lean: lean({ raw_lean: "DOWN", raw_conf: 74 }), meterId: "seat-lean-DRIFT" }));
   const t = text(html);
-  assert.match(t, /^Directional Lean: 13 · Bearish Bearish read — not strong enough for SATOSHI to count\. Full meter ↓/);
+  assert.match(t, /^Directional Lean: 13 · Bearish Bearish read — not strong enough for SATOSHI to count\. Authority unverified Full meter ↓/);
   assert.match(html, /href="#seat-lean-DRIFT"/);
   assert.match(html, /data-lean-key="KXBTC15M-26SEP2514-T85000\|1790000000000\|DRIFT"/);
   assert.match(html, /data-direction="BEARISH"/);
@@ -147,7 +151,7 @@ test("5. and 6. the official SATOSHI verdict stays above and separate, and the p
   const html = renderToString(React.createElement(SpecialistLeans, { leans: [lean()], waiting: true }));
   const t = text(html);
   assert.match(t, /^Follow a specialist What each specialist sees SATOSHI is waiting, but individual specialists may still have research leans\./);
-  assert.match(t, /its read is research, not a call, and it is not a paper position\./);
+  assert.match(t, /A seat can lean while the Council waits; neither is a paper position\./);
   assert.match(t, /It is not a probability and not a SATOSHI call\./);
   assert.doesNotMatch(html, /guided-call|aria-live|term\.wait/, "the section carries no verdict heading of its own");
   assert.doesNotMatch(t, /Satoshi · the current read/, "the verdict strip is not repeated here");
@@ -181,11 +185,11 @@ test("7. Guided keeps directional seats visible, the strongest few first, and fo
   for (const seat of ["WICK", "STRIKE", "CARRY", "VEL"]) assert.match(beforeFold, new RegExp(`\\b${seat}\\b`), `${seat} is visible without a tap`);
   for (const seat of ["DRIFT", "CHAIN", "TAPE", "INDEX", "ODDS"]) assert.doesNotMatch(beforeFold, new RegExp(`\\b${seat}\\b`), `${seat} is folded`);
   assert.match(text(afterFold), /2 more directional reads/);
-  assert.match(t, /3 seats are neutral or without a read/);
+  assert.match(t, /3 seats are neutral or without a retained read/);
   assert.equal((html.match(/<details/g) ?? []).length, 2);
   assert.equal((html.match(/data-lean-key="/g) ?? []).length, 9, "every seat still renders its meter, folded or not");
   const none = text(renderToString(React.createElement(SpecialistLeans, { leans: quiet })));
-  assert.match(none, /No specialist has a directional read this frame\. That is a real answer, not a gap\./);
+  assert.match(none, /No bullish or bearish research lean is retained in this snapshot\./);
   assert.doesNotMatch(none, /more directional/);
 });
 
@@ -296,7 +300,7 @@ test("12. Guided ranks every directional read by strength: a weak SPEAKING read 
   for (const seat of ["CARRY", "TAPE", "ODDS", "INDEX"]) assert.doesNotMatch(visible, new RegExp(`\\b${seat}\\b`), `${seat} folded`);
   assert.equal(folds.length, 2, "one fold for the extra directional reads, one for the quiet seats");
   assert.match(text(folds[0]), /2 more directional reads CARRY CRY .* TAPE TPE /, "the extra directional reads, strongest first");
-  assert.match(text(folds[1]), /2 seats are neutral or without a read ODDS ODD .* INDEX IDX /, "neutral before no read");
+  assert.match(text(folds[1]), /2 seats are neutral or without a retained read ODDS ODD .* INDEX IDX /, "neutral before no read");
   // Display order changes nothing about the seats themselves.
   assert.equal(JSON.stringify(leans), before, "sorting mutates no lean");
   assert.deepEqual(sorted.map((l) => [l.seat, l.status, l.isAuthorizedSpeaker, l.score]).sort(), leans.map((l) => [l.seat, l.status, l.isAuthorizedSpeaker, l.score]).sort(), "status, authority and score are untouched");
@@ -312,4 +316,32 @@ test("13. Guided tie ordering is deterministic and mirrored strengths tie", () =
   }
   assert.equal(guidedLeanOrder(tied[0], tied[1]) + guidedLeanOrder(tied[1], tied[0]), 0, "antisymmetric");
   assert.equal(guidedLeanOrder(tied[0], tied[0]), 0);
+});
+
+
+test("Guided and Pro render identical all-role counts including a quarantined DRIFT lean", () => {
+  const facts = Array.from({ length: 21 }, (_, i) => ({
+    seat: `ROLE${i}`, callsign: "", raw_lean: "WAIT", raw_conf: 70,
+    raw_retained: i < 2, final_lean: "WAIT", voice: "waiting", aggregated: i < 15,
+    health: "LIVE", status: "LIVE", why: "", selectable_live_cards: 0,
+    authority_ready_cards: 0, abstention_eligible: false,
+  }));
+  facts[2] = { ...facts[2], seat: "DRIFT", raw_lean: "DOWN", raw_conf: 30,
+    raw_retained: true, voice: "suppressed", suppression: "below-speak-bar" };
+  const leans = lib.seatDirectionalLeans(facts, WINDOW);
+  const expected = "21 research roles: 1 directional lean · 2 neutral · 18 without a retained read. SATOSHI counted 0 directional reads.";
+  const before = JSON.stringify(facts);
+  const guided = text(renderToString(React.createElement(SpecialistLeans, { leans })));
+  const { EvidenceFamilies } = load("src/components/desk/ProFloor/EvidenceFamilies.tsx", {
+    "@/lib/desk/pro-floor": proFloorLabels(),
+  });
+  const pro = text(renderToString(React.createElement(EvidenceFamilies, {
+    facts: { seats: facts, families: [], balance: { speaking: { up: 0, down: 0 }, suppressed: { up: 0, down: 1 }, label: "Evidence", disclaimer: "Research" } }, onJump: () => {},
+  })));
+  assert.ok(guided.includes(expected), guided);
+  assert.ok(pro.includes(expected), pro);
+  assert.match(guided, /Directional Lean 35 of 100, bearish/);
+  assert.doesNotMatch(guided, /No bullish or bearish research lean/);
+  assert.equal(JSON.stringify(facts), before);
+  assert.deepEqual({ ...lib.researchLeanCounts(leans) }, { total: 21, directional: 1, neutral: 2, noRead: 18, counted: 0 });
 });

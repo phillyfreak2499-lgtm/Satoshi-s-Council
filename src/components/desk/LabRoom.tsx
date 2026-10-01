@@ -1,3 +1,4 @@
+import { RegretLedger } from "./RegretLedger";
 import { sampleRate, DISPLAY_SAMPLE_MIN } from "@/lib/desk/display-evidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useState } from "react";
@@ -37,7 +38,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Research index</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The aggregate lifecycle registry is temporarily unavailable. Research collectors continue independently.
         </p>
       </section>
@@ -49,6 +50,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
   const retired = data.rows.filter((row) => row.lifecycle === "retired");
   const visible = tab === "active" ? active : tab === "infrastructure" ? infrastructure : retired;
   const stale = [...active, ...infrastructure].filter((row) => row.health === "stale");
+  const baseScanOld = data.base_scan_at && Date.parse(data.at) - Date.parse(data.base_scan_at) > 10 * 60_000;
 
   const tabButton = (id: "active" | "infrastructure" | "retired", label: string, n: number) => (
     <button
@@ -92,6 +94,11 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
           Needs attention: {stale.map((row) => row.label).join(" · ")}
         </div>
       ) : null}
+      {baseScanOld ? (
+        <p role="status" className="mt-3 font-sans text-micro leading-relaxed text-wait">
+          The full research index last scanned {ageLabel(data.base_scan_at!, data.at)}. Recovery counts are refreshed separately; other study counts may be behind.
+        </p>
+      ) : null}
 
       <div role="tabpanel" className="mt-4 grid gap-2">
         {visible.map((row) => {
@@ -121,7 +128,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
                 </p>
               ) : null}
               <div className="mt-2 font-mono text-micro leading-relaxed text-subtle">
-                n={row.sample_n} · evidence {last} · {row.cadence}
+                n{row.sample_approximate ? "≈" : "="}{row.sample_n} {row.sample_approximate ? "(estimated count) · " : "· "}evidence {last} · {row.cadence}
                 {row.retired_on ? ` · retired ${row.retired_on}` : ""}
               </div>
             </article>
@@ -129,7 +136,7 @@ function ResearchRegistry({ data }: { data: PublicLabSnapshot["registry"] }) {
         })}
       </div>
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Retirement closes a research question; it does not erase its evidence. Raw telemetry may remain available when another active study depends on it.
       </p>
     </section>
@@ -141,7 +148,7 @@ function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Forced direction · V4</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The V4 scorecard is temporarily unavailable. No live decision path depends on it.
         </p>
       </section>
@@ -215,13 +222,13 @@ function ForcedV4Study({ data }: { data: PublicLabSnapshot["forced_v4"] }) {
           Missing checkpoints: <span className="text-muted">{data.coverage.missing}</span>
         </div>
       </div>
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Directional accuracy and Brier use officially graded, research-valid windows. Quoted net is a
         one-contract paper measurement on windows where the chosen side had a valid same-time ask; it never
         determines whether V4 is allowed to call. Authority: none.
       </p>
       {data.health.last_error ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           Observer: {data.health.last_error}
         </p>
       ) : null}
@@ -234,7 +241,7 @@ function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] 
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">OpenAI shadow analyst · V1</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The OpenAI paper-research scorecard is temporarily unavailable. No live decision path depends on it.
         </p>
       </section>
@@ -317,16 +324,16 @@ function OpenAIShadowStudy({ data }: { data: PublicLabSnapshot["openai_shadow"] 
         </div>
       </div>
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Prompt {data.prompt_version}. Probability and direction are always scored; the abstain flag is a separate
         research cut. Model conviction is self-rated and is not treated as calibrated probability. Authority: none.
       </p>
       {!data.health.configured ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           OPENAI_API_KEY is not configured on the server yet, so the observer is dormant.
         </p>
       ) : data.health.last_error ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           The last API capture failed; the desk itself is unaffected and the observer will retry on a future checkpoint.
         </p>
       ) : null}
@@ -339,7 +346,7 @@ function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] })
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">OpenAI blind analyst · V1</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The market-blind scorecard is temporarily unavailable. No live decision path depends on it.
         </p>
       </section>
@@ -413,12 +420,12 @@ function OpenAIBlindStudy({ data }: { data: PublicLabSnapshot["openai_blind"] })
         </div>
       </div>
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Structurally hidden: Kalshi prices · desk fair · Council votes · Chair. Bounded to {data.max_captures} captures. Prompt {data.prompt_version}.
         API tokens {data.usage.total_tokens.toLocaleString()}. Authority: none.
       </p>
       {data.health.last_error ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           The last blind capture failed; the Floor is unaffected and collection will retry at a later checkpoint.
         </p>
       ) : null}
@@ -431,7 +438,7 @@ function OpenAILunaStudy({ data }: { data: PublicLabSnapshot["openai_luna"] }) {
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">OpenAI Luna benchmark · V1</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The low-cost AI benchmark is temporarily unavailable. No live decision path depends on it.
         </p>
       </section>
@@ -498,7 +505,7 @@ function OpenAILunaStudy({ data }: { data: PublicLabSnapshot["openai_luna"] }) {
         <div>API tokens <span className="text-muted">{data.usage.total_tokens.toLocaleString()}</span></div>
       </div>
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Model {data.model} · prompt {data.prompt_version} · same market-aware packet as Terra · bounded to {data.max_captures} captures · authority none.
       </p>
     </section>
@@ -510,7 +517,7 @@ function DisagreementEdgeStudy({ data }: { data: PublicLabSnapshot["disagreement
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">DISAGREEMENT_EDGE_V1</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The disagreement report is temporarily unavailable. It has no decision authority.
         </p>
       </section>
@@ -534,7 +541,7 @@ function DisagreementEdgeStudy({ data }: { data: PublicLabSnapshot["disagreement
           </h2>
         </div>
         <span className="rounded-sm border border-border bg-canvas px-2 py-1 font-mono text-micro uppercase tracking-widest text-muted">
-          {data.windows} graded replays
+          {data.windows} graded windows
         </span>
       </div>
 
@@ -573,11 +580,11 @@ function DisagreementEdgeStudy({ data }: { data: PublicLabSnapshot["disagreement
         </div>
       ) : (
         <div className="mt-4 rounded-sm border border-border bg-canvas p-4 font-mono text-micro text-subtle">
-          No fixed-horizon specialist disagreements are available in the retained replay sample yet.
+          No fixed-horizon specialist disagreements are available in the frozen checkpoint sample yet.
         </div>
       )}
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Descriptive research only. A row below 20 disagreements is explicitly thin. No row is a promotion candidate,
         and high ordinary accuracy outside disagreement windows is intentionally ignored here.
       </p>
@@ -590,7 +597,7 @@ function AstraDirectorStudy({ data }: { data: PublicLabSnapshot["astra_director"
     return (
       <section className="mt-6 rounded-md border border-border bg-canvas p-4">
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">Astra research director</div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The periodic deep-review scorecard is temporarily unavailable. It has no live decision authority.
         </p>
       </section>
@@ -692,18 +699,18 @@ function AstraDirectorStudy({ data }: { data: PublicLabSnapshot["astra_director"
             </details>
           ) : null}
 
-          <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-4 font-sans text-micro leading-relaxed text-subtle">
             {latest.report.executive_note} · API tokens {latest.token_usage.total.toLocaleString()}.
           </p>
         </div>
       ) : (
-        <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+        <p className="mt-4 font-sans text-micro leading-relaxed text-subtle">
           The first report runs only after a full {data.batch_windows}-window research block exists. Until then Astra remains idle.
         </p>
       )}
 
       {data.health.last_error ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           The last Astra review failed; no Floor behavior changed and the observer will retry after the evidence check.
         </p>
       ) : null}
@@ -756,7 +763,7 @@ function LabSummary({ data }: { data: PublicLabSnapshot }) {
           ))}
         </ul>
       </div>
-      <p className="mt-3 font-mono text-micro leading-relaxed text-muted">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-muted">
         Each difference uses only windows shared by that candidate and the control. Separate averages can cover different windows.
         These are observed paper results, not a recommendation or a winner declaration.
       </p>
@@ -859,7 +866,7 @@ function SeatTimingStudy({
         Raw is every directional read the specialist saw, including reads withheld by the whisper filter.
         Heard is only votes that reached the Chair. Accuracy is measured against official settlement.
       </p>
-      <p className="mt-2 max-w-[90ch] font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-2 max-w-[90ch] font-sans text-micro leading-relaxed text-subtle">
         Rates appear after 20 observations in each column. Smaller samples remain visible as counts. Descriptive replay evidence only; not used by Chair, learner, or promotion.
       </p>
 
@@ -924,7 +931,7 @@ function SeatTimingStudy({
         </div>
       )}
 
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Seats appear after at least 20 raw observations at one horizon. This display threshold is not
         a research or promotion gate. As of <time dateTime={data.at}>{new Date(data.at).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")}</time>.
       </p>
@@ -966,7 +973,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
       <GlobalHeader />
 
       <main id="lab-main" className="council-reading-page council-page-wide gutter mx-auto w-full py-6 sm:py-8">
-        {refreshFailed ? <p role="status" className="mb-4 rounded-md border border-border bg-surface p-3 font-mono text-micro text-wait">{data ? "Refresh paused. Showing the last recorded snapshot; retrying automatically." : "The Lab could not load. Retrying automatically."}</p> : null}
+        {refreshFailed ? <p role="status" className="mb-4 rounded-md border border-border bg-surface p-3 font-sans text-micro text-wait">{data ? "Refresh paused. Showing the last recorded snapshot; retrying automatically." : "The Lab could not load. Retrying automatically."}</p> : null}
         <section className="border-b border-border pb-6">
           <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">The Lab · Prospective research</div>
           <h1 className="council-page-title mt-2 font-sans text-display font-medium tracking-tight">Research, held to evidence.</h1>
@@ -1002,6 +1009,15 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             {/* The front door and lifecycle index keep active questions separate
                 from infrastructure and retired research history. */}
             <LabFrontDoor registry={data.registry} />
+            {data.recovery ? (
+              <section className="mt-5 rounded-md border border-border bg-surface p-4" aria-label="Recovery study receipt counts">
+                <h2 className="font-sans text-title font-medium text-fg">Recovery studies · receipt check</h2>
+                <p className="mt-2 font-sans text-ui text-muted">
+                  MID recovery locks V1: {data.recovery.locks.windows} windows · original MID_RECOVERY_V1_INACTIVE: {data.recovery.original.windows} windows
+                </p>
+                <p className="mt-1 font-sans text-micro text-subtle">Separate prospective cohorts · counts from stored receipts as of {utcClock(data.recovery.at)} · research only</p>
+              </section>
+            ) : null}
             <ResearchRegistry data={data.registry} />
             <CallQualityStudy data={data.call_quality} />
             <DisagreementEdgeStudy data={data.disagreement_edge} />
@@ -1033,7 +1049,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
                 ) : (
                   <section className="mt-6 rounded-md border border-border bg-canvas p-4">
                     <div className="font-mono text-micro uppercase tracking-widest text-subtle">Seat timing calibration</div>
-                    <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+                    <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
                       The optional replay aggregate is temporarily unavailable.
                     </p>
                   </section>
@@ -1046,7 +1062,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
                 Retired detailed scorecards · historical evidence
               </summary>
               <div className="border-t border-border px-4 pb-4">
-                <p className="mt-4 font-mono text-micro leading-relaxed text-subtle">
+                <p className="mt-4 font-sans text-micro leading-relaxed text-subtle">
                   These scorecards are kept for research archaeology. Their questions are closed and they have no path into the live Floor.
                 </p>
                 <ForcedV4Study data={data.forced_v4} />
@@ -1061,6 +1077,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             </section>
           </>
         )}
+        <RegretLedger />
       </main>
       <PaperDisclaimer />
     </div>

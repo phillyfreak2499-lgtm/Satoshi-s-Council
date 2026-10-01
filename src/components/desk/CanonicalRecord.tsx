@@ -27,7 +27,7 @@ export function CanonicalRecord({ books, compact = false }: { books: Books | nul
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">{CANONICAL_RECORD_LABEL}</div>
         {compact ? <a href={CANONICAL_RECORD_HREF} className="font-mono text-micro text-muted hover:text-fg">Full record →</a> : null}
       </div>
-      <p className="mt-1 font-mono text-micro leading-relaxed text-subtle">{r.scope}</p>
+      <p className="mt-1 font-sans text-micro leading-relaxed text-subtle">{r.scope}</p>
       <div className={`mt-3 grid gap-2 text-center ${compact ? "grid-cols-3 sm:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"}`}>
         <div><div className="font-mono text-title tabular text-fg">{r.calls}</div><div className="font-sans text-ui text-muted">calls</div></div>
         <div><div className="font-mono text-title tabular text-fg">{r.wins}–{r.losses}</div><div className="font-sans text-ui text-muted">W–L</div></div>
@@ -36,7 +36,7 @@ export function CanonicalRecord({ books, compact = false }: { books: Books | nul
         <div><div className="font-mono text-title tabular text-fg">{fmtCents(r.maxDrawdown, 1)}</div><div className="font-sans text-ui text-muted">max drawdown</div></div>
         <div><div className="font-mono text-title tabular text-fg">{interval}</div><div className="font-sans text-ui text-muted">95% interval · n={r.calls}</div></div>
       </div>
-      <p className="mt-2 font-mono text-micro text-subtle">
+      <p className="mt-2 font-sans text-micro text-subtle">
         Arena, shadow Chair v2, and the 70¢ comparison are {compact ? <a href={CANONICAL_RECORD_HREF} className="text-muted underline underline-offset-2">different scope — see the canonical record</a> : "different scope — see this block"}.
       </p>
     </section>

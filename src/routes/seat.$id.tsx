@@ -57,9 +57,10 @@ function SeatPage() {
   const skills = live
     ? Object.values(learner.skills).filter((skill) => skill.owner === id)
     : initial.skills;
+  const chairRow = live ? frame.chair?.rows.find((r) => r.seat === id) : undefined;
   // The same read model the seat card uses, computed once for the summary line. Presentation only.
   const lean = snap && vote
-    ? seatDirectionalLean(seatFactFor(id, vote, frame.chair?.rows.find((r) => r.seat === id), learner.knobs, snap.as_of), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of })
+    ? seatDirectionalLean(seatFactFor(id, vote, chairRow, learner.knobs, snap.as_of), { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of })
     : null;
   const share = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -88,7 +89,7 @@ function SeatPage() {
           {/* Compact lean summary at the top: the seat's own research read, beside what SATOSHI decided. Presentation only. */}
           <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-md border border-border bg-surface px-3 py-2">
             {lean ? <SeatLeanSummary key={leanKey(lean)} lean={lean} meterId={`seat-lean-${id}`} /> : null}
-            <span className="font-mono text-micro text-muted">SATOSHI heard: <LeanChip lean={vote.lean} /></span>
+            {lean ? <span className="font-mono text-micro text-muted">{!chairRow ? "No Chair row yet — research read only." : lean.isAuthorizedSpeaker ? <>SATOSHI heard: <LeanChip lean={lean.heardLean} /></> : chairRow.abstention_eligible === true && chairRow.lean === "WAIT" ? "Authorized WAIT — no directional vote." : "Research only — no vote counted."}</span> : null}
           </div>
           <BotCard seat={id} snap={snap} vote={vote} />
         </>

@@ -48,6 +48,8 @@ export type CallLogRow = {
   cents: number;
   settle: number | null;
   flipped: boolean;
+  /** Present only for a non-Chair paper pilot. Canonical Chair calls omit it. */
+  source?: "RECOVERY_FAV85_V1";
 };
 export type TabId =
   | "satoshi"
@@ -454,6 +456,11 @@ export type SeatRow = {
   lean: Lean;
   /** Copied from the admitted vote. Forced sits are not members of the Chair quorum. */
   forced_sit?: boolean;
+  /** Verified current-regime card inventory; absent on historical frames. */
+  selectable_live_cards?: number;
+  authority_ready_cards?: number;
+  authority_hold_reason?: string;
+  abstention_eligible?: boolean;
   conf: number;
   skill_used: string;
   base_w: number;
@@ -550,6 +557,18 @@ export type Learner = {
   skills: Record<string, SkillCard>;
   /** One-time owner review of saved authority labels; does not reset evidence. */
   authority_review_version?: string;
+  /** OWNER_RESTORE_E1_PAIR_V1 marker (owner-restore.ts). Absent unless the owner
+   *  activated that inactive policy intervention; records the exact values it replaced. */
+  owner_restore?: {
+    version: string;
+    mode: "STATUS_ONLY" | "STATUS_AND_STRIKE_CALIBRATION";
+    state: "APPLIED" | "ROLLED_BACK";
+    applied_at: number;
+    upgraded_at?: number;
+    rolled_back_at?: number;
+    prior: { status: Record<string, SkillStatus>; debt: Record<string, number | null> };
+    applied: { status: Record<string, SkillStatus>; debt: Record<string, number | null> };
+  };
   knobs: Record<string, SeatKnobs>;
   seat_n: Record<string, number>;
   seat_hits: Record<string, number>;

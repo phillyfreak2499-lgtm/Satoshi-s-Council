@@ -5,7 +5,7 @@
  * is set by an owner-approved activation in the database, at the actual
  * activation instant, and never backdated.
  */
-import { SELECTIVE_ENTRY_ID, ENTRY_SELECTIVE_V3, fingerprint } from "./floor-policy.ts";
+import { ENTRY_SELECTIVE_V3, fingerprint } from "./floor-policy.ts";
 import { COMPONENT_MIN, ECONOMIC } from "./promotion-gates.ts";
 import { E1_ROSTER_CARDS, JUMP_VETO, MIRROR35, NULL_FAV_SCHEDULE_SECS, SETTLE_BASIS_CANDIDATES_BPS, SETTLE_BASIS_ROLE } from "./shadow-arms.ts";
 import { SHADOW_FEE_FINGERPRINT, SHADOW_FUTILITY_LOOK_FILLS, SHADOW_HARD_DD_STOP_CENTS, SHADOW_LAB_VERSION, SHADOW_MAX_ACTIVE, SHADOW_MAX_DD_WORSE_THAN_CONTROL_CENTS, SHADOW_OPERATOR_ALERT_DD_CENTS, countsAgainstCap, manifestFingerprint, type ShadowManifest } from "./shadow-lab.ts";
@@ -140,4 +140,4 @@ export function manifestById(id: string): ShadowManifest | null {
 
 export const SHADOW_MANIFEST_FINGERPRINTS: Readonly<Record<string, string>> = Object.freeze(Object.fromEntries(SHADOW_MANIFESTS.map((m) => [m.id, manifestFingerprint(m)])));
 
-export { SELECTIVE_ENTRY_ID as SHADOW_BASE_POLICY_ID };
+export const SHADOW_BASE_POLICY_ID = ENTRY_SELECTIVE_V3.id;

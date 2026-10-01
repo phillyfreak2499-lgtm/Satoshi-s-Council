@@ -76,7 +76,7 @@ test("the Pro meter prints the label, the number, the research side, the status 
   const t = text(html);
   assert.match(t, /DIRECTIONAL LEAN/);
   assert.match(t, /85 · Bullish/);
-  assert.match(t, /Bearish Bullish Research read: UP/, "the scale is labelled at both ends");
+  assert.match(t, /Bearish Bullish Authority unverified Research read: UP/, "the scale is labelled at both ends");
   assert.match(t, /Status: BELOW BAR/);
   assert.match(t, /Card: DRIFT\.aligned_3h/);
   assert.match(t, /Strength: 70/);
@@ -196,14 +196,24 @@ test("a directional vote without a Chair row is announced as a research read, ne
   assert.match(text(html), /Status: RESEARCH READ/);
   assert.match(text(html), /Directional research read — SATOSHI has not counted it\./);
   assert.doesNotMatch(text(html), /SATOSHI heard|SATOSHI counted/);
+  assert.equal(noRow.heardLean, "WAIT", "a research read cannot become the seat detail's heard vote");
   assert.match(html, /aria-valuenow="85"/, "the read itself still shows");
   const withRow = seatDirectionalLean(fact({ voice: "speaking", suppression: null, final_lean: "UP", final_conf_transformed: false, aggregated: true }), WINDOW);
   assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "pro" }))), /Status: SPEAKING/);
   assert.match(text(renderToString(React.createElement(SeatLeanMeter, { lean: withRow, mode: "guided" }))), /Status: Bullish read — SATOSHI counted it\./);
+  assert.equal(withRow.heardLean, "UP");
   for (const l of [noRow, withRow]) {
     const t = text(renderToString(React.createElement(SeatLeanMeter, { lean: l, mode: "pro", showDisclaimer: true })));
     assert.match(t, /It is not a probability and not a SATOSHI call\./);
   }
+});
+
+test("the seat detail heard chip uses the shared admitted read, with an explicit no-row state", () => {
+  const detail = read("src/routes/seat.$id.tsx");
+  assert.match(detail, /SATOSHI heard: <LeanChip lean=\{lean\.heardLean\}/);
+  assert.doesNotMatch(detail, /SATOSHI heard: <LeanChip lean=\{vote\.lean\}/);
+  assert.match(detail, /lean.isAuthorizedSpeaker \? <>SATOSHI heard:/);
+  assert.match(detail, /No Chair row yet — research read only\./);
 });
 
 test("a fact without both retained raw fields renders NO READ, never a manufactured number", () => {
@@ -227,11 +237,11 @@ test("the surfaces share one read model and the verdict and paper-position surfa
     assert.doesNotMatch(read(file), /50 \+ |\/ 2\b/, `${file} never re-derives the score`);
   }
   assert.match(read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx"), /leanAnnouncement\(lean\)/, "the row name reuses the one announcement helper");
-  assert.match(read("src/components/desk/GuidedFloorView.tsx"), /seatFacts\(chair, votes, knobs, snap\.as_of\)\.filter\(\(f\) => f\.aggregated\)/);
+  assert.match(read("src/components/desk/GuidedFloorView.tsx"), /seatDirectionalLeans\(seatFacts\(chair, votes, knobs, snap\.as_of\),/);
   assert.match(read("src/components/desk/GuidedFloorView.tsx"), /\{read\.label === "WAIT" \? <Tip k="term\.wait">WAIT<\/Tip> : read\.label\}/, "the SATOSHI read heading is unchanged");
   assert.doesNotMatch(read("src/components/desk/ProFloor/PaperPositionCard.tsx"), /seat-lean|SeatLean/, "the paper position card does not carry the meter");
   assert.doesNotMatch(read("src/components/desk/ProFloor/ProChairCard.tsx"), /seat-lean|SeatLean/, "the Chair card does not carry the meter");
-  assert.doesNotMatch(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /seat-lean|SeatLean/, "family cards stay out of scope");
+  assert.match(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /researchLeanCountLine/, "family summary shares Guided counts");
   assert.doesNotMatch(read("src/lib/desk/chair.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/bots.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/book-floor.ts"), /seat-lean|SeatLean/);

@@ -80,7 +80,7 @@ function harness(sqlImpl) {
   const cache = new Map();
   const load = (file) => {
     if (cache.has(file)) return cache.get(file);
-    assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
+    assert.ok(["shadow-lab.server.ts", "shadow-sit.ts", "shadow-arms.ts", "floor-policy.ts"].some((f) => file === `src/lib/desk/${f}`), `unexpected source ${file}`);
     const exports = {}; cache.set(file, exports);
     const source = readFileSync(new URL(file, root), "utf8");
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

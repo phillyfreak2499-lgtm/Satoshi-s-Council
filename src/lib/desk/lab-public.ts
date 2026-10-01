@@ -18,7 +18,7 @@ import { forcedV4Snapshot, type ForcedV4Snapshot } from "./forced-v4.server";
 import { openAIShadowSnapshot, type OpenAIShadowSnapshot } from "./openai-shadow.server";
 import { openAIBlindSnapshot, type OpenAIBlindSnapshot } from "./openai-blind.server";
 import { openAILunaSnapshot, type OpenAILunaSnapshot } from "./openai-luna.server";
-import { labRegistrySnapshot, type PublicLabRegistrySnapshot } from "./lab-registry.server";
+import { labRegistrySnapshot, recoveryRegistryCounts, recoveryRegistrySnapshot, type PublicLabRegistrySnapshot, type RecoveryCounts } from "./lab-registry.server";
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
 import { askLeadSnapshot, type AskLeadSnapshot } from "./ask-lead.server";
 import { disagreementEdgeSnapshot, type PublicDisagreementEdgeSnapshot } from "./disagreement-edge.server";
@@ -56,6 +56,7 @@ export type PublicLabSnapshot = {
   ask_lead: AskLeadSnapshot | null;
   disagreement_edge: PublicDisagreementEdgeSnapshot | null;
   registry: PublicLabRegistrySnapshot | null;
+  recovery: RecoveryCounts | null;
   governance: {
     paper_only: true;
     authority: "none";
@@ -82,7 +83,8 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
     // The lifecycle registry scans several large research tables. Run it after
     // the other Lab snapshots so it does not compete for connections on the
     // small production Postgres instance.
-    const registry = await labRegistrySnapshot().catch(() => null);
+    const recovery = await recoveryRegistryCounts().catch(() => null);
+    const registry = await labRegistrySnapshot().then((base) => recovery ? recoveryRegistrySnapshot(base, recovery) : base).catch(() => null);
     const byId = new Map(standing.rows.map((row) => [row.candidate_id, row]));
     const control = controlFor("exit");
 
@@ -123,6 +125,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
       ask_lead: askLead,
       disagreement_edge: disagreementEdge,
       registry,
+      recovery,
       governance: {
         paper_only: true,
         authority: "none",

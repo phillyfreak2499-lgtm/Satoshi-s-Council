@@ -30,9 +30,10 @@ export async function lastFilledWindow(): Promise<BooksWindow | null> {
       entry_cents: number;
       settle_cents: number | null;
       ev_cents: number | null;
+      entry_source: string | null;
     }>`
       select ticker, close_time, winner, official_value, settle_avg, brti_prints,
-        entry_cents, settle_cents, ev_cents
+        entry_cents, settle_cents, ev_cents, entry_source
       from desk_ledger_research
       where entry_cents is not null
       order by close_time desc
@@ -52,6 +53,7 @@ export async function lastFilledWindow(): Promise<BooksWindow | null> {
         entry: r.entry_cents,
         settle: r.settle_cents,
         ev: r.ev_cents,
+        source: r.entry_source === "RECOVERY_FAV85_V1" ? "RECOVERY_FAV85_V1" : null,
       },
       seats: { n: 0, right: 0 },
       raw: { n: 0, right: 0 },

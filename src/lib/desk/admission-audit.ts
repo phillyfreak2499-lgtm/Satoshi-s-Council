@@ -36,17 +36,18 @@ export function auditAdmission(s: Snapshot, c: ChairResult, ctx: SelectiveContex
     check("team", "Current team and hard checks", side == null ? null : paperBookTeamOk(c, side) && Array.isArray(c.gates) && !c.gates.some(g => g.hard && !g.pass)),
     check("supporters", `At least ${required.min_speaking} healthy supporters`, side == null ? null : new Set(rows.map(r => r.seat)).size >= required.min_speaking),
     check("families", `At least ${required.min_families} evidence groups`, side == null ? null : new Set(rows.map(r => EVIDENCE_OF[r.seat])).size >= required.min_families),
-    check("opposition", "No opposing vote", side == null ? null : (side === "UP" ? c.quorum.down : c.quorum.up) <= p.max_opposing),
-    check("time", "3–10 minutes remaining", Number.isFinite(seconds) && seconds >= p.min_seconds_left && seconds <= p.max_seconds_left),
+    check("opposition", daily.tightened ? "No opposing vote" : "Separate opposition veto rolled back", side == null ? null : (side === "UP" ? c.quorum.down : c.quorum.up) <= required.max_opposing),
+    check("time", daily.tightened ? "3–10 minutes remaining" : "Live pre-close Chair window", Number.isFinite(seconds) && seconds >= required.min_seconds_left && seconds <= required.max_seconds_left),
     check("feeds", "Fresh, consistent feeds", s.health.spot_ok && s.health.kalshi_ok && s.health.spot === "LIVE" && s.health.kalshi === "LIVE" &&
       !s.health.spot_divergent && !s.health.basis_wide && s.obs?.gap === "ok" && Number.isFinite(age) && age >= 0 && age <= p.max_receipt_age_s &&
       Number.isFinite(s.spot_age_s) && s.spot_age_s >= 0 && s.spot_age_s <= p.max_spot_age_s),
     check("quote", "80¢-plus ask, tight spread and size", side == null ? null : [ask, bid, touch, s.yes_ask, s.no_ask].every(Number.isFinite) &&
       ask >= p.floor_cents && ask < 99 && bid >= 0 && bid <= ask && ask - bid <= p.max_spread_cents && touch >= 1 && s.yes_ask + s.no_ask >= 100),
     check("profit_reserve", "Profit protection", side == null ? null : !profitRiskBlock(daily, ask)),
-    check("model_edge", `At least ${required.min_edge_cents}¢ model edge after fees`, side == null ? null : Number.isFinite(edge) && edge >= required.min_edge_cents),
-    check("index_fresh", "Fresh settlement-index estimate", freshIndex),
-    check("index_edge", "Settlement estimate covers costs", side == null || !freshIndex ? null :
+    check("model_edge", required.edge_must_exceed_min ? "Positive model edge after fees" : `At least ${required.min_edge_cents}¢ model edge after fees`, side == null ? null : Number.isFinite(edge) &&
+      (required.edge_must_exceed_min ? edge > required.min_edge_cents : edge >= required.min_edge_cents)),
+    check("index_fresh", required.require_index_edge ? "Fresh settlement-index estimate" : "Settlement-index veto rolled back in normal mode", required.require_index_edge ? freshIndex : true),
+    check("index_edge", required.require_index_edge ? "Settlement estimate covers costs" : "Settlement-index veto rolled back in normal mode", !required.require_index_edge ? true : side == null || !freshIndex ? null :
       (side === "UP" ? fair! : 100 - fair!) - ask - takerFeeCents(ask) > required.min_index_edge_cents),
     check("confirmation", "Repeated confirming observations", side == null ? null : !!w && w.mode === mode && w.key === `${s.ticker}|${s.close_time}` &&
       w.side === side && w.last === s.as_of && w.frames >= required.confirmation_frames && s.as_of - w.since >= required.confirmation_seconds * 1000),

@@ -34,19 +34,19 @@ test("public Council copy matches the roster the Chair actually uses", () => {
   for (const id of ["WARDEN", "ORBIT", "WIRE", "ODDS", "CHEAP", "FADE"]) assert.match(publicCopy, new RegExp(id));
 
   assert.match(about, /COUNCIL_STRUCTURE_SHORT/);
-  assert.match(about, /Only the 15 currently voting specialists cast UP, DOWN or WAIT votes/);
+  assert.match(about, /The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI/);
   assert.match(about, /WARDEN, ORBIT and WIRE never count as votes/);
   assert.doesNotMatch(about, /twenty-one specialist seats/i);
   assert.equal((about.match(/The live floor grades 15-minute/g) ?? []).length, 1, "About does not repeat the live-floor sentence");
 
-  assert.match(faq, /How many Council seats actually vote\?/);
-  assert.match(faq, /Only the 15 currently voting specialists can cast UP, DOWN or WAIT votes/);
+  assert.match(faq, /How many Council seats can vote\?/);
+  assert.match(faq, /The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI/);
   assert.match(faq, /The three pit-crew seats never count as votes/);
   assert.match(faq, /COUNCIL_STRUCTURE_SHORT/);
   assert.doesNotMatch(faq, /Twenty-one of them sit at five desks/);
 
-  assert.match(root, /The Council has 21 seats: 15 currently voting, 3 retired from votes, and 3 non-voting pit crew/);
-  assert.match(og, /21 SEATS \/ 15 VOTE \/ 3 RETIRED \/ 3 PIT CREW/);
+  assert.match(root, /21 research roles, a 15-role voting roster, and fewer eligible LIVE sources/);
+  assert.match(og, /21 RESEARCH ROLES \/ ELIGIBLE LIVE SOURCES VOTE/);
 });
 
 test("the live Floor separates the standing read from the current signal frame", () => {
@@ -54,7 +54,7 @@ test("the live Floor separates the standing read from the current signal frame",
   const signal = read("src/lib/desk/chair-signal.ts");
   const gauge = read("src/components/desk/ChairSignalGauge.tsx");
 
-  assert.match(floor, /Standing Chair read/);
+  assert.match(floor, /SATOSHI · standing read/);
   assert.match(floor, /Current frame · the gauge below moves live/);
   assert.match(floor, /Paper entry is separate/);
   assert.match(signal, /Current Chair frame:/);

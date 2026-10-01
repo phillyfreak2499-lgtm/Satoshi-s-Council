@@ -75,7 +75,7 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
           vote: <span className="text-up">UP</span>, <span className="text-down">DOWN</span> or <span className="text-wait">WAIT</span>. Every
           call is paper. Nothing here places a live trade.
         </p>
-        <p className="mt-3 font-mono text-micro text-muted" aria-label="What this desk is and is not">
+        <p className="mt-3 font-sans text-micro text-muted" aria-label="What this desk is and is not">
           {TRUST_CHIPS.join(" · ")}
         </p>
         <div className="mt-4 flex flex-col gap-2">
@@ -86,7 +86,7 @@ export function Welcome({ open, onTour, onFloor }: { open: boolean; onTour: () =
             Watch the floor
           </button>
         </div>
-        <p className="mt-3 font-mono text-micro text-subtle">
+        <p className="mt-3 font-sans text-micro text-subtle">
           <span className="sm:hidden">Tap × or Watch the floor to close. </span>
           <span className="hidden sm:inline">Esc opens the floor. </span>
           Replay the tour any time from Desk tools. Hover or tap a dotted label for a definition.

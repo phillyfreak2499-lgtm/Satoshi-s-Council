@@ -109,7 +109,7 @@ function OwnerAccess({
         </summary>
         {unlocked ? (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-            <p className="font-mono text-micro text-subtle">
+            <p className="font-sans text-micro text-subtle">
               Shared-desk controls are visible in this browser only while the owner key is verified.
             </p>
             <button type="button" className="btn btn-secondary btn-sm" onClick={lock}>
@@ -342,7 +342,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
             </tbody>
           </table>
         </div>
-        <p className="mt-2 font-mono text-micro text-subtle">
+        <p className="mt-2 font-sans text-micro text-subtle">
           Priors stay until n ≥ 8. Huddle rebuilds live w from Wilson × recency, clamped 0.4–2.2×
           prior, then renormalizes.
         </p>
@@ -391,7 +391,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
             </tbody>
           </table>
         </div>
-        <p className="mt-2 font-mono text-micro text-subtle">
+        <p className="mt-2 font-sans text-micro text-subtle">
           Each pocket retunes on settle. Misses tighten. Barely-made hits relax. Huddle searches the sample buffer.
         </p>
       </section>
@@ -504,7 +504,7 @@ export function SettingsTab({ settings, learner }: { settings: SettingsT; learne
         <h3 className="mb-3 font-mono text-micro uppercase tracking-widest text-subtle">
           Pattern ledger
         </h3>
-        <p className="mb-2 font-mono text-micro text-subtle">
+        <p className="mb-2 font-sans text-micro text-subtle">
           WICK grades each named print on settle. n{"<"}8 stays uncalibrated (cap 40). n≥12 and Wilson
           {"<"}40% or EV{"<"}−1.8¢ folds the name until it earns its way back.
         </p>

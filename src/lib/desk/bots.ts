@@ -219,9 +219,15 @@ function pickLiveAndPaper(
   );
   const parentN = learner.seat_n[seat] ?? 0;
   const fired: { id: string; score: number; got: Fired }[] = [];
+  // Cards the exploit guard refused. They are still evaluated and graded on the
+  // paper list below, but never handed to research capture (P2): recovery must
+  // not hear a card the producer rejected for its record.
+  const exploitRejected = new Set<string>();
   for (const s of pool) {
-    if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42)
+    if (s.status === "LIVE" && learner.learn_phase === "EXPLOIT" && s.n >= 16 && s.wilson < 0.42) {
+      exploitRejected.add(s.id);
       continue;
+    }
     const got = tryEval(ctx, evalId, s.id);
     if (got) {
       captureEvaluated(got.v);
@@ -241,7 +247,7 @@ function pickLiveAndPaper(
   for (const s of others) {
     const got = tryEval(ctx, evalId, s.id);
     if (!got) continue;
-    captureEvaluated(got.v);
+    if (!exploitRejected.has(s.id)) captureEvaluated(got.v);
     papers.push({
       id: s.id,
       lean: got.lean,
@@ -730,7 +736,7 @@ function driftBot(ctx: BotCtx): Vote {
     "spot",
     emptyVote("DRIFT", ctx.snap, {
       eyes: "ret5 / ret15 / ret30",
-      hypothesis: `${d.trend} · aligned ${d.aligned} · ${d.accel ? "ACCEL" : d.decay ? "DECAY" : d.pullback ? "PULLBACK" : d.chop ? "CHOP" : "WATCH"}`,
+      hypothesis: `returns ${d.lean} · aligned ${d.aligned} · ${d.accel ? "ACCEL" : d.decay ? "DECAY" : d.pullback ? "PULLBACK" : d.chop ? "CHOP" : "WATCH"} · 1m structure ${d.trend}`,
       evidence: [
         `5m ${round(ctx.snap.ret5 * 100, 2)}% · 15m ${round(ctx.snap.ret15 * 100, 2)}% · 30m ${round(ctx.snap.ret30 * 100, 2)}%`,
         `stack ${d.stack} · RSI ${Math.round(d.rsi)}`,
@@ -1327,8 +1333,18 @@ function runBotsInternal(
   return (Object.keys(FNS) as SeatId[]).map((id) => FNS[id](ctx));
 }
 
+/**
+ * Research-capture policy stamped on every captured frame. P2_EXPLOIT_GUARD_V1:
+ * a LIVE card the EXPLOIT guard refused is never captured, so recovery cannot
+ * hear it. Recorders copy the stamp into their receipts; frames without it
+ * predate the fix.
+ */
+export const CAPTURE_POLICY = "P2_EXPLOIT_GUARD_V1" as const;
+
 export type EvaluatedCandidateFrame = Readonly<{
   version: "E1_RECOVERY_V1_INACTIVE";
+  /** Absent on frames captured before the P2 fix. */
+  capture_policy?: typeof CAPTURE_POLICY;
   ticker: string;
   close_time: number;
   as_of: number;
@@ -1351,5 +1367,5 @@ export function runBotsWithEvaluatedCandidates(snap: Snapshot, learner: Learner)
     paper: vote.paper.map((paper) => ({ ...paper })),
     shadow: vote.shadow ? { ...vote.shadow } : null,
   }));
-  return { version: "E1_RECOVERY_V1_INACTIVE", ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of, votes, evaluated };
+  return { version: "E1_RECOVERY_V1_INACTIVE", capture_policy: CAPTURE_POLICY, ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of, votes, evaluated };
 }

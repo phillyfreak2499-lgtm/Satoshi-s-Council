@@ -477,11 +477,11 @@ export function ReplayPane({
           </div>
         </div>
         <div className="rounded-md border border-border bg-surface-2/50 p-2">
-          <div className="uppercase tracking-widest text-subtle">Chair / paper</div>
+          <div className="uppercase tracking-widest text-subtle">{r.call?.source === "RECOVERY_FAV85_V1" ? "Recovery pilot / paper" : "Chair / paper"}</div>
           {r.call ? (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 tabular text-muted">
               {chairSide ? <LeanChip lean={chairSide} /> : <span>position</span>}
-              <span className="text-up">Paper FILLED</span>
+              <span className="text-up">{r.call.source === "RECOVERY_FAV85_V1" ? "Pilot FILLED" : "Paper FILLED"}</span>
               <span className={cn(r.call.ev == null ? "text-muted" : r.call.ev > 0 ? "text-up" : r.call.ev < 0 ? "text-down" : "text-muted")}>
                 {r.call.entry.toFixed(0)}¢ → {r.call.settle == null ? "open" : `${r.call.settle.toFixed(0)}¢`} · {fmtC(r.call.ev)}
               </span>
