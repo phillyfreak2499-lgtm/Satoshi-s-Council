@@ -18,6 +18,7 @@ test("sticky status observes the complete header including shortcuts and respond
     react: { ...React, useState: () => [inset, (value) => { inset = value; }], useEffect: (fn) => { effect = fn; } },
     "@/lib/desk/pro-floor": {},
     "@/lib/desk/hooks": { useCountdownText: () => "6m" },
+    "../DecisionLayerMark": { DecisionLayerMark: (props) => React.createElement("span", { "data-decision-layer": props.layer }) },
     "./tones": { leanTone: () => "" },
     "@/lib/utils": { cn: (...values) => values.filter(Boolean).join(" ") },
     "@/lib/desk/math": { clockMs: () => "6m" },
@@ -38,6 +39,9 @@ test("sticky status observes the complete header including shortcuts and respond
   );
   const facts = { market: { close_time: 1 }, conclusion: { lean: "WAIT" }, paper: { held: false } };
   const render = () => module.exports.StickyDecisionHeader({ facts });
+  const marks = render().props.children.flatMap((column) => column.props.children[0].props.children).filter((child) => child?.props?.layer);
+  assert.deepEqual(marks.map((mark) => mark.props.layer), ["decision", "position"]);
+  assert.ok(marks.every((mark) => mark.props.compact));
   assert.equal(render().props.style.top, "var(--header-h)");
   const cleanup = effect();
   assert.equal(render().props.style.top, 82);

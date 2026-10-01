@@ -115,6 +115,8 @@ test('three decision layers keep distinct permanent labels and surface ownership
  const {chair,votes,snap,learner}=fixture();
  const compact=render(BotCard,{seat:'WICK',snap,vote:votes.find(v=>v.seat==='WICK'),compact:true});
  assert.match(compact,/data-decision-layer="research"/);
+ assert.match(compact,/class="[^"]*flex-wrap/);
+ assert.match(compact,/class="sr-only sm:not-sr-only">Research lean/);
  const guided=render(GuidedFloor,{chair,votes,snap,knobs:learner.knobs,callLog:[],demo:false,onPro:()=>{}});
  assert.match(guided,/data-decision-layer="decision"/);assert.match(guided,/data-decision-layer="research"/);
  const paper=render(PaperPositionCard,{facts:{conclusion:{lean:'WAIT'},paper:{held:false,no_position_why:'No paper position',entry_source:null,entry_side:null,entry_cents:null,entry_at:null,ask_now:null,floor_cents:80,state:{kind:'none'}}},full:false});
@@ -124,7 +126,10 @@ test('three decision layers keep distinct permanent labels and surface ownership
 test('compact Pro status keeps a directional opinion separate from the actual book',()=>{
  const {StickyDecisionHeader}=load('src/components/desk/ProFloor/StickyDecisionHeader.tsx');
  const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP'},paper:{held:false}};
- const empty=text(render(StickyDecisionHeader,{facts}));
+ const sticky=render(StickyDecisionHeader,{facts});
+ assert.match(sticky,/data-decision-layer="decision"/);
+ assert.match(sticky,/data-decision-layer="position"/);
+ const empty=text(sticky);
  assert.match(empty,/SATOSHI decision UP/);assert.match(empty,/Paper position NONE/);
  const held=text(render(StickyDecisionHeader,{facts:{...facts,paper:{held:true}}}));
  assert.match(held,/Paper position HELD/);assert.match(held,/Window closes in/);

@@ -43,13 +43,13 @@ export function BotCard({
           type="button"
           aria-expanded="false"
           onClick={() => setOpen(true)}
-          className="flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
+          className="flex flex-wrap min-h-11 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2/60"
         >
           <span className="shrink-0 font-mono text-ui text-fg">
             {seat} <HealthDot h={vote.health} /> <span className="text-subtle">{meta.callsign}</span>
           </span>
           <span className="font-mono text-micro text-muted">{seatAvailabilityLabel(lean)}</span>
-          <DecisionLayerMark layer="research" />
+          <DecisionLayerMark layer="research" compact />
           <LeanChip research lean={vote.lean} />
           <SeatLeanMini key={leanKey(lean)} lean={lean} className="shrink-0" />
           {whisper ? <span className="shrink-0 font-mono text-micro text-subtle">whispered {whisper}</span> : null}
