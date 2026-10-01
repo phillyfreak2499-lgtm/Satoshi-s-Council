@@ -6,16 +6,10 @@ import React from "react";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 
-test("sticky status observes the complete header including shortcuts and responds to resizing", () => {
-  let height = 82;
-  let inset = null;
-  let effect;
-  let observerCallback;
-  let disconnected = false;
-  let resize;
-  const header = { getBoundingClientRect: () => ({ height }) };
+const read = (path) => readFileSync(path, "utf8");
+
+test("operator status is the single sticky decision summary and uses only the real header inset", () => {
   const mocks = {
-    react: { ...React, useState: () => [inset, (value) => { inset = value; }], useEffect: (fn) => { effect = fn; } },
     "@/lib/desk/pro-floor": {},
     "@/lib/desk/hooks": { useCountdownText: () => "6m" },
     "../DecisionLayerMark": { DecisionLayerMark: (props) => React.createElement("span", { "data-decision-layer": props.layer }) },
@@ -24,33 +18,44 @@ test("sticky status observes the complete header including shortcuts and respond
     "@/lib/desk/math": { clockMs: () => "6m" },
   };
   const module = { exports: {} };
-  const code = ts.transpileModule(readFileSync("src/components/desk/ProFloor/StickyDecisionHeader.tsx", "utf8"), {
+  const code = ts.transpileModule(read("src/components/desk/ProFloor/StickyDecisionHeader.tsx"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const document = { querySelector: (selector) => { assert.equal(selector, ".council-site-header"); return header; } };
-  const window = { addEventListener: (_, fn) => { resize = fn; }, removeEventListener: (_, fn) => { assert.equal(fn, resize); resize = null; } };
-  class Observer {
-    constructor(fn) { observerCallback = fn; }
-    observe(element) { assert.equal(element, header); }
-    disconnect() { disconnected = true; }
-  }
-  new Function("require", "module", "exports", "document", "window", "ResizeObserver", code)(
-    (id) => mocks[id] ?? require(id), module, module.exports, document, window, Observer,
+  new Function("require", "module", "exports", code)(
+    (id) => mocks[id] ?? require(id), module, module.exports,
   );
-  const facts = { market: { close_time: 1 }, conclusion: { lean: "WAIT" }, paper: { held: false } };
-  const render = () => module.exports.StickyDecisionHeader({ facts });
-  const marks = render().props.children.flatMap((column) => column.props.children[0].props.children).filter((child) => child?.props?.layer);
+  const facts = {
+    market: { close_time: 1 },
+    conclusion: { lean: "WAIT", confidence: { value: 79 } },
+    health: { all_clear: true, blockers: [] },
+    paper: { held: false },
+  };
+  const rendered = module.exports.StickyDecisionHeader({ facts });
+  const marks = rendered.props.children.flatMap((column) => {
+    const children = Array.isArray(column.props.children) ? column.props.children : [column.props.children];
+    return children.flatMap((child) => child?.props?.children ?? []).filter((child) => child?.props?.layer);
+  });
   assert.deepEqual(marks.map((mark) => mark.props.layer), ["decision", "position"]);
   assert.ok(marks.every((mark) => mark.props.compact));
-  assert.equal(render().props.style.top, "var(--header-h)");
-  const cleanup = effect();
-  assert.equal(render().props.style.top, 82);
-  height = 126; observerCallback();
-  assert.equal(render().props.style.top, 126, "shortcut row is part of the inset");
-  height = 72; resize();
-  assert.equal(render().props.style.top, 72);
-  assert.doesNotMatch(render().props.className, /\btop-0\b/);
-  cleanup();
-  assert.equal(disconnected, true);
-  assert.equal(resize, null);
+  assert.equal(rendered.props.style.top, "var(--header-h)");
+  assert.match(rendered.props.className, /\blg:sticky\b/);
+  assert.doesNotMatch(rendered.props.className, /(^|\s)sticky(\s|$)/, "phones and tablets do not pin the status card");
+  const stickySource = read("src/components/desk/ProFloor/StickyDecisionHeader.tsx");
+  assert.doesNotMatch(stickySource, /querySelector|ResizeObserver|getBoundingClientRect/,
+    "shortcut-row height must never become part of the sticky inset");
+  assert.match(stickySource, /gate confidence/);
+  assert.match(stickySource, /feeds live/);
+  assert.match(stickySource, /no position booked/);
+});
+
+test("market context does not repeat SATOSHI decision or time beneath the operator status", () => {
+  const strip = read("src/components/desk/ProFloor/ProDecisionStrip.tsx");
+  assert.doesNotMatch(strip, /DecisionLayerMark/);
+  assert.doesNotMatch(strip, /label="Time"/);
+  assert.doesNotMatch(strip, /gate confidence/);
+  assert.doesNotMatch(strip, /useCountdownText/);
+  assert.match(strip, /label="BTC \/ line"/);
+  assert.match(strip, /label="Market"/);
+  assert.match(strip, /label="Desk value"/);
+  assert.match(strip, /sm:grid-cols-3/);
 });
