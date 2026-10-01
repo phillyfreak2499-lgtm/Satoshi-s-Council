@@ -1,9 +1,9 @@
 import { join } from "node:path";
 import { getSql } from "@/lib/db";
 import { RegretJournal } from "./regret-journal.server";
-import { rolloutReady } from "./alert-verification.server";
+import { discordReleased } from "./discord-release.server";
 import { DiscordOutbox, type DiscordConfig } from "./discord-outbox.server";
-import { paperEvent, readEvent, webhookTarget, type DiscordEvent } from "./discord-posts";
+import { paperEvent, readSummaryEvent, webhookTarget, type DiscordEvent } from "./discord-posts";
 import { seatFacts } from "./pro-floor";
 import { seatDirectionalLeans } from "./seat-lean";
 import type { ChairResult, Snapshot, Vote, SeatKnobs } from "./types";
@@ -11,7 +11,8 @@ const journal = new RegretJournal<DiscordEvent>(join(process.cwd(), "data", "dis
 let append: Promise<void> = Promise.resolve();
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
-const seen = new Map<string, string>();
+/** Windows already summarized by this process; the outbox key dedupes across restarts. */
+const summarized = new Set<string>();
 const configWarnings = new Set<string>();
 function warnOnce(code: string) {
   if (!configWarnings.has(code)) { configWarnings.add(code); console.error(`Discord delivery: ${code}`); }
@@ -40,7 +41,7 @@ async function flush() {
     const c = config();
     if (!c.paper && !c.read) return;
     const db = await getSql();
-    const outbox = new DiscordOutbox(db, c, () => rolloutReady(db, c.build));
+    const outbox = new DiscordOutbox(db, c, () => discordReleased(db));
     await append;
     await journal.drain((event) => outbox.enqueue(event));
     await outbox.drain();
@@ -69,23 +70,15 @@ export function publishDiscordLeans(snap: Snapshot, votes: Vote[], chair: ChairR
     // Start the worker even when there is no current directional lean: pending settlement delivery still drains.
     ensureWorker(c);
     if (!c.read) return;
-    const leans = seatDirectionalLeans(seatFacts(chair, votes, knobs, snap.as_of), {
-      ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of,
-    });
-    for (const l of leans) {
-      const key = `${snap.ticker}|${snap.close_time}|${l.seat}`;
-      const signature = `${l.direction}|${l.score}`;
-      if (seen.get(key) === signature) continue;
-      seen.set(key, signature);
-      const e = readEvent(l, c.build, c.read.hash);
-      if (e) record(e, c);
-      else record({ key: `quiet|${key}|${snap.as_of}`, kind: "read", ticker: snap.ticker,
-        close: snap.close_time, observed: snap.as_of, seat: l.seat, side: "UP", source: null,
-        build: c.build, target: c.read.hash, expires: snap.close_time, signature, quiet: true,
-        payload: { username: "Satoshi's Council", allowed_mentions: { parse: [] }, embeds: [] } }, c);
-    }
-    if (seen.size > 512) {
-      for (const key of seen.keys()) if (!key.startsWith(`${snap.ticker}|${snap.close_time}|`)) seen.delete(key);
-    }
+    const window = { ticker: snap.ticker, close_time: snap.close_time, as_of: snap.as_of };
+    const key = `${snap.ticker}|${snap.close_time}`;
+    if (summarized.has(key)) return;
+    const leans = seatDirectionalLeans(seatFacts(chair, votes, knobs, snap.as_of), window);
+    // At most one research-outlook post per 15-minute window (see READ_SUMMARY_MS_LEFT).
+    const e = readSummaryEvent(leans, chair.lean, window, c.build, c.read.hash);
+    if (!e) return;
+    summarized.add(key);
+    if (summarized.size > 64) for (const k of summarized) if (k !== key) summarized.delete(k);
+    record(e, c);
   } catch { console.error("Discord delivery: read_capture_failure"); }
 }
