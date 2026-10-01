@@ -237,11 +237,11 @@ test("the surfaces share one read model and the verdict and paper-position surfa
     assert.doesNotMatch(read(file), /50 \+ |\/ 2\b/, `${file} never re-derives the score`);
   }
   assert.match(read("src/components/desk/ProFloor/CouncilEvidenceTape.tsx"), /leanAnnouncement\(lean\)/, "the row name reuses the one announcement helper");
-  assert.match(read("src/components/desk/GuidedFloorView.tsx"), /seatFacts\(chair, votes, knobs, snap\.as_of\)\.filter\(\(f\) => f\.aggregated\)/);
+  assert.match(read("src/components/desk/GuidedFloorView.tsx"), /seatDirectionalLeans\(seatFacts\(chair, votes, knobs, snap\.as_of\),/);
   assert.match(read("src/components/desk/GuidedFloorView.tsx"), /\{read\.label === "WAIT" \? <Tip k="term\.wait">WAIT<\/Tip> : read\.label\}/, "the SATOSHI read heading is unchanged");
   assert.doesNotMatch(read("src/components/desk/ProFloor/PaperPositionCard.tsx"), /seat-lean|SeatLean/, "the paper position card does not carry the meter");
   assert.doesNotMatch(read("src/components/desk/ProFloor/ProChairCard.tsx"), /seat-lean|SeatLean/, "the Chair card does not carry the meter");
-  assert.doesNotMatch(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /seat-lean|SeatLean/, "family cards stay out of scope");
+  assert.match(read("src/components/desk/ProFloor/EvidenceFamilies.tsx"), /researchLeanCountLine/, "family summary shares Guided counts");
   assert.doesNotMatch(read("src/lib/desk/chair.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/bots.ts"), /seat-lean|SeatLean/);
   assert.doesNotMatch(read("src/lib/desk/book-floor.ts"), /seat-lean|SeatLean/);

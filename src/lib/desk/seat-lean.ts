@@ -312,3 +312,17 @@ export function leanSummaryText(lean: Pick<SeatLean, "score" | "direction">): st
 export function leanKey(lean: Pick<SeatLean, "seat" | "window">): string {
   return `${lean.window.ticker}|${lean.window.close_time}|${lean.seat}`;
 }
+
+/** Shared display counts only. WAIT is neutral; missing retained evidence is no read. */
+export function researchLeanCounts(leans: readonly SeatLean[]) {
+  const directional = leans.filter((l) => l.direction === "BULLISH" || l.direction === "BEARISH").length;
+  const neutral = leans.filter((l) => l.direction === "NEUTRAL").length;
+  const noRead = leans.length - directional - neutral;
+  const counted = leans.filter((l) => l.isAuthorizedSpeaker).length;
+  return { total: leans.length, directional, neutral, noRead, counted };
+}
+
+export function researchLeanCountLine(leans: readonly SeatLean[]): string {
+  const c = researchLeanCounts(leans);
+  return `${c.total} research roles: ${c.directional} directional ${c.directional === 1 ? "lean" : "leans"} · ${c.neutral} neutral · ${c.noRead} without a retained read. SATOSHI counted ${c.counted} directional ${c.counted === 1 ? "read" : "reads"}. WAIT reads are neutral; research roles are not available voters.`;
+}

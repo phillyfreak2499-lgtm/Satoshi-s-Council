@@ -8,6 +8,7 @@
  *
  * Tapping a family jumps to its existing specialist desk.
  */
+import { researchLeanCountLine, seatDirectionalLeans } from "@/lib/desk/seat-lean";
 import { cn } from "@/lib/utils";
 import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type FamilyFacts, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
@@ -97,6 +98,7 @@ export function EvidenceFamilies({
   onJump: (seat: SeatId) => void;
 }) {
   const b = facts.balance;
+  const countLine = researchLeanCountLine(seatDirectionalLeans(facts.seats, { ticker: "", close_time: 0, as_of: 0 }));
   const votingWait = facts.families.reduce((n, f) => n + f.wait, 0);
   return (
     <Panel
@@ -125,6 +127,7 @@ export function EvidenceFamilies({
           </span>
         </div>
         <p className="mt-1 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">{b.disclaimer}</p>
+        <p className="mt-1 font-sans text-micro text-subtle">{countLine}</p>
         <p className="mt-1 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">
           {availabilityLine(facts.seats.filter((s) => s.aggregated))} {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
         </p>
