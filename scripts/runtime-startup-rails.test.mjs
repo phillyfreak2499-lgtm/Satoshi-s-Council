@@ -14,10 +14,6 @@ const observers = [
   ["server-engine", "ensureServerEngine"],
   ["chair-v3-prospective.server", "ensureChairV3ProspectiveObserver"],
   ["call-quality.server", "ensureCallQualityObserver"],
-  ["forced-v4.server", "ensureForcedV4Observer"],
-  ["openai-shadow.server", "ensureOpenAIShadowObserver"],
-  ["openai-blind.server", "ensureOpenAIBlindObserver"],
-  ["openai-luna.server", "ensureOpenAILunaObserver"],
   ["chair-ablation.server", "ensureChairAblationObserver"],
   ["lab-registry.server", "ensureLabRegistryObserver"],
   ["astra-director.server", "ensureAstraDirectorObserver"],
@@ -32,7 +28,7 @@ test("Nitro auto-registers a Render-only startup bootstrap", () => {
   assert.match(plugin, /ensureDeskRuntime\(\)/);
 });
 
-test("startup bootstrap covers every long-running Council observer", () => {
+test("startup bootstrap covers active long-running Council observers", () => {
   for (const [moduleName, starter] of observers) {
     assert.ok(bootstrap.includes(`"./${moduleName}"`), `startup missing ${moduleName}`);
     assert.ok(bootstrap.includes(`m.${starter}()`), `startup missing ${starter}`);
@@ -57,5 +53,26 @@ test("research bootstrap still has no return path into the Floor engine", () => 
     "astra-director.server",
   ]) {
     assert.equal(engine.includes(researchModule), false, `engine imports ${researchModule}`);
+  }
+});
+
+const retiredObservers = [
+  ["forced-v4.server", "ensureForcedV4Observer"],
+  ["openai-shadow.server", "ensureOpenAIShadowObserver"],
+  ["openai-blind.server", "ensureOpenAIBlindObserver"],
+  ["openai-luna.server", "ensureOpenAILunaObserver"],
+];
+test("retired research observers cannot start from boot or health checks", () => {
+  const registry = read("src/lib/desk/lab-registry.ts");
+  const ids = ["forced-v4", "openai-shadow-v1", "openai-blind-v1", "openai-luna-v1"];
+  for (const [i, [moduleName, starter]] of retiredObservers.entries()) {
+    const start = registry.indexOf('id: "' + ids[i] + '"');
+    assert.ok(start >= 0, ids[i] + " must exist in the registry");
+    const definition = registry.slice(start);
+    assert.match(definition.slice(0, definition.indexOf('purpose:')), /lifecycle: "retired"/);
+    for (const entry of [bootstrap, health]) {
+      assert.equal(entry.includes(moduleName), false, moduleName + " must not be imported at startup");
+      assert.equal(entry.includes(starter), false, starter + " must not be invoked at startup");
+    }
   }
 });

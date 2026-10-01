@@ -197,10 +197,10 @@ test("full production engine and push source differ only by the two outbound pub
   assert.equal(crypto.createHash('sha256').update(push).digest('hex'),'80615c0209a2a0435329ac934849df2d206d0238e9d7486145b49a766ddc0be2');
 });
 
- test("settlement scoreboard matches Books all-time totals, includes current fill, survives retry without double counting", async(t)=>{
+ test("settlement scoreboard excludes pending and breakeven calls, matches Books, and survives retry", async(t)=>{
   const f=await fixture(t), e=f.event(); await f.outbox.enqueue(e); await f.outbox.drain();
   await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'UP',17,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
-  await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
+  await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('pending',null,'valid'),('breakeven',0,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
   let attempts=0;const posted=[];
   const retry=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async(u,p)=>{
     posted.push(p);return ++attempts===1?{...accepted,ok:false,status:503,retryMs:1000,code:'provider_or_receipt_failure'}:accepted;
@@ -213,7 +213,9 @@ test("full production engine and push source differ only by the two outbound pub
   // Pin arithmetic against the actual site's query, including its historical
   // positive-net definition of wins (not an invented alternate win measure).
   const books=readFileSync('src/lib/desk/books.server.ts','utf8');
-  for(const expression of ['(count(*) filter (where entry_cents is not null))::int','(count(*) filter (where entry_cents is not null and ev_cents > 0))::int','coalesce(sum(ev_cents), 0)::float','from desk_ledger_research']) {
+  assert.ok(books.includes('(count(*) filter (where ev_cents < 0))::int as losses'));
+  assert.ok(readFileSync('src/lib/desk/discord-outbox.server.ts','utf8').includes('(count(*) filter (where entry_cents is not null and ev_cents < 0))::int as scoreboard_losses'));
+  for(const expression of ['(count(*) filter (where entry_cents is not null and ev_cents > 0))::int','coalesce(sum(ev_cents), 0)::float','from desk_ledger_research']) {
     assert.ok(books.includes(expression));assert.ok(readFileSync('src/lib/desk/discord-outbox.server.ts','utf8').includes(expression));
   }
 });
