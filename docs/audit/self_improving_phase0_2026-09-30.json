@@ -1,0 +1,1386 @@
+{
+  "source": "https://satoshiscouncil.com/frame",
+  "frame_as_of": 1790826343993,
+  "frame_as_of_utc": "2026-10-01T03:45:43.993000+00:00",
+  "source_sha256": "8041d1bfb328b8e34bd49d36e80bfa4e8fa4e6d7f368d5f64ca137d26f3dbd78",
+  "code_base_sha": "3d4a26353118a2f6144ab1ea24e2a8f4a86edc96",
+  "learn_phase": "EXPLOIT",
+  "regime_key": "ASIA_ENTRY",
+  "mutes": [],
+  "skills": {
+    "WICK.pin_at_high": {
+      "id": "WICK.pin_at_high",
+      "owner": "WICK",
+      "status": "BENCH",
+      "n": 52,
+      "ev_n": 52,
+      "wilson": 0.06676796994292625,
+      "ev": -3.25,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.engulf_at_extreme": {
+      "id": "WICK.engulf_at_extreme",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 99,
+      "ev_n": 99,
+      "wilson": 0.11006570016266973,
+      "ev": -2.080808080808081,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.doji_after_run": {
+      "id": "WICK.doji_after_run",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.hammer_at_low": {
+      "id": "WICK.hammer_at_low",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 37,
+      "ev_n": 37,
+      "wilson": 0.13361203432663307,
+      "ev": -2.27027027027027,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.amd": {
+      "id": "WICK.amd",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 152,
+      "ev_n": 152,
+      "wilson": 0.8435645944507106,
+      "ev": 1.2960526315789473,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.liq_sweep": {
+      "id": "WICK.liq_sweep",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.morning_star": {
+      "id": "WICK.morning_star",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 23,
+      "ev_n": 23,
+      "wilson": 0.02417949540723341,
+      "ev": -2.130434782608696,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.evening_star": {
+      "id": "WICK.evening_star",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 38,
+      "ev_n": 38,
+      "wilson": 0.05753782875731436,
+      "ev": -3.1052631578947367,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.tweezer": {
+      "id": "WICK.tweezer",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 21,
+      "ev_n": 21,
+      "wilson": 0.008455769471923294,
+      "ev": -3.9047619047619047,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WICK.bos_close": {
+      "id": "WICK.bos_close",
+      "owner": "WICK",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.aligned_3h": {
+      "id": "DRIFT.aligned_3h",
+      "owner": "DRIFT",
+      "status": "LIVE",
+      "n": 205,
+      "ev_n": 205,
+      "wilson": 0.9816051974319293,
+      "ev": 1.170731707317073,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.accel_impulse": {
+      "id": "DRIFT.accel_impulse",
+      "owner": "DRIFT",
+      "status": "SHADOW",
+      "n": 99,
+      "ev_n": 99,
+      "wilson": 0.9626454664260378,
+      "ev": 1.121212121212121,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.decaying_impulse": {
+      "id": "DRIFT.decaying_impulse",
+      "owner": "DRIFT",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.pullback_in_trend": {
+      "id": "DRIFT.pullback_in_trend",
+      "owner": "DRIFT",
+      "status": "SHADOW",
+      "n": 350,
+      "ev_n": 350,
+      "wilson": 0.9518589825673285,
+      "ev": 1.4942857142857142,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.mtf_stack": {
+      "id": "DRIFT.mtf_stack",
+      "owner": "DRIFT",
+      "status": "SHADOW",
+      "n": 170,
+      "ev_n": 170,
+      "wilson": 0.9779017220274088,
+      "ev": 1.088235294117647,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "DRIFT.chop_sit": {
+      "id": "DRIFT.chop_sit",
+      "owner": "DRIFT",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.continue_young": {
+      "id": "STREAK.continue_young",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 1055,
+      "ev_n": 1055,
+      "wilson": 0.9963718841420662,
+      "ev": 2.023696682464455,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.fade_extended": {
+      "id": "STREAK.fade_extended",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 82,
+      "ev_n": 82,
+      "wilson": 0.371047982844021,
+      "ev": -0.5975609756097561,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.mid_hold": {
+      "id": "STREAK.mid_hold",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 64,
+      "ev_n": 64,
+      "wilson": 0.9433739770288436,
+      "ev": 2.40625,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.live_break": {
+      "id": "STREAK.live_break",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 2,
+      "ev_n": 2,
+      "wilson": 0,
+      "ev": -19,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.alt_chop": {
+      "id": "STREAK.alt_chop",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.yes_agrees": {
+      "id": "STREAK.yes_agrees",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 1130,
+      "ev_n": 1130,
+      "wilson": 0.9966118724167469,
+      "ev": 2.0530973451327434,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.1h_run_5m_flip": {
+      "id": "EXHAUST.1h_run_5m_flip",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 9,
+      "ev_n": 9,
+      "wilson": 0.5649937852319398,
+      "ev": 1,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.climax_wick": {
+      "id": "EXHAUST.climax_wick",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 11,
+      "ev_n": 11,
+      "wilson": 0.016231752262825985,
+      "ev": -2.3636363636363638,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.rsi_div": {
+      "id": "EXHAUST.rsi_div",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.failed_push": {
+      "id": "EXHAUST.failed_push",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 19,
+      "ev_n": 19,
+      "wilson": 0,
+      "ev": -2.736842105263158,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.ema_cross_against": {
+      "id": "EXHAUST.ema_cross_against",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 11,
+      "ev_n": 11,
+      "wilson": 0.05136660067100062,
+      "ev": -2,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "EXHAUST.inside_after_run": {
+      "id": "EXHAUST.inside_after_run",
+      "owner": "EXHAUST",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "PULSE.vol_agree": {
+      "id": "PULSE.vol_agree",
+      "owner": "PULSE",
+      "status": "SHADOW",
+      "n": 190,
+      "ev_n": 190,
+      "wilson": 0.5663746636394145,
+      "ev": 0.6684210526315789,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "PULSE.dryup_sit": {
+      "id": "PULSE.dryup_sit",
+      "owner": "PULSE",
+      "status": "SHADOW",
+      "n": 1,
+      "ev_n": 1,
+      "wilson": 0.20654329147389294,
+      "ev": 2,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "PULSE.climax_sit": {
+      "id": "PULSE.climax_sit",
+      "owner": "PULSE",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "PULSE.absorb": {
+      "id": "PULSE.absorb",
+      "owner": "PULSE",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "PULSE.vol_lag_5m": {
+      "id": "PULSE.vol_lag_5m",
+      "owner": "PULSE",
+      "status": "SHADOW",
+      "n": 48,
+      "ev_n": 48,
+      "wilson": 0.9258973488472576,
+      "ev": 2.3125,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "TAPE.persist_imbalance": {
+      "id": "TAPE.persist_imbalance",
+      "owner": "TAPE",
+      "status": "SHADOW",
+      "n": 756,
+      "ev_n": 756,
+      "wilson": 0.48157771259190674,
+      "ev": -0.1865079365079365,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "TAPE.flip_after_persist": {
+      "id": "TAPE.flip_after_persist",
+      "owner": "TAPE",
+      "status": "SHADOW",
+      "n": 72,
+      "ev_n": 72,
+      "wilson": 0.6242391943879234,
+      "ev": 0.8611111111111112,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "TAPE.thin_sit": {
+      "id": "TAPE.thin_sit",
+      "owner": "TAPE",
+      "status": "SHADOW",
+      "n": 1,
+      "ev_n": 1,
+      "wilson": 0,
+      "ev": -2,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "TAPE.size_wipe": {
+      "id": "TAPE.size_wipe",
+      "owner": "TAPE",
+      "status": "SHADOW",
+      "n": 513,
+      "ev_n": 513,
+      "wilson": 0.5574079473898678,
+      "ev": 0.290448343079922,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VEL.spot_lead": {
+      "id": "VEL.spot_lead",
+      "owner": "VEL",
+      "status": "BENCH",
+      "n": 888,
+      "ev_n": 888,
+      "wilson": 0.04789187541022412,
+      "ev": -2.5968468468468466,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VEL.lag_catch_sit": {
+      "id": "VEL.lag_catch_sit",
+      "owner": "VEL",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VEL.lead_fade": {
+      "id": "VEL.lead_fade",
+      "owner": "VEL",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WHALE.proxy": {
+      "id": "WHALE.proxy",
+      "owner": "WHALE",
+      "status": "SHADOW",
+      "n": 148,
+      "ev_n": 148,
+      "wilson": 0.5619572372893418,
+      "ev": 0.7837837837837838,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WHALE.cluster": {
+      "id": "WHALE.cluster",
+      "owner": "WHALE",
+      "status": "SHADOW",
+      "n": 274,
+      "ev_n": 274,
+      "wilson": 0.5101513036194019,
+      "ev": -0.4927007299270073,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WHALE.absorb": {
+      "id": "WHALE.absorb",
+      "owner": "WHALE",
+      "status": "SHADOW",
+      "n": 9,
+      "ev_n": 9,
+      "wilson": 0.26664734574402965,
+      "ev": -0.8888888888888888,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CARRY.persist_fade": {
+      "id": "CARRY.persist_fade",
+      "owner": "CARRY",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CARRY.unwind": {
+      "id": "CARRY.unwind",
+      "owner": "CARRY",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CARRY.normalize_sit": {
+      "id": "CARRY.normalize_sit",
+      "owner": "CARRY",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CARRY.trend_carry": {
+      "id": "CARRY.trend_carry",
+      "owner": "CARRY",
+      "status": "SHADOW",
+      "n": 184,
+      "ev_n": 184,
+      "wilson": 0.9096667646617361,
+      "ev": 1.548913043478261,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CARRY.flip_print": {
+      "id": "CARRY.flip_print",
+      "owner": "CARRY",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHAIN.oi_with_price": {
+      "id": "CHAIN.oi_with_price",
+      "owner": "CHAIN",
+      "status": "LIVE",
+      "n": 1032,
+      "ev_n": 1032,
+      "wilson": 0.9399636802829888,
+      "ev": 1.567829457364341,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHAIN.oi_against": {
+      "id": "CHAIN.oi_against",
+      "owner": "CHAIN",
+      "status": "BENCH",
+      "n": 725,
+      "ev_n": 725,
+      "wilson": 0.055112844362472074,
+      "ev": -2.6510344827586207,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHAIN.oi_accel": {
+      "id": "CHAIN.oi_accel",
+      "owner": "CHAIN",
+      "status": "SHADOW",
+      "n": 18,
+      "ev_n": 18,
+      "wilson": 0.8241154494176252,
+      "ev": 1.0555555555555556,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHAIN.oi_stall": {
+      "id": "CHAIN.oi_stall",
+      "owner": "CHAIN",
+      "status": "SHADOW",
+      "n": 22,
+      "ev_n": 22,
+      "wilson": 0.7820151050048196,
+      "ev": 1.1363636363636365,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHAIN.oi_flush_sit": {
+      "id": "CHAIN.oi_flush_sit",
+      "owner": "CHAIN",
+      "status": "SHADOW",
+      "n": 6,
+      "ev_n": 6,
+      "wilson": 0.6096569663469354,
+      "ev": 1.1666666666666667,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CASCADE.proxy_flush": {
+      "id": "CASCADE.proxy_flush",
+      "owner": "CASCADE",
+      "status": "SHADOW",
+      "n": 1645,
+      "ev_n": 1645,
+      "wilson": 0.6814357379513091,
+      "ev": 0.33556231003039516,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CASCADE.early_flush_sit": {
+      "id": "CASCADE.early_flush_sit",
+      "owner": "CASCADE",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CASCADE.vol_no_oi": {
+      "id": "CASCADE.vol_no_oi",
+      "owner": "CASCADE",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CASCADE.exhaust": {
+      "id": "CASCADE.exhaust",
+      "owner": "CASCADE",
+      "status": "SHADOW",
+      "n": 5,
+      "ev_n": 5,
+      "wilson": 0.11761823115925325,
+      "ev": -1.4,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CASCADE.force_cluster": {
+      "id": "CASCADE.force_cluster",
+      "owner": "CASCADE",
+      "status": "SHADOW",
+      "n": 218,
+      "ev_n": 218,
+      "wilson": 0.7647993001438386,
+      "ev": 0.6559633027522935,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VOLT.dead_sit": {
+      "id": "VOLT.dead_sit",
+      "owner": "VOLT",
+      "status": "SHADOW",
+      "n": 2,
+      "ev_n": 2,
+      "wilson": 0.3423719528896193,
+      "ev": 1,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VOLT.expand_break": {
+      "id": "VOLT.expand_break",
+      "owner": "VOLT",
+      "status": "SHADOW",
+      "n": 9,
+      "ev_n": 9,
+      "wilson": 0.7008472464490406,
+      "ev": 1,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VOLT.atr_spike": {
+      "id": "VOLT.atr_spike",
+      "owner": "VOLT",
+      "status": "SHADOW",
+      "n": 379,
+      "ev_n": 379,
+      "wilson": 0.7478366616061675,
+      "ev": 0.941952506596306,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VOLT.coil_sit": {
+      "id": "VOLT.coil_sit",
+      "owner": "VOLT",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "VOLT.vol_hot": {
+      "id": "VOLT.vol_hot",
+      "owner": "VOLT",
+      "status": "SHADOW",
+      "n": 55,
+      "ev_n": 55,
+      "wilson": 0.8767630702509827,
+      "ev": 1.4727272727272727,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "ODDS.cheap_yes": {
+      "id": "ODDS.cheap_yes",
+      "owner": "ODDS",
+      "status": "BENCH",
+      "n": 128,
+      "ev_n": 128,
+      "wilson": 0,
+      "ev": -4.125,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STRIKE.itm_time": {
+      "id": "STRIKE.itm_time",
+      "owner": "STRIKE",
+      "status": "LIVE",
+      "n": 2011,
+      "ev_n": 2011,
+      "wilson": 0.9463964059307286,
+      "ev": 1.4783689706613625,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STRIKE.magnet_sit": {
+      "id": "STRIKE.magnet_sit",
+      "owner": "STRIKE",
+      "status": "SHADOW",
+      "n": 4,
+      "ev_n": 4,
+      "wilson": 0.5100999795960008,
+      "ev": 2.25,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CHEAP.value": {
+      "id": "CHEAP.value",
+      "owner": "CHEAP",
+      "status": "BENCH",
+      "n": 803,
+      "ev_n": 803,
+      "wilson": 0,
+      "ev": -3.4744707347447075,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "FADE.60s_rip": {
+      "id": "FADE.60s_rip",
+      "owner": "FADE",
+      "status": "BENCH",
+      "n": 655,
+      "ev_n": 655,
+      "wilson": 0.08683189825808214,
+      "ev": -2.2793893129770995,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "ORBIT.quiet_raise_bar": {
+      "id": "ORBIT.quiet_raise_bar",
+      "owner": "ORBIT",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "ORBIT.weekend_thin": {
+      "id": "ORBIT.weekend_thin",
+      "owner": "ORBIT",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "ORBIT.trend_day": {
+      "id": "ORBIT.trend_day",
+      "owner": "ORBIT",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CLOCK.session_prior": {
+      "id": "CLOCK.session_prior",
+      "owner": "CLOCK",
+      "status": "SHADOW",
+      "n": 9,
+      "ev_n": 9,
+      "wilson": 0.12058159868274292,
+      "ev": -1.6666666666666667,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "CLOCK.final_sit": {
+      "id": "CLOCK.final_sit",
+      "owner": "CLOCK",
+      "status": "SHADOW",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "INDEX.settle_fair": {
+      "id": "INDEX.settle_fair",
+      "owner": "INDEX",
+      "status": "LIVE",
+      "held_why": "settlement-index reads are judged per regime; graded and recorded, not heard, until 24 in this one",
+      "min_regime_n": 24,
+      "n": 218,
+      "ev_n": 218,
+      "wilson": 0.9671717469501803,
+      "ev": 5.967889908256881,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "INDEX.locked_avg": {
+      "id": "INDEX.locked_avg",
+      "owner": "INDEX",
+      "status": "LIVE",
+      "held_why": "settlement-index reads are judged per regime; graded and recorded, not heard, until 24 in this one",
+      "min_regime_n": 24,
+      "n": 185,
+      "ev_n": 185,
+      "wilson": 0.961444927178973,
+      "ev": 6.464864864864865,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WIRE.extreme_fng": {
+      "id": "WIRE.extreme_fng",
+      "owner": "WIRE",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WARDEN.both_down": {
+      "id": "WARDEN.both_down",
+      "owner": "WARDEN",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WARDEN.seq_gap": {
+      "id": "WARDEN.seq_gap",
+      "owner": "WARDEN",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WARDEN.derivs_down": {
+      "id": "WARDEN.derivs_down",
+      "owner": "WARDEN",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "WARDEN.semantic": {
+      "id": "WARDEN.semantic",
+      "owner": "WARDEN",
+      "status": "LIVE",
+      "n": 0,
+      "ev_n": 0,
+      "wilson": 0,
+      "ev": 0,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.rethink_1dst": {
+      "id": "STREAK.rethink_1dst",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 98,
+      "ev_n": 98,
+      "wilson": 0.9622786759045421,
+      "ev": 1.2040816326530612,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STREAK.rethink_c2eb": {
+      "id": "STREAK.rethink_c2eb",
+      "owner": "STREAK",
+      "status": "SHADOW",
+      "n": 411,
+      "ev_n": 411,
+      "wilson": 0.9907395979573891,
+      "ev": 2.148418491484185,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STRIKE.rethink_yr6z": {
+      "id": "STRIKE.rethink_yr6z",
+      "owner": "STRIKE",
+      "status": "SHADOW",
+      "n": 1440,
+      "ev_n": 1440,
+      "wilson": 0.93138749691815,
+      "ev": 1.4472222222222222,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    },
+    "STRIKE.rethink_zj9p": {
+      "id": "STRIKE.rethink_zj9p",
+      "owner": "STRIKE",
+      "status": "SHADOW",
+      "n": 1313,
+      "ev_n": 1313,
+      "wilson": 0.9273124519556751,
+      "ev": 1.4135567402894136,
+      "pocket": {
+        "ASIA_ENTRY": {
+          "n": 0,
+          "hits": 0
+        }
+      }
+    }
+  },
+  "published_availability": [
+    {
+      "seat": "WICK",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "DRIFT",
+      "selectable_live_cards": 1,
+      "authority_ready_cards": 1,
+      "authority_hold_reason": ""
+    },
+    {
+      "seat": "PULSE",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "TAPE",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "CARRY",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "CHAIN",
+      "selectable_live_cards": 1,
+      "authority_ready_cards": 1,
+      "authority_hold_reason": ""
+    },
+    {
+      "seat": "CASCADE",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "VOLT",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "STRIKE",
+      "selectable_live_cards": 1,
+      "authority_ready_cards": 1,
+      "authority_hold_reason": ""
+    },
+    {
+      "seat": "INDEX",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "no eligible LIVE card in this regime"
+    },
+    {
+      "seat": "STREAK",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "EXHAUST",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "WHALE",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "VEL",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "ODDS",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "CHEAP",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "FADE",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    },
+    {
+      "seat": "CLOCK",
+      "selectable_live_cards": 0,
+      "authority_ready_cards": 0,
+      "authority_hold_reason": "seat calibration incomplete"
+    }
+  ]
+}
