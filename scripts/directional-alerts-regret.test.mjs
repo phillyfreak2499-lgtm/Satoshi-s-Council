@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, stat, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { createRequire } from "node:module";
@@ -39,6 +39,35 @@ const copy = load("src/lib/desk/alert-copy.ts");
 const model = load("src/lib/desk/directional-regret.ts");
 const { RegretJournal } = load("src/lib/desk/regret-journal.server.ts");
 const close = Date.parse("2026-10-01T02:00:00Z");
+test("drained journal compacts atomically and concurrent appends survive restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "regret-compact-"));
+  try {
+    const j = new RegretJournal(root, 2);
+    await j.append({ id: 1 });
+    let release, started;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const entered = new Promise((resolve) => { started = resolve; });
+    const seen = [];
+    const draining = j.drain(async (row) => {
+      seen.push(row.id);
+      if (row.id === 1) { started(); await waiting; }
+    });
+    await entered;
+    await j.append({ id: 2 });
+    assert.equal(j.pending, 2, "slow SQL cannot stop durable appends");
+    release();
+    await draining;
+    assert.deepEqual(seen, [1, 2]);
+    const checkpoint = JSON.parse(await readFile(join(root, "regret.state.json"), "utf8"));
+    assert.equal(checkpoint.cursor, 0);
+    assert.equal((await stat(join(root, checkpoint.file))).size, 0);
+    assert.equal((await readdir(root)).filter((f) => f.endsWith(".jsonl")).length, 1);
+    await j.append({ id: 3 });
+    const recovered = new RegretJournal(root, 2);
+    await recovered.drain(async (row) => seen.push(row.id));
+    assert.deepEqual(seen, [1, 2, 3]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 test("approved titles and bodies are exact; tier badges and tags remain distinct", () => {
   const booked = copy.paperAlert("UP", 83, close);
   assert.equal(booked.title, "PAPER POSITION BOOKED · UP");
@@ -137,7 +166,7 @@ test("actual report SQL: official settlement, real fees, bands, repeat-frame ded
     await pg.exec(migration);
     await pg.exec(migration);
     await pg.exec(
-      "create table desk_ledger(ticker text, close_time timestamptz, winner text, entry_cents double precision, source text); create view desk_ledger_research as select * from desk_ledger;",
+      "create table desk_ledger(ticker text, close_time timestamptz, winner text, entry_cents double precision, source text, entry_lean text); create view desk_ledger_research as select * from desk_ledger;",
     );
     const sql = async (strings, ...args) =>
       (
@@ -181,15 +210,20 @@ test("actual report SQL: official settlement, real fees, bands, repeat-frame ded
             "final-chair",
           ],
         );
-      await pg.query("insert into desk_ledger values($1,$2,$3,$4,$5)", [
+      await pg.query("insert into desk_ledger values($1,$2,$3,$4,$5,$6)", [
         ticker,
         new Date(close),
         winner,
         booked ? 85 : null,
         "kalshi-result",
+        booked ? side : null,
       ]);
     }
+    await pg.query("update desk_ledger set entry_cents=85,entry_lean='DOWN' where ticker='A'");
     const r = await reportModule.directionalRegretReport();
+    assert.equal(r.windows.find((w) => w.ticker === "A").booked_later, false, "opposite-side booking is not a booked read");
+    assert.equal(r.bands.find((b) => b.band === "70–79.9¢").never_booked_net_cents, 23);
+    assert.equal(r.observations.filter((w) => w.ticker === "A").every((w) => !w.booked_later), true);
     const firstPage = await reportModule.directionalRegretReport(undefined, 1);
     assert.equal(firstPage.observations.length, 1);
     assert.equal(

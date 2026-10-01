@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { spec, specHash, register, residuals } from "../research/weather/store.mjs";
+import { spec, specHash, register, residuals, receipt, stop } from "../research/weather/store.mjs";
 import {
   dayWindow,
   forecastHigh,
@@ -14,7 +14,7 @@ import {
   pairedCI,
 } from "../research/weather/model.mjs";
 import { publicJson, marketPages } from "../research/weather/http.mjs";
-import { dueJobs, claimJob } from "../research/weather/runner.mjs";
+import { dueJobs, claimJob, cycle } from "../research/weather/runner.mjs";
 import { collect, settle } from "../research/weather/collector.mjs";
 import { primaryVerdict, privateReport, enforceStops } from "../research/weather/report.mjs";
 import { hourlyAccuracy } from "../research/hourly/report.mjs";
@@ -440,4 +440,55 @@ test("invalid fresh observation cannot refresh a stale verified floor", () => {
     floor: 68,
     latest: start + 60000,
   });
+});
+
+test("changed series and market rule identities stop the private study with raw evidence retained", async () => {
+  for (const changed of ["series", "market"]) {
+    const pg = new PGlite(), db = adapter(pg);
+    try {
+      await register(db);
+      const at = "2026-10-01T22:05:00Z";
+      let requests = 0;
+      const badMarkets = markets.map((m) => ({ ...m, rules_primary: "different climate source" }));
+      const io = {
+        publicJson: async (url) => {
+          requests++;
+          return { at, headers: {}, body: url.includes("/series/")
+            ? { series: { settlement_sources: [{ name: changed === "series" ? "Changed" : "The Weather Company" }] } }
+            : url.includes("/points/") ? { properties: { forecastHourly: "https://api.weather.gov/hourly" } }
+              : { properties: { updateTime: at, periods } } };
+        },
+        marketPages: async () => ({ markets: badMarkets, pages: [{ url: "https://external-api.kalshi.com/markets", at, headers: {}, body: { markets: badMarkets } }] }),
+      };
+      await assert.rejects(collect(db, spec.cities[0], "2026-10-02", "day_ahead", new Date(at), io), /collection stopped/);
+      const study = (await db.query("select * from weather_research.study")).rows[0];
+      assert.ok(study.stopped_at);
+      assert.match(study.stop_reason, /unexpected weather/);
+      assert.ok(Number((await db.query("select count(*) as n from weather_research.receipts")).rows[0].n) > 0);
+      assert.equal(Number((await db.query("select count(*) as n from weather_research.predictions")).rows[0].n), 0);
+      if (changed === "series") assert.equal(requests, 1, "source failure stops before further HTTP collection");
+    } finally { await pg.close(); }
+  }
+});
+
+test("receipt storage refuses an over-budget write and a daytime cycle checks stops before capture", async () => {
+  const pg = new PGlite(), db = adapter(pg);
+  try {
+    await register(db);
+    const capped = { query: (sql, args) => sql.includes("as stored, pg_column_size")
+      ? Promise.resolve({ rows: [{ stored: spec.max_raw_storage_bytes - 1, incoming: 2 }] })
+      : db.query(sql, args) };
+    await assert.rejects(receipt(capped, "nyc", "series", "url", {}, new Date().toISOString(), null), /receipt refused/);
+    assert.equal(Number((await db.query("select count(*) as n from weather_research.receipts")).rows[0].n), 0);
+    assert.match((await db.query("select stop_reason from weather_research.study")).rows[0].stop_reason, /storage budget/);
+    await db.query("update weather_research.study set stopped_at=null,stop_reason=null");
+    let captures = 0, checks = 0;
+    await cycle(db, new Date("2026-10-01T22:05:00Z"), {
+      enforceStops: async (client) => { checks++; await stop(client, "synthetic cap reached before daytime capture"); },
+      collect: async () => { captures++; }, settle: async () => {},
+    });
+    assert.equal(checks, 1);
+    assert.equal(captures, 0);
+    assert.equal(Number((await db.query("select count(*) as n from weather_research.jobs")).rows[0].n), 0);
+  } finally { await pg.close(); }
 });

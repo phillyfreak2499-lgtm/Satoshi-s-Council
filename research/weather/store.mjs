@@ -35,6 +35,14 @@ export async function residuals(client, city, slot, target, at) {
   ).rows.map((r) => Number(r.error));
 }
 export async function receipt(client, city, kind, url, body, at, sourceTime) {
+  const budget = (await client.query(
+    "select coalesce(sum(pg_column_size(body)),0)::bigint as stored, pg_column_size($2::jsonb)::bigint as incoming from weather_research.receipts where study=$1",
+    [spec.id, body],
+  )).rows[0];
+  if (Number(budget.stored) + Number(budget.incoming) > spec.max_raw_storage_bytes) {
+    await stop(client, "raw storage budget exceeded");
+    throw Error("raw storage budget exceeded: receipt refused");
+  }
   return (
     await client.query(
       `insert into weather_research.receipts(study,city,kind,url,received_at,source_time,body)

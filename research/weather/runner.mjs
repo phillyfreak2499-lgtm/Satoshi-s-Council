@@ -40,6 +40,8 @@ export async function cycle(
 ) {
   const registered = await register(client);
   if (registered.stopped_at) return;
+  await operations.enforceStops(client, now);
+  if ((await client.query("select stopped_at from weather_research.study where id=$1", [spec.id])).rows[0]?.stopped_at) return;
   if (
     registered.first_collection &&
     (now - Date.parse(registered.first_collection)) / 86400000 >= spec.max_calendar_days
@@ -78,6 +80,7 @@ export async function cycle(
       );
       console.error("weather private job failed", job.city.id, job.slot, String(error));
     }
+    await operations.enforceStops(client, now);
   }
   if (nightly) await operations.enforceStops(client, now);
 }

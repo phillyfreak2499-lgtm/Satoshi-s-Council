@@ -44,6 +44,10 @@ export async function collect(
     KALSHI + "/series/" + city.series,
     io.publicJson,
   );
+  if (!meta.body.series?.settlement_sources?.some((s) => s.name === "The Weather Company")) {
+    await stop(client, "unexpected weather series settlement source");
+    throw Error("unexpected weather series settlement source: collection stopped");
+  }
   const points = await recorded(
     client,
     city,
@@ -98,6 +102,10 @@ export async function collect(
       (m) =>
         m.rules_primary?.includes(city.climate) && m.rules_primary?.includes("The Weather Company"),
     );
+  if (!sourceOk) {
+    await stop(client, "unexpected weather market climate/source rule identity");
+    throw Error("unexpected weather market climate/source rule identity: collection stopped");
+  }
   const captured = ladder.pages.at(-1).at;
   const clock = localClock(new Date(captured), city.zone);
   const slotHour = slot === "day_ahead" ? spec.day_ahead_hour_local : Number(slot.slice(1));
