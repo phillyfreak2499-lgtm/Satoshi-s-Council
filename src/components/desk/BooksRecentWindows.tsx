@@ -53,6 +53,8 @@ function SitRunRow({
   tz: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Keep the run's data order; display its time range earliest to latest.
+  const [start, end] = Date.parse(from) > Date.parse(to) ? [to, from] : [from, to];
   return (
     <tr className="border-t border-border bg-surface-2/40">
       <td role="cell" data-label="Close" colSpan={5} className="py-2">
@@ -62,8 +64,8 @@ function SitRunRow({
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          {sitRunLabel({ kind: "sit-run", count, from, to, windows })} · {datedClose(from, tz)}
-          {count > 1 ? ` – ${datedClose(to, tz)}` : ""} · {open ? "collapse" : "expand"}
+          {sitRunLabel({ kind: "sit-run", count, from, to, windows })} · {datedClose(start, tz)}
+          {count > 1 ? ` – ${datedClose(end, tz)}` : ""} · {open ? "collapse" : "expand"}
         </button>
         {open ? (
           <ul className="mt-1 max-h-48 overflow-y-auto pl-3">
