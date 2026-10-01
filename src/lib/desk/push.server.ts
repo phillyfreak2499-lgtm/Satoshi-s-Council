@@ -1,3 +1,4 @@
+import { publishDiscordPaper } from "./discord-events.server";
 import {
   ownerVerification,
   rolloutReady,
@@ -433,6 +434,7 @@ export function notifyCall(
   source?: "RECOVERY_FAV85_V1",
   closeTime?: number,
 ): void {
+  publishDiscordPaper(lean, cents, ticker, closeTime, source);
   void (async () => {
     try {
       if (!(await subscriberAlertsReleased())) {

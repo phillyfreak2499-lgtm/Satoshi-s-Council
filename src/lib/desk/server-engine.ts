@@ -1,3 +1,4 @@
+import { publishDiscordLeans } from "./discord-events.server";
 import { directionAlreadyBooked, directionalAsk } from "./directional-regret";
 import { captureDirectionalRegret } from "./directional-regret.server";
 /**
@@ -1721,6 +1722,8 @@ async function tick(e: Eng) {
     e.recoveredWindow = null;
     e.lastError = null;
     e.lastTickAt = Date.now();
+    // Outbound publication only: this frame is now the public getServerFrame result.
+    publishDiscordLeans(snap, votes, chair, e.learner.knobs);
     await persistState(e);
     void flushLedger(e); // off the tick's critical path — a slow DB must never wedge grading
   } catch (err) {
