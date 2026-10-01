@@ -1,4 +1,4 @@
-import { directionAlreadyBooked } from "./directional-regret";
+import { directionAlreadyBooked, directionalAsk } from "./directional-regret";
 import { captureDirectionalRegret } from "./directional-regret.server";
 /**
  * The shared brain. One engine loop on the server: pulls the live tape,
@@ -1636,7 +1636,7 @@ async function tick(e: Eng) {
       const reasons: string[] = (admissionAudit?.checks ?? [])
         .filter(check => check.pass !== true && check.blocking !== false && check.id !== "direction" && check.id !== "quote")
         .map(check => `${check.label}: ${check.pass === null ? "unverified" : "requirement not met"}`);
-      const ask = chair.lean === "UP" ? (snap.yes_ask_exact ?? snap.yes_ask) : chair.lean === "DOWN" ? (snap.no_ask_exact ?? snap.no_ask) : 0;
+      const ask = directionalAsk(snap, chair);
       if (chair.lean !== "WAIT" && !paperBookEdgeOk(snap, chair.lean))
         reasons.push("non-positive after-fee booking edge");
       if (chair.lean !== "WAIT" && !paperBookTeamOk(chair, chair.lean))

@@ -16,8 +16,7 @@ export function regretObservation(
     snap.as_of >= snap.close_time
   )
     return null;
-  const quote =
-    chair.lean === "UP" ? (snap.yes_ask_exact ?? snap.yes_ask) : (snap.no_ask_exact ?? snap.no_ask);
+  const quote = directionalAsk(snap, chair);
   const ask = Number.isFinite(quote) && quote > 0 && quote < 100 ? quote : null;
   return {
     ticker: snap.ticker,
@@ -80,4 +79,13 @@ export function directionAlreadyBooked(
   return calls.some(
     (r) => r.ticker === snap.ticker && r.close_time === snap.close_time && r.lean === chair.lean,
   );
+}
+
+/** Measurement-only ask: never changes the production quote lane. */
+export function directionalAsk(snap: Snapshot, chair: Pick<ChairResult, "lean">) {
+  return chair.lean === "UP"
+    ? (snap.yes_ask_exact ?? snap.yes_ask)
+    : chair.lean === "DOWN"
+      ? (snap.no_ask_exact ?? snap.no_ask)
+      : 0;
 }
