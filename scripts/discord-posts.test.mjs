@@ -185,14 +185,17 @@ test("permanent 404 disables only its destination and DB failure never rejects t
 });
 
 
-test("full production engine and push source differ only by the two outbound publication hooks",()=>{
+test("engine and push source differ only by publication hooks and the reviewed settlement release guard",()=>{
+  const settlementGate="      if (!(await subscriberAlertsReleased())) {\n        lastLog = \"settlement alert held: owner two-tier verification required for this build\";\n        return;\n      }\n";
+  assert.equal(readFileSync('src/lib/desk/push.server.ts','utf8').split(settlementGate).length,2);
   const crypto=require('node:crypto');
   const engine=readFileSync('src/lib/desk/server-engine.ts','utf8')
     .replace('import { publishDiscordLeans } from "./discord-events.server";\n','')
     .replace('    // Outbound publication only: this frame is now the public getServerFrame result.\n    publishDiscordLeans(snap, votes, chair, e.learner.knobs);\n','');
   const push=readFileSync('src/lib/desk/push.server.ts','utf8')
     .replace('import { publishDiscordPaper } from "./discord-events.server";\n','')
-    .replace('  publishDiscordPaper(lean, cents, ticker, closeTime, source);\n','');
+    .replace('  publishDiscordPaper(lean, cents, ticker, closeTime, source);\n','')
+    .replace(settlementGate,'');
   assert.equal(crypto.createHash('sha256').update(engine).digest('hex'),'ac58ed7e3d21f99198457f0327a8d1978222f44112c6c290f77581d81e90317b');
   assert.equal(crypto.createHash('sha256').update(push).digest('hex'),'80615c0209a2a0435329ac934849df2d206d0238e9d7486145b49a766ddc0be2');
 });
@@ -226,3 +229,4 @@ test("losing settlement scoreboard includes the current loss and stored fees",as
   await f.outbox.drain();
   assert.equal(f.calls[1].p.embeds[0].fields.find(x=>x.name==='Paper scoreboard · all-time').value,'0W–1L · -85.0¢ net after fees');
 });
+
