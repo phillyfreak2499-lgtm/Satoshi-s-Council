@@ -13,7 +13,7 @@ function navigation() {
   return exports;
 }
 
-test("the Observatory adds wayfinding without dropping any existing destination", () => {
+test("the Observatory keeps every destination while mobile shortcuts stay focused", () => {
   const { SITE_DESTINATIONS } = navigation();
   const paths = Array.from(SITE_DESTINATIONS, item => item.href);
   for (const href of ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/gallery", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided"]) {
@@ -22,7 +22,11 @@ test("the Observatory adds wayfinding without dropping any existing destination"
   const shared = read("src/components/desk/CouncilNavigation.tsx");
   assert.match(shared, /const PRIMARY[^;]*"\/desk"[^;]*"\/books"[^;]*"\/training"[^;]*"\/lab"[^;]*"\/board"[^;]*"\/about"/);
   assert.doesNotMatch(shared, /PRIMARY[^;]*SHOP_URL/);
-  assert.match(shared, /const SHORTCUTS = PRIMARY;/);
+  assert.match(shared, /const SHORTCUTS: readonly SiteHref\[\] = \["\/desk", "\/books", "\/lab", "\/about"\];/,
+    "mobile shortcuts focus on the live desk, canonical record, research and orientation");
+  for (const href of ["/training", "/board"]) {
+    assert.ok(paths.includes(href), `${href} remains in the canonical menu even when it is not a mobile shortcut`);
+  }
   assert.ok(paths.includes("/?tab=settings"));
   assert.match(shared, /const menu: MenuItem\[\] = SITE_DESTINATIONS\.map/);
   assert.match(shared, /More<span/);
