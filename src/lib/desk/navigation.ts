@@ -1,5 +1,5 @@
 export const SHOP_URL = "https://satoshis-council-shop.fourthwall.com/";
-export type SitePath = "/" | "/desk" | "/chamber" | "/training" | "/books" | "/record" | "/hour" | "/lab" | "/arena" | "/board" | "/about" | "/faq" | "/legal" | "/gallery"
+export type SitePath = "/" | "/news" | "/desk" | "/chamber" | "/training" | "/books" | "/record" | "/hour" | "/lab" | "/arena" | "/board" | "/about" | "/faq" | "/legal" | "/gallery"
   | "/?tab=atelier" | "/?tab=settings" | "/?tab=crew" | "/?tab=structure" | "/?view=guided";
 export type SiteGroup = "Explore" | "Research" | "Desk tools" | "Help";
 export type SiteHref = SitePath | typeof SHOP_URL;
@@ -10,6 +10,7 @@ export const SITE_DESTINATIONS: readonly SiteDestination[] = [
   { href: "/training", label: "Learn", menuLabel: "Learn / Training", hint: "start with WICK", group: "Explore" },
   { href: "/chamber", label: "Chamber", menuLabel: "Chamber", hint: "desk commentary, not the roster", group: "Explore" },
   { href: "/gallery", label: "Gallery", menuLabel: "Gallery", hint: "live paper call as display art", group: "Explore" },
+  { href: "/news", label: "Bitcoin Wire", menuLabel: "Bitcoin Wire", hint: "news context only", group: "Explore" },
   { href: "/board", label: "Community", menuLabel: "Community", hint: "the Board: ideas and updates", group: "Explore" },
   { href: "/books", label: "Record", menuLabel: "Record / Paper books", hint: "paper results and replays", group: "Research" },
   { href: "/record", label: "This week", menuLabel: "Results / This week", hint: "the week on the record", group: "Research" },

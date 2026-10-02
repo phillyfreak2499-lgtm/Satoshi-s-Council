@@ -1,0 +1,14 @@
+# Proposed standalone cron service ONLY. Do not apply as part of the draft PR.
+services:
+  - type: cron
+    name: satoshi-bitcoin-wire
+    runtime: node
+    schedule: "*/15 * * * *"
+    buildCommand: npm ci --ignore-scripts
+    startCommand: node --experimental-strip-types scripts/bitcoin-wire/poll.mjs
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEWS_DATABASE_URL
+        sync: false
