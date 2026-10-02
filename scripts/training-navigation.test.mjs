@@ -12,7 +12,9 @@ test("every destination remains reachable once, in an intentional group", () => 
   const { SITE_DESTINATIONS, sitePathActive } = load("src/lib/desk/navigation.ts");
   const paths = Array.from(SITE_DESTINATIONS, (item) => item.href);
   assert.equal(new Set(paths).size, paths.length);
-  assert.deepEqual(paths.slice().sort(), ["/", "/desk", "/chamber", "/training", "/books", "/record", "/hour", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/gallery", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided", "https://satoshis-council-shop.fourthwall.com/"].sort());
+  assert.deepEqual(paths.slice().sort(), ["/", "/news", "/desk", "/chamber", "/training", "/books", "/record", "/hour", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/gallery", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided", "https://satoshis-council-shop.fourthwall.com/"].sort());
+  assert.equal(sitePathActive("/news", "/news"), true);
+  assert.equal(sitePathActive("/news-other", "/news"), false);
   assert.equal(sitePathActive("/training/wick", "/training"), true);
   assert.equal(sitePathActive("/training-other", "/training"), false);
   assert.equal(sitePathActive("/window/EXAMPLE", "/books"), true);

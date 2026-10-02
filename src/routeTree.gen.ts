@@ -22,6 +22,7 @@ import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as HourRouteImport } from './routes/hour'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as LegalRouteImport } from './routes/legal'
+import { Route as NewsRouteImport } from './routes/news'
 import { Route as RecordRouteImport } from './routes/record'
 import { Route as TrainingRouteImport } from './routes/training'
 import { Route as SeatIdRouteImport } from './routes/seat.$id'
@@ -94,6 +95,11 @@ const LegalRoute = LegalRouteImport.update({
   path: '/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NewsRoute = NewsRouteImport.update({
+  id: '/news',
+  path: '/news',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecordRoute = RecordRouteImport.update({
   id: '/record',
   path: '/record',
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
+  '/news': typeof NewsRoute
   '/record': typeof RecordRoute
   '/training': typeof TrainingRouteWithChildren
   '/seat/$id': typeof SeatIdRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
+  '/news': typeof NewsRoute
   '/record': typeof RecordRoute
   '/seat/$id': typeof SeatIdRoute
   '/training/$coach': typeof TrainingCoachRoute
@@ -181,6 +189,7 @@ export interface FileRoutesById {
   '/hour': typeof HourRoute
   '/lab': typeof LabRoute
   '/legal': typeof LegalRoute
+  '/news': typeof NewsRoute
   '/record': typeof RecordRoute
   '/training': typeof TrainingRouteWithChildren
   '/seat/$id': typeof SeatIdRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/hour'
     | '/lab'
     | '/legal'
+    | '/news'
     | '/record'
     | '/training'
     | '/seat/$id'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/hour'
     | '/lab'
     | '/legal'
+    | '/news'
     | '/record'
     | '/seat/$id'
     | '/training/$coach'
@@ -245,6 +256,7 @@ export interface FileRouteTypes {
     | '/hour'
     | '/lab'
     | '/legal'
+    | '/news'
     | '/record'
     | '/training'
     | '/seat/$id'
@@ -267,6 +279,7 @@ export interface RootRouteChildren {
   HourRoute: typeof HourRoute
   LabRoute: typeof LabRoute
   LegalRoute: typeof LegalRoute
+  NewsRoute: typeof NewsRoute
   RecordRoute: typeof RecordRoute
   TrainingRoute: typeof TrainingRouteWithChildren
   SeatIdRoute: typeof SeatIdRoute
@@ -366,6 +379,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LegalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/news': {
+      id: '/news'
+      path: '/news'
+      fullPath: '/news'
+      preLoaderRoute: typeof NewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/record': {
       id: '/record'
       path: '/record'
@@ -439,6 +459,7 @@ const rootRouteChildren: RootRouteChildren = {
   HourRoute: HourRoute,
   LabRoute: LabRoute,
   LegalRoute: LegalRoute,
+  NewsRoute: NewsRoute,
   RecordRoute: RecordRoute,
   TrainingRoute: TrainingRouteWithChildren,
   SeatIdRoute: SeatIdRoute,
