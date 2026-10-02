@@ -1483,7 +1483,14 @@ function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
   if(!quietCallEnabled()) return;
   try {
     const key=quietCaptureKey(ticker,close),capture=e.quietCaptures[key];
-    if(!capture) return;
+    if(!capture) {
+      if(quietWindowArmed(e.quietBook,close) && !e.quietBook.graded_keys.includes(key)) {
+        noteQuietMissed(e.quietBook,ticker,close);
+        void writeQuietMissed(ticker,close)
+          .catch((err:unknown)=>noteErr(e,"quiet",`identity missed ${key}: ${err instanceof Error?err.message:String(err)}`));
+      }
+      return;
+    }
     const {[key]:_done,...rest}=e.quietCaptures;e.quietCaptures=rest;
     if(markQuietIdentity(e.quietBook,ticker,close)) {
       void writeQuietGrade(capture,"SKIPPED_IDENTITY",[],Date.now())

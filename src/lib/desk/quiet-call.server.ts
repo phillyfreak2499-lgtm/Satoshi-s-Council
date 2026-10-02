@@ -90,6 +90,11 @@ export function writeQuietGrade(
 
 async function upsertGrade(c: QuietCapture, status: GradeStatus, rows: QuietGradeResult["rows"], gradedAt: number): Promise<void> {
   const db = await getSql();
+  // Restore the window receipt even when the original capture insert was lost.
+  await db`
+    insert into desk_quiet_windows (ticker, close_time, status) values (${c.ticker}, ${iso(c.close_time)}, 'CAPTURED')
+    on conflict (ticker, close_time) do nothing
+  `;
   for (const q of c.calls) {
     const r = status === "GRADED" ? rows.find((x) => x.seat === q.seat) ?? null : null;
     if (status === "GRADED" && !r) continue;

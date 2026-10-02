@@ -460,7 +460,12 @@ export function markQuietUncountable(book: QuietBook): void {
   book.skipped.uncountable += 1;
 }
 
-export function noteQuietMissed(book: QuietBook): void {
+export function noteQuietMissed(book: QuietBook, ticker?: string, close?: number): void {
+  if (ticker !== undefined && close !== undefined) {
+    const key = keyOf(ticker, close);
+    if (book.graded_keys.includes(key)) return;
+    book.graded_keys = [...book.graded_keys, key].slice(-QUIET_GRADED_KEY_CAP);
+  }
   book.missed_windows += 1;
 }
 
