@@ -1447,10 +1447,11 @@ function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): boolean {
   }
 }
 
-/** Undefined while dark (gradeWindow then runs exactly as before). */
+/** Dark operation settles retained captures only; it cannot create new research windows. */
 function quietGradeInput(e: Eng, snap: Snapshot): QuietGradeInput | undefined {
-  if (!quietCallEnabled()) return undefined;
-  return { book: e.quietBook, capture: e.quietCaptures[quietCaptureKey(snap.ticker, snap.close_time)] ?? null };
+  const capture = e.quietCaptures[quietCaptureKey(snap.ticker, snap.close_time)] ?? null;
+  if (!quietCallEnabled() && !capture) return undefined;
+  return { book: e.quietBook, capture };
 }
 
 /** After the learner pass: retire the capture, note a MISSED window, write the row status. */
@@ -1480,9 +1481,9 @@ function settleQuiet(e: Eng, snap: Snapshot, quiet: QuietGradeInput, countable: 
 
 /** Retire an exact identity fault without grading or teaching the learner. */
 function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
-  if(!quietCallEnabled()) return;
+  const key=quietCaptureKey(ticker,close),capture=e.quietCaptures[key];
+  if(!quietCallEnabled() && !capture) return;
   try {
-    const key=quietCaptureKey(ticker,close),capture=e.quietCaptures[key];
     if(!capture) {
       if(quietWindowArmed(e.quietBook,close) && !e.quietBook.graded_keys.includes(key)) {
         noteQuietMissed(e.quietBook,ticker,close);
