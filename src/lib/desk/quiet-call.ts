@@ -847,8 +847,9 @@ export function evaluateKill(rows: readonly QuietRow[], book: QuietBook, now = 0
   const g = graded(rows);
   // K0 — integrity (extends, never retires).
   const reasons: string[] = [];
-  const eligibleWindows = book.graded_windows + book.missed_windows;
-  const coverage = eligibleWindows ? book.graded_windows / eligibleWindows : 0;
+  const capturedWindows = book.graded_windows + book.skipped.chalk + book.skipped.uncountable + book.skipped.identity;
+  const eligibleWindows = capturedWindows + book.missed_windows;
+  const coverage = eligibleWindows ? capturedWindows / eligibleWindows : 0;
   if (coverage < 0.9) reasons.push("COVERAGE");
   const rebuilt = statsBySeat(g);
   const drift = QUIET_SEATS.filter((s) => {

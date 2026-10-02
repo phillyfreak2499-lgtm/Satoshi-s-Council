@@ -433,3 +433,5 @@ The kill evaluator now queues its audit-table read behind already-issued capture
 ### Review correction — pending retention and identity retirement
 
 Quiet captures retain `PENDING_CAP + 1`: every retained pending settlement plus the currently active window. Sanitization and tick capture share that bound. Official identity faults in both immediate settlement and pending recovery retire the exact capture as SKIPPED_IDENTITY, increment its isolated skip count once and persist the research state without grading or teaching. The original engine hash remains unchanged after stripping these enumerated research taps.
+
+Capture coverage counts graded plus captured-and-skipped windows against captures plus missed windows; statistical K1/K2 samples still use GRADED rows only. The first new capture makes the normal end-of-tick state save forced, so the eight-second throttle cannot acknowledge a capture without persisting its restart state. Duplicate/dark ticks retain the normal persistence behavior.

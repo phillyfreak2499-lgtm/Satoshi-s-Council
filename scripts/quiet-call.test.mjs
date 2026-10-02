@@ -703,3 +703,5 @@ test("#27 rebuildBookFromRows equals the incrementally built book over a 300-win
   const strip = (b) => JSON.parse(JSON.stringify({ seats: b.seats, graded_windows: b.graded_windows }));
   assert.deepEqual(strip(rebuilt), strip(book));
 });
+
+test('#28 K0 coverage includes captured skips without including them in statistical grades',async()=>{const m=await load(),book=m.q.freshQuietBook(1);book.graded_windows=500;book.missed_windows=60;book.skipped={chalk:40,uncountable:40,identity:20};const result=m.q.evaluateKill([],book,1);assert.equal(result.k0.coverage,600/660);assert.ok(!result.k0.reasons.includes('COVERAGE'));assert.equal(result.k1.seats.length,0);});

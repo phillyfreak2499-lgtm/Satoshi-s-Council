@@ -211,9 +211,10 @@ function stripQuiet(src) {
   s = once(s, "    if (quiet?.capture) markQuietUncountable(quiet.book);\n");
   s = once(s, "  if (quiet) settleQuiet(e, snap, quiet, isCountable(snap.close_time));\n");
   s = cut(s, "// ---------------------------------------------------------------- QUIET_CALL_V1\n", "function markPending(e: Eng, snap: Snapshot) {");
-  s = once(s, "    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.\n    noteQuietCapture(e, snap, votes);\n");
+  s = once(s, "    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.\n    const quietCaptured = noteQuietCapture(e, snap, votes);\n");
   s = once(s, "      retireQuietIdentity(e,p.ticker,p.close_time);\n");
   s = once(s, "    retireQuietIdentity(e,w.ticker,w.close_time);\n");
+  s = once(s, "    await persistState(e, quietCaptured);\n", "    await persistState(e);\n");
   const hooks = s.split(" runQuietReview(e); }").length - 1;
   if (hooks !== 3) throw new Error(`expected 3 huddle hooks, found ${hooks}`);
   s = s.split(" runQuietReview(e); }").join(" }");

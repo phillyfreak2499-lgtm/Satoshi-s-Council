@@ -1427,21 +1427,23 @@ async function applyGrade(
 // learner, a vote, the chair, the call log or anything getServerFrame returns.
 
 /** Read-only tap on the tick: capture each seat's quiet call once per window. */
-function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): void {
-  if (!quietCallEnabled()) return;
+function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): boolean {
+  if (!quietCallEnabled()) return false;
   try {
     // First enabled tick arms the ledger: capture starts with the NEXT window.
     armQuiet(e.quietBook, snap, Date.now());
-    if (!quietWindowArmed(e.quietBook, snap.close_time)) return;
+    if (!quietWindowArmed(e.quietBook, snap.close_time)) return false;
     const key = quietCaptureKey(snap.ticker, snap.close_time);
-    if (e.quietCaptures[key] || e.quietBook.graded_keys.includes(key) || e.gradedKeys.includes(jobKey(snap.ticker, snap.close_time))) return;
-    if (!quietCaptureEligible(snap)) return;
+    if (e.quietCaptures[key] || e.quietBook.graded_keys.includes(key) || e.gradedKeys.includes(jobKey(snap.ticker, snap.close_time))) return false;
+    if (!quietCaptureEligible(snap)) return false;
     const capture = buildCapture(snap, votes, e.learner, e.settings.mutes, runningBuildSha());
     const kept = Object.entries({ ...e.quietCaptures, [key]: capture }).sort((a, b) => a[1].close_time - b[1].close_time);
     e.quietCaptures = Object.fromEntries(kept.slice(-QUIET_CAPTURE_CAP));
     void writeQuietCapture(capture).catch((err: unknown) => noteErr(e, "quiet", `capture ${key}: ${err instanceof Error ? err.message : String(err)}`));
+    return true;
   } catch (err) {
     noteErr(e, "quiet", `capture: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
   }
 }
 
@@ -1855,7 +1857,7 @@ async function tick(e: Eng) {
     await settleIfNeeded(e, snap, votes, chair, prev);
     noteGradeCand(e, snap, votes, chair);
     // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.
-    noteQuietCapture(e, snap, votes);
+    const quietCaptured = noteQuietCapture(e, snap, votes);
     if (!e.learner.window_memory.entry_lean && chair.lean !== "WAIT") {
       e.learner.window_memory.entry_lean = chair.lean;
     }
@@ -1868,7 +1870,7 @@ async function tick(e: Eng) {
     e.lastTickAt = Date.now();
     // Outbound publication only: this frame is now the public getServerFrame result.
     publishDiscordLeans(snap, votes, chair, e.learner.knobs);
-    await persistState(e);
+    await persistState(e, quietCaptured);
     void flushLedger(e); // off the tick's critical path — a slow DB must never wedge grading
   } catch (err) {
     e.lastError = err instanceof Error ? err.message : String(err);
