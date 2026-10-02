@@ -4,6 +4,10 @@
  *  into it. Every kick is fire-and-forget — health stays instant and cannot be
  *  failed by feeds, research, or the database. */
 export default function healthz() {
+  // Private paired confidence-gag study. Disabled unless explicitly activated.
+  void import("../../src/lib/desk/council-voice-collector.server")
+    .then((m) => m.ensureVoiceCapture())
+    .catch(() => {});
   // Owner-requested execution experiments. Separate paper-only collector, default OFF.
   void import("../../src/lib/desk/execution-lab.server")
     .then((m) => m.ensureExecutionLab())

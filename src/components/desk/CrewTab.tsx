@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Tip } from "./Tip";
 import { RETIRED_SEATS } from "@/lib/desk/crew";
+import { BotTrackRecords } from "./BotTrackRecords";
 
 type Report = {
   seat: string;
@@ -155,6 +156,7 @@ export function CrewTab() {
 
   return (
     <div className="grid gap-3 p-3">
+      <BotTrackRecords />
       <Section k="crew.sweep" title={`SWEEP · scorecard${crew.day ? ` · ${crew.day}` : ""}`}>
         <div className="mb-2 font-mono text-micro text-subtle">
           Last 7 days per seat. Reads = had a side; spoke = cleared its bar; mid-window = right and paid at the ask, 7.5 minutes out. Bar {crew.bar}.
