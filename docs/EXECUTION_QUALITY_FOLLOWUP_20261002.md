@@ -25,10 +25,10 @@ Store:
 - study/protocol hash, build SHA, call ID, ticker, close, side, entry limit and quantity;
 - signal-observed time, venue quote/event time, receipt time, sequence if available;
 - both sides' validated book levels and quantities, preserving actual depth units;
-- each frozen hypothetical submission time, first eligible contemporaneous observation, quote age and actual observation offset;
+- each frozen hypothetical order-arrival time, reconstructed book effective at arrival, last eligible event/receipt time and quote age;
 - classification, reason, hypothetical quantity and price, fees, official outcome and after-fee result.
 
-Time selection must be causal: first observation at or after the hypothetical submission timestamp and within frozen tolerance, never a prior quote or future-best price. Separate event time from receipt time; reject future timestamps, cross-window observations, stale or inconsistent books and sequence gaps. Missing depth or capture is UNKNOWN, not NO_FILL and not zero P&L.
+Time selection must be causal: reconstruct the sequence-valid book effective at each hypothetical order-arrival time using only events received at or before that instant. A resting level received earlier remains eligible while unchanged and within the frozen freshness limit. Never wait for the next update, use a future-best price, or introduce liquidity received after arrival. Separate event time from receipt time; reject future event timestamps, cross-window observations, stale or inconsistent books and sequence gaps. If an effective book cannot be reconstructed, classify UNKNOWN rather than NO_FILL or zero P&L. An offset scenario must reconstruct its own arrival-time book; the sampling tolerance never permits later receipts to supply a fill.
 
 Use IOC semantics: consume only observed contra-side depth within the original limit, once; no retry, chase or price-limit widening. Record FULL_SIMULATED, PARTIAL_SIMULATED, NO_FILL_SIMULATED, UNKNOWN or EXCLUDED. At one contract, partial is possible only if validated venue units support it. These are depth-supported simulations, never proof of actual execution. A known zero fill has zero hypothetical position P&L and remains in the valid opportunity denominator.
 
@@ -38,7 +38,7 @@ For exits, any later extension must simulate both entry and exit and give HOLD t
 
 Primary purpose is measurement, not picking a strategy winner. Report opportunities, valid coverage, unknowns/exclusions, simulated fill rate, quote age, timing offset, price difference and after-fee result by frozen timing scenario. Include paired quote-model comparison on identical valid opportunities; publish full scenario results, not only the best. No backfill, tuning, automatic promotion or real orders.
 
-Require tests for canonical-versus-pilot entry, causal timestamp selection, side conversion, depth units, insufficient depth, missing depth, stale/future quotes, expiry, duplicate/sequence gaps, fees and official outcome joins. Persistence tests must cover restart, durable exclusions, duplicate signals and protocol mismatch. Verify governor behavior and actual CPU/DB/storage measurements before activation; respect alert holds. Runtime and activation are presently unverified.
+Require tests for canonical-versus-pilot entry, causal arrival-time book reconstruction (unchanged prior liquidity, post-arrival liquidity exclusion and unavailable/sequence-invalid books), side conversion, depth units, insufficient depth, missing depth, stale/future quotes, expiry, duplicate/sequence gaps, fees and official outcome joins. Persistence tests must cover restart, durable exclusions, duplicate signals and protocol mismatch. Verify governor behavior and actual CPU/DB/storage measurements before activation; respect alert holds. Runtime and activation are presently unverified.
 
 ## Shared project state contract
 
