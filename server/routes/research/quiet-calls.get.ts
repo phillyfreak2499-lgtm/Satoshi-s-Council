@@ -17,7 +17,7 @@ export default async function quietCallsResearch(event: { req: { headers: Header
     if (!adminKeyOk(key)) return new Response("not found", { status: 404 });
     const { quietLedgerSnapshot } = await import("../../../src/lib/desk/server-engine");
     const { quietReport } = await import("../../../src/lib/desk/quiet-call.server");
-    const snap = quietLedgerSnapshot();
+    const snap = await quietLedgerSnapshot();
     return json(await quietReport(snap.book, snap.enabled, snap.pending_captures));
   } catch (err) {
     return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);

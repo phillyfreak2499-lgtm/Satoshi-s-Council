@@ -419,7 +419,13 @@ test("#41 public leak rail: nothing quiet reaches /frame, the learner, or a vote
 });
 
 test("#42 route auth: header-only admin key, 404 otherwise, no-store, authority block, not in the sitemap", async () => {
-  await load();
+  const m = await load();
+  // Supply a restored, already-started synthetic engine: never start network timers.
+  const priorEngine = globalThis.__satoshiServerEngine__;
+  const reportEngine = engineFor(m);
+  reportEngine.started = true;
+  reportEngine.ready = Promise.resolve();
+  globalThis.__satoshiServerEngine__ = reportEngine;
   const route = read("server/routes/research/quiet-calls.get.ts");
   assert.match(route, /headers\.get\("x-desk-admin"\)/);
   assert.doesNotMatch(route, /searchParams|get\("key"\)/);
@@ -437,7 +443,7 @@ test("#42 route auth: header-only admin key, 404 otherwise, no-store, authority 
     assert.deepEqual(body.authority, { production_authority: "NONE", promotes_nothing: true, books_nothing: true, paper_only: true, simulated_only: true });
     assert.equal(body.board.v, "QUIET_CALL_V1");
     assert.equal(body.enabled, false);
-  } finally { delete process.env.DESK_ADMIN_KEY; }
+  } finally { delete process.env.DESK_ADMIN_KEY; globalThis.__satoshiServerEngine__ = priorEngine; }
   assert.doesNotMatch(read("src/lib/desk/site.server.ts"), /quiet/i, "sitemap must not list the route");
   for (const dir of ["src/routes", "src/components"]) {
     const { execSync } = await import("node:child_process");
@@ -616,3 +622,5 @@ test('#50 a new capture forces the real tick save through the throttle before re
  test('#53 durable quiet outbox recovers failed grades and missed receipts after restart without credit duplication',async()=>{const m=await load(),sql=await m.db.getSql();on();const e=engineFor(m);arm(m,e);const w=win(),votes=votesFor(m.types.SEAT_IDS),key=`${w.ticker}:${w.close}`;m.h.noteQuietCapture(e,snap(w,11.5),votes);await waitFor(async()=>(await rowsOf(m,w.ticker)).length===20,'capture');await sql`alter table desk_quiet_calls rename to desk_quiet_calls_outage`;await sql`alter table desk_quiet_windows rename to desk_quiet_windows_outage`;try{await m.h.applyGrade(e,snap(w,0.05),votes,chairOf(),'UP','test');await waitFor(()=>e.quietWriting.size===0,'failed grade acknowledgement');assert.ok(e.quietWrites[key]);assert.equal(e.quietCaptures[key],undefined);const missed=win();await m.h.applyGrade(e,snap(missed,0.05),votes,chairOf(),'DOWN','test');await waitFor(()=>e.quietWriting.size===0,'failed missed acknowledgement');assert.equal(Object.keys(e.quietWrites).length,2);await m.h.persistState(e,true);}finally{await sql`alter table desk_quiet_calls_outage rename to desk_quiet_calls`;await sql`alter table desk_quiet_windows_outage rename to desk_quiet_windows`;off();}for(const row of e.quietWrites[key].rows.slice(0,3)){await sql`update desk_quiet_calls set grade_status='GRADED',finish=${row.finish},hit=${row.hit},cents=${row.cents},coin_cents=${row.coin_cents} where ticker=${w.ticker} and seat=${row.seat}`;}const r=engineFor(m);await m.h.loadState(r);assert.equal(Object.keys(r.quietWrites).length,2);const n=r.quietBook.graded_windows,learner=r.learner.graded_windows;m.h.flushQuietWrites(r);await waitFor(()=>Object.keys(r.quietWrites).length===0,'recovered acknowledged outbox');assert.equal(r.quietBook.graded_windows,n);assert.equal(r.learner.graded_windows,learner);assert.ok((await rowsOf(m,w.ticker)).every(x=>x.grade_status==='GRADED'&&(x.hit===0||x.hit===1)));const windows=await sql`select status from desk_quiet_windows where ticker=${w.ticker}`;assert.equal(windows[0].status,'CAPTURED');await m.h.persistState(r,true);const again=engineFor(m);await m.h.loadState(again);assert.deepEqual(again.quietWrites,{});});
 
  test('#54 report reads behind queued grades and freezes its invocation cohort',async()=>{const m=await load(),srv=await vite.ssrLoadModule('/src/lib/desk/quiet-call.server.ts');const w=win(),capture=captureFor(m,w,m.skills.freshLearner()),book=m.q.freshQuietBook(capture.as_of),result=m.q.gradeQuiet({book,capture},snap(w,0.05),'UP','GRADE',m.learner.creditDirectional);const grade=srv.writeQuietGrade(capture,'GRADED',result.rows,Date.now());const report=srv.quietReport(book,true,0);book.seats.DRIFT.all.n+=1;const w2=win(),c2=captureFor(m,w2,m.skills.freshLearner()),b2=m.q.freshQuietBook(c2.as_of),r2=m.q.gradeQuiet({book:b2,capture:c2},snap(w2,0.05),'UP','GRADE',m.learner.creditDirectional);const later=srv.writeQuietGrade(c2,'GRADED',r2.rows,Date.now());const got=await report;assert.equal(got.reconciliation.ok,true);assert.deepEqual(got.reconciliation.drift_seats,[]);assert.equal(got.reconciliation.table_windows,1);await Promise.all([grade,later]);});
+
+ test('#55 owner report waits for restored engine state before freezing its book',async()=>{const m=await load(),e=engineFor(m);let release,done=false;e.ready=new Promise(r=>{release=r;});const pending=m.h.quietSnapshotAfterReady(e).then(x=>{done=true;return x;});await new Promise(r=>setImmediate(r));assert.equal(done,false);e.quietBook=m.q.freshQuietBook(1234);e.quietBook.missed_windows=7;release();const result=await pending;assert.equal(result.book.activated_at,1234);assert.equal(result.book.missed_windows,7);e.quietBook.missed_windows=8;assert.equal(result.book.missed_windows,7);const source=read('src/lib/desk/server-engine.ts');assert.match(source,/quietLedgerSnapshot\(\)[\s\S]*?ensureServerEngine\(\);\s*return quietSnapshotAfterReady\(eng\(\)\);/);assert.match(read('server/routes/research/quiet-calls.get.ts'),/const snap = await quietLedgerSnapshot\(\);/);});

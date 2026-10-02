@@ -1547,13 +1547,17 @@ function runQuietReview(e: Eng): void {
 }
 
 /** Admin research route only (header-authenticated). A deep copy: callers cannot mutate the engine. */
-export function quietLedgerSnapshot(): { enabled: boolean; book: QuietBook; pending_captures: number } {
-  const e = eng();
+export async function quietLedgerSnapshot(): Promise<{ enabled: boolean; book: QuietBook; pending_captures: number }> {
+  ensureServerEngine();
+  return quietSnapshotAfterReady(eng());
+}
+async function quietSnapshotAfterReady(e:Eng):Promise<{ enabled:boolean;book:QuietBook;pending_captures:number }> {
+  if(e.ready) await e.ready;
   return { enabled: quietCallEnabled(), book: structuredClone(e.quietBook), pending_captures: Object.keys(e.quietCaptures).length };
 }
 
 /** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
-export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites };
+export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites, quietSnapshotAfterReady };
 
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);
