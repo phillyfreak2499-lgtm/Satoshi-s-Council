@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import ts from 'typescript';
 import vm from 'node:vm';
 let vite,m;
-async function setup(){if(m)return m;vite=await createServer({configFile:false,envDir:false,resolve:{alias:{'@':`${process.cwd()}/src`}},server:{middlewareMode:true,hmr:false},appType:'custom',logLevel:'silent'});const names=['skills','demo','bots','council-voice-shadow','signal-book-shadow','council-authority'];const modules=await Promise.all(names.map(n=>vite.ssrLoadModule(`/src/lib/desk/${n}.ts`)));m=Object.fromEntries(names.map((n,i)=>[n,modules[i]]));return m;}
+async function setup(){if(m)return m;vite=await createServer({configFile:false,envDir:false,resolve:{alias:{'@':`${process.cwd()}/src`}},server:{middlewareMode:true,hmr:false},appType:'custom',logLevel:'silent'});const names=['skills','demo','bots','council-voice-shadow','signal-book-shadow','council-authority','component-receipts','patterns'];const modules=await Promise.all(names.map(n=>vite.ssrLoadModule(`/src/lib/desk/${n}.ts`)));m=Object.fromEntries(names.map((n,i)=>[n,modules[i]]));return m;}
 test.after(async()=>await vite?.close());
 test('pre-registered kills never promote a candidate',async()=>{const m=await setup(),kill=m['council-voice-shadow'].voiceKillDecision;const base={validWindows:20,invalidWindows:0,pairedDelta:0,integrityViolations:0};assert.equal(kill(base),'CONTINUE_SHADOW');assert.equal(kill({...base,pairedDelta:-100}),'KILL_ECONOMICS');assert.equal(kill({...base,invalidWindows:2}),'PAUSE_CAPTURE');assert.equal(kill({...base,integrityViolations:1}),'KILL_INTEGRITY');assert.equal(kill({...base,pairedDelta:NaN}),'PAUSE_INVALID_SUMMARY');assert.equal(kill({...base,pairedDelta:1000}),'CONTINUE_SHADOW');});
 async function fixture(){const m=await setup(),learner=m.skills.freshLearner();const snap=m.demo.demoTick(m.demo.newDemoWindow(learner.window_memory,450_000),learner.window_memory);Object.assign(snap,{demo:false,as_of:1790937000000,close_time:1790937450000});const votes=m.bots.runBots(snap,learner);const drift=votes.find(v=>v.seat==='DRIFT');Object.assign(drift,{lean:'WAIT',forced_sit:true,raw_lean:'UP',raw_conf:40,confidence:70,skill_used:'DRIFT.aligned_3h',skill_status:'LIVE',health:'LIVE',feed_age_s:1});return{snap,votes,learner,settings:{adaptive_bar:true,bar_override:null,mutes:[],beast:false},lastLean:'WAIT',now:snap.as_of};}
@@ -20,3 +20,32 @@ test('bad components fold individually; good components scale independently; fut
 test('public records use actual SQL: official-only, raw vs final cohorts, missing seats and no writes',async()=>{const db=new PGlite();try{await db.exec('create table desk_ledger_research(close_time timestamptz,seats jsonb,source text,winner text)');const at=Date.parse('2026-10-02T12:00:00Z');for(const [source,winner,lean] of [['kalshi-result','UP','WAIT'],['kalshi-result','DOWN','DOWN'],['spot-derived','UP','UP']])await db.query('insert into desk_ledger_research values($1,$2,$3,$4)',[new Date(at-1000).toISOString(),JSON.stringify({DRIFT:{raw_lean:'UP',lean}}),source,winner]);const sql=async(strings,...values)=>{let q=strings[0];for(let i=0;i<values.length;i++)q+=`$${i+1}`+strings[i+1];return(await db.query(q,values)).rows;};const exp={};const code=ts.transpileModule(readFileSync('src/lib/desk/bot-records.server.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports:exp,require:k=>k==='@/lib/db'?{getSql:async()=>sql}:k==='./types'?{SEAT_IDS:['DRIFT','WICK']}:k==='./crew'?{NON_VOTERS:[],RETIRED_SEATS:{}}:assert.fail(k),Date});const report=await exp.botRecords(at);assert.equal(report.rows[0].windows,2);assert.equal(report.rows[0].raw_hits,1);assert.equal(report.rows[0].final_hits,1);assert.equal(report.rows[0].suppressed,1);assert.equal(report.rows[1].raw_n,0);assert.equal((await db.query('select count(*)::int as n from desk_ledger_research')).rows[0].n,3);}finally{await db.close();}});
 
 test('delayed official grades are unavailable before their actual receipt time',async()=>{const m=await setup(),s=m['signal-book-shadow'];const signal={seat:'DRIFT',kind:'delay',version:'v1',side:'UP',confidence:60,at:100};const book=s.gradeSignals(s.blankSignalBook(),{ticker:'t',close:900000,winner:'UP',source:'kalshi-result',gradedAt:910000},[{signal,ask:82,fee:2}]);assert.throws(()=>s.tuneSignals(book,[{...signal,at:905000}],905000));assert.equal(s.tuneSignals(book,[{...signal,at:911000}],911000).length,1);});
+
+
+test('semantic DRIFT receipts use each component direction without invented confidence',async()=>{
+  const f=await fixture(),m=await setup();Object.assign(f.snap,{health:{...f.snap.health,spot_ok:true,spot:"LIVE",spot_divergent:false},spot_age_s:1,ret5:.002,ret15:.003,ret30:.004,ret1h:.004,candles_1m:[],candles_5m:[]});
+  const before=JSON.stringify(f.snap),rows=m['component-receipts'].componentReceipts(f.snap,f.now);
+  assert.deepEqual(rows.map(r=>[r.kind,r.side]),[['aligned_returns','UP'],['acceleration','UP']]);
+  assert.ok(rows.every(r=>r.at===f.now && r.ticker===f.snap.ticker && !('confidence' in r)));
+  assert.equal(JSON.stringify(f.snap),before);
+  Object.assign(f.snap,{ret5:-.002,ret15:-.003,ret30:-.004});
+  assert.ok(m['component-receipts'].componentReceipts(f.snap,f.now).every(r=>r.side==='DOWN'));
+});
+test('component observations reject future stale demo and invalid return inputs',async()=>{
+  const f=await fixture(),m=await setup();Object.assign(f.snap,{health:{...f.snap.health,spot_ok:true,spot:"LIVE",spot_divergent:false},spot_age_s:1});
+  for(const change of [{demo:true},{health:{...f.snap.health,spot_ok:false}},{spot_age_s:9},{spot_age_s:-1},{ret5:NaN},{close_time:NaN},{as_of:f.now+1}])
+    assert.deepEqual(m['component-receipts'].componentReceipts({...f.snap,...change},f.now),[]);
+  assert.deepEqual(m['component-receipts'].componentReceipts(f.snap,f.now+9000),[]);
+});
+test('WICK receipts agree with real confirmed marks and ignore unavailable candles',async()=>{
+  const f=await fixture(),m=await setup();Object.assign(f.snap,{health:{...f.snap.health,spot_ok:true,spot:"LIVE",spot_divergent:false},spot_age_s:1});
+  const bar=(i)=>({t:f.now-(8-i)*60000,open:118,high:120,low:117,close:119,volume:100,closed:true,receipt_ts:f.now-1,source:'test'});
+  const bars=Array.from({length:7},(_,i)=>bar(i));Object.assign(bars[4],{open:101,high:102,low:99,close:100});Object.assign(bars[5],{open:99.5,high:101.6,low:99.4,close:101.5});Object.assign(bars[6],{open:101.5,high:103,low:101,close:102.5});
+  f.snap.candles_1m=bars;f.snap.candles_5m=[];
+  const read=m.patterns.readWick(bars,m.patterns.readWick([]).structure.trend);
+  const expected=read.marks.filter(x=>x.i>=read.slice.length-6 && x.confirmed && x.contextOk && ['UP','DOWN'].includes(x.lean));assert.ok(expected.length>0);
+  const rows=m['component-receipts'].componentReceipts(f.snap,f.now).filter(x=>x.seat==='WICK');
+  assert.deepEqual(rows.map(x=>[x.kind,x.side,x.evidence.pattern_at]),expected.map(x=>[x.kind,x.lean,read.slice[x.i].t]));
+  const future={...bars[6],t:f.now+60000,receipt_ts:f.now+1};
+  assert.deepEqual(m['component-receipts'].componentReceipts({...f.snap,candles_1m:[...bars,future]},f.now),m['component-receipts'].componentReceipts(f.snap,f.now));
+});
