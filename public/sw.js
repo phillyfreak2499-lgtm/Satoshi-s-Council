@@ -16,7 +16,7 @@ self.addEventListener("push", (e) => {
     self.registration.showNotification(title, {
       body: d.body || "",
       icon: d.icon || "/__grok/icon-180.png",
-      badge: d.icon || "/__grok/icon-180.png",
+      badge: d.badge || d.icon || "/__grok/icon-180.png",
       tag: d.tag || "desk",
       renotify: false,
       data: { url: d.url || "/" },

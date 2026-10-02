@@ -1,17 +1,14 @@
 /**
  * SECTION 1 — the live decision strip.
  *
- * Everything a reader needs in the first ten seconds, in one band: where Bitcoin
- * sits against the line, what the two sides cost, what the desk's own model
- * makes of it, what SATOSHI concluded, and how long is left. On a phone it is a
- * two-column grid that never needs sideways scrolling.
+ * Market context beneath the operator status: where Bitcoin sits against the
+ * line, what the two sides cost, and what the desk's own model makes of it.
+ * SATOSHI's decision, time, feed health and paper position live once in the
+ * operator status above instead of being duplicated here.
  */
-import { useCountdownText } from "@/lib/desk/hooks";
-import { clockMs } from "@/lib/desk/math";
 import { cn } from "@/lib/utils";
-import { fmtDistance, fmtScore, fmtUsd, type ProFloorFacts } from "@/lib/desk/pro-floor";
+import { fmtDistance, fmtUsd, type ProFloorFacts } from "@/lib/desk/pro-floor";
 import { CentsCell, KindTag } from "./panels";
-import { leanTone } from "./tones";
 
 const RELATION_WORD: Record<ProFloorFacts["market"]["relation"], string> = {
   ABOVE: "above the line",
@@ -26,7 +23,7 @@ function Cell({
   sub,
   className,
 }: {
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
   sub?: React.ReactNode;
   className?: string;
@@ -41,13 +38,7 @@ function Cell({
 }
 
 export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
-  const { market, quotes, model, conclusion, standard, health } = facts;
-  const ticking = useCountdownText(market.close_time);
-  // The shared ticker has no server snapshot; print the time left as of the
-  // frame until it starts ticking in the browser.
-  const left =
-    ticking === "—" && market.secs_left != null ? clockMs(Math.max(0, market.secs_left * 1000)) : ticking;
-  const tone = leanTone(conclusion.lean);
+  const { market, quotes, model, conclusion } = facts;
 
   return (
     <section
@@ -57,7 +48,7 @@ export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
         conclusion.lean === "UP" ? "border-up/40" : conclusion.lean === "DOWN" ? "border-down/40" : "border-border-strong",
       )}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
         <Cell
           label="BTC / line"
           sub={
@@ -121,40 +112,6 @@ export function ProDecisionStrip({ facts }: { facts: ProFloorFacts }) {
           </div>
         </Cell>
 
-        <Cell
-          label="SATOSHI"
-          sub={
-            standard.evidence == null || standard.required == null
-              ? "score comparison unavailable"
-              : `evidence ${fmtScore(standard.evidence)} / required ${fmtScore(standard.required)}`
-          }
-        >
-          <span className={cn("text-title font-medium", tone)} aria-live="polite">
-            <span className="sr-only">House conclusion: </span>
-            {conclusion.lean}
-          </span>
-          <div className="font-mono text-micro text-subtle">
-            gate confidence {conclusion.confidence.value}
-          </div>
-        </Cell>
-
-        <Cell
-          label="Time"
-          // A count here, the full list on the data-health card: a strip cell is
-          // too narrow to name five blockers without truncating one of them.
-          sub={
-            <span className={health.all_clear ? "text-subtle" : "text-wait"} title={health.blockers.join(" · ")}>
-              {health.all_clear
-                ? "feeds live"
-                : health.blockers.length === 1
-                  ? health.blockers[0]
-                  : `${health.blockers.length} feed checks not clear`}
-            </span>
-          }
-        >
-          <span className="text-title">{left}</span>
-          <div className="truncate font-mono text-micro text-subtle">{market.phase.toLowerCase()}</div>
-        </Cell>
       </div>
     </section>
   );

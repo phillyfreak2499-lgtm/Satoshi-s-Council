@@ -656,3 +656,7 @@
 html[data-motion="reduce"] .streamer * {
   transition: none !important;
 }
+/* Specialist research waits never borrow SATOSHI's gold decision identity. */
+.streamer .streamer-seat[data-lean="WAIT"],
+.streamer .streamer-tape[data-lean="WAIT"],
+.streamer .streamer-vote-counts [data-lean="WAIT"] { --stream-lean: #a9b0b3; }

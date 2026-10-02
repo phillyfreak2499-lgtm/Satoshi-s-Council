@@ -13,7 +13,7 @@ function navigation() {
   return exports;
 }
 
-test("the Observatory adds wayfinding without dropping any existing destination", () => {
+test("the Observatory keeps every destination while mobile shortcuts stay focused", () => {
   const { SITE_DESTINATIONS } = navigation();
   const paths = Array.from(SITE_DESTINATIONS, item => item.href);
   for (const href of ["/", "/chamber", "/training", "/books", "/lab", "/arena", "/board", "/about", "/faq", "/legal", "/gallery", "/?tab=settings", "/?tab=crew", "/?tab=structure", "/?view=guided"]) {
@@ -22,7 +22,11 @@ test("the Observatory adds wayfinding without dropping any existing destination"
   const shared = read("src/components/desk/CouncilNavigation.tsx");
   assert.match(shared, /const PRIMARY[^;]*"\/desk"[^;]*"\/books"[^;]*"\/training"[^;]*"\/lab"[^;]*"\/board"[^;]*"\/about"/);
   assert.doesNotMatch(shared, /PRIMARY[^;]*SHOP_URL/);
-  assert.match(shared, /const SHORTCUTS = PRIMARY;/);
+  assert.match(shared, /const SHORTCUTS: readonly SiteHref\[\] = \["\/desk", "\/books", "\/lab", "\/about"\];/,
+    "mobile shortcuts focus on the live desk, canonical record, research and orientation");
+  for (const href of ["/training", "/board"]) {
+    assert.ok(paths.includes(href), `${href} remains in the canonical menu even when it is not a mobile shortcut`);
+  }
   assert.ok(paths.includes("/?tab=settings"));
   assert.match(shared, /const menu: MenuItem\[\] = SITE_DESTINATIONS\.map/);
   assert.match(shared, /More<span/);
@@ -69,8 +73,14 @@ test("focus and presentation never replace data or make research decisions", () 
   assert.match(styles, /html\[data-motion="reduce"\]/);
   assert.match(styles, /\.observatory \.obs-icon \{/);
   assert.doesNotMatch(styles, /\.observatory (?:svg|button|select|a)\s*\{/);
-  assert.match(read("src/components/desk/SiteHeader.tsx"), /className="council-site-bar gutter/);
+  const siteHeader = read("src/components/desk/SiteHeader.tsx");
+  assert.match(siteHeader, /className="council-site-bar gutter/);
   assert.match(styles, /\.council-site-header > \.council-site-bar \{ height:/);
+  assert.match(siteHeader, /<\/header>\s*\{shortcuts \? <div className=\{cn\(f\.panel, "council-site-shortcut-row"\)\}>/,
+    "quick links render after the sticky header so they scroll away instead of covering content");
+  const stickyHeaderEnd = siteHeader.indexOf("</header>");
+  const shortcutAt = siteHeader.indexOf("council-site-shortcut-row");
+  assert.ok(stickyHeaderEnd > 0 && shortcutAt > stickyHeaderEnd);
   assert.doesNotMatch(styles, /\.council-site-header > \.gutter\s*\{/,
     "header bar height must not constrain the full mobile menu");
   assert.doesNotMatch(styles, /(?:#floor-main|\.atelier|\.council-floor-tools|\.council-site-header)[^{]*\{[^}]*display:\s*none/);

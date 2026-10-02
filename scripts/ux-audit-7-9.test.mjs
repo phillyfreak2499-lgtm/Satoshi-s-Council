@@ -11,14 +11,14 @@ import vm from "node:vm";
 
 const read = (rel) => readFileSync(join(process.cwd(), rel), "utf8");
 
-test("Pro Floor aggregates 15 voting seats and skips pit/retired in WAIT tallies", () => {
+test("Pro Floor aggregates 15-role voting roster and skips pit/retired in WAIT tallies", () => {
   const src = read("src/lib/desk/pro-floor.ts");
   assert.match(src, /aggregated: row != null && !NON_VOTERS.has\(seat\) && !RETIRED.has\(seat\)/);
-  assert.match(src, /const voting = seats.filter\(\(s\) => s.aggregated\)/);
+  assert.match(src, /const voting = seats.filter\(\(s\) => s.aggregated && s.authority_ready_cards !== 0 && s.abstention_eligible !== false\)/);
   assert.match(src, /wait: voting.length - up - down/);
   assert.doesNotMatch(src, /one of the 18 the Chair aggregates/);
   const families = read("src/components/desk/ProFloor/EvidenceFamilies.tsx");
-  assert.match(families, /currently voting/);
+  assert.match(families, /research roles/);
   assert.match(families, /COUNCIL_STRUCTURE_SHORT/);
 });
 

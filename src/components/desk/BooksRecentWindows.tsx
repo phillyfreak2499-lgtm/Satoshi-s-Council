@@ -24,7 +24,7 @@ function FillRow({ w, tz }: { w: BooksWindow; tz: string }) {
         {datedClose(w.close_time, tz)}
       </td>
       <td role="cell" data-label="Side" className="py-2 pr-3">
-        {w.call?.lean ? <LeanChip lean={w.call.lean} /> : "—"}
+        {w.call?.lean ? <><LeanChip lean={w.call.lean} />{w.call.source === "RECOVERY_FAV85_V1" ? <span className="ml-1 font-mono text-micro text-muted">pilot</span> : null}</> : "—"}
       </td>
       <td role="cell" data-label="Result" className="py-2 pr-3">
         <LeanChip lean={w.winner} />
@@ -53,6 +53,8 @@ function SitRunRow({
   tz: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Keep the run's data order; display its time range earliest to latest.
+  const [start, end] = Date.parse(from) > Date.parse(to) ? [to, from] : [from, to];
   return (
     <tr className="border-t border-border bg-surface-2/40">
       <td role="cell" data-label="Close" colSpan={5} className="py-2">
@@ -62,8 +64,8 @@ function SitRunRow({
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          {sitRunLabel({ kind: "sit-run", count, from, to, windows })} · {datedClose(from, tz)}
-          {count > 1 ? ` – ${datedClose(to, tz)}` : ""} · {open ? "collapse" : "expand"}
+          {sitRunLabel({ kind: "sit-run", count, from, to, windows })} · {datedClose(start, tz)}
+          {count > 1 ? ` – ${datedClose(end, tz)}` : ""} · {open ? "collapse" : "expand"}
         </button>
         {open ? (
           <ul className="mt-1 max-h-48 overflow-y-auto pl-3">
@@ -103,7 +105,7 @@ export function BooksRecentWindows({
     <section aria-label="Recent windows summary" className="rounded-md border border-border bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-mono text-micro uppercase tracking-widest text-subtle">Recent windows</h2>
-        <p className="font-mono text-micro text-subtle">
+        <p className="font-sans text-micro text-subtle">
           {fills} filled · sit runs collapsed
         </p>
       </div>
@@ -151,7 +153,7 @@ export function BooksRecentWindows({
       </div>
       {missing && missing.length > 0 ? (
         <div className="mt-3">
-          <p className="font-mono text-micro text-muted">{missingWindowsLine(missing.length)}</p>
+          <p className="font-sans text-micro text-muted">{missingWindowsLine(missing.length)}</p>
           <details className="font-mono text-micro text-subtle">
             <summary className="min-h-11 cursor-pointer py-2">
               Show missing closes · {missing.length} dated outages

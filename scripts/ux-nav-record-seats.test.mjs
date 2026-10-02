@@ -34,12 +34,12 @@ test("public seat copy is 15 voting + 3 retired + 3 pit crew", () => {
   assert.match(pub, /FADE/);
   assert.match(pub, /Retired means the seat still has a public graded record/);
   const about = read("src/routes/about.tsx");
-  assert.match(about, /Only the 15 currently voting specialists/);
+  assert.match(about, /The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI/);
   assert.match(about, /COUNCIL_RETIRED_SEATS/);
   const faq = read("src/routes/faq.tsx");
-  assert.match(faq, /Only the 15 currently voting specialists/);
+  assert.match(faq, /The 15-role voting roster can submit UP, DOWN or WAIT reads; only eligible reads count toward SATOSHI/);
   const root = read("src/routes/__root.tsx");
-  assert.match(root, /15 currently voting/);
+  assert.match(root, /15-role voting roster/);
   assert.doesNotMatch(root, /18 voting specialists/);
 });
 

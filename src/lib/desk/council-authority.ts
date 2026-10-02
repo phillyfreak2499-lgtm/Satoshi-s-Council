@@ -1,4 +1,4 @@
-import type { Learner, SeatId, Vote } from "./types";
+import type { Learner, SeatId, SeatRow, Vote } from "./types";
 
 /** Owner review of the September 15 public record. Applied once to saved labels;
  * counters, pockets, weights, and historical grades are left intact. */
@@ -82,14 +82,41 @@ export function admitCouncilVotes(votes: Vote[], learner: AuthorityLearner, regi
 
 /** Display the actual Chair quorum. A forced eligibility sit is not a WAIT vote. */
 export function countChairQuorum(
-  votes: readonly Vote[], muted: ReadonlySet<SeatId>, nonVoters: ReadonlySet<SeatId>,
+  votes: readonly (Pick<Vote, "seat" | "lean" | "forced_sit"> & Partial<Pick<SeatRow, "status" | "abstention_eligible">>)[], muted: ReadonlySet<SeatId>, nonVoters: ReadonlySet<SeatId>,
 ): { up: number; down: number; wait: number } {
-  const eligible = votes.filter((vote) =>
-    !nonVoters.has(vote.seat) && !muted.has(vote.seat) && !vote.forced_sit,
-  );
+  const eligible = votes.filter((vote) => chairQuorumMember(vote, muted, nonVoters));
   return {
     up: eligible.filter((vote) => vote.lean === "UP").length,
     down: eligible.filter((vote) => vote.lean === "DOWN").length,
     wait: eligible.filter((vote) => vote.lean === "WAIT").length,
   };
+}
+
+/** Current-regime card inventory, independent of whether a rule fired this frame.
+ * No LIVE authority means an abstention cannot express an authorized opinion.
+ * Mirrors the producer's LIVE pool, research holds and exploit exclusion.
+ */
+export function seatCardAvailability(seat: SeatId, learner: AuthorityLearner & Partial<Pick<Learner, "learn_phase">>, regimeKey: string) {
+  const selectable = Object.values(learner.skills).filter((card) =>
+    card.owner === seat && card.status === "LIVE" && !CLOSED_DIRECTIONAL_CARDS.has(card.id) &&
+    !card.manual_hold &&
+    !(card.min_walkforward_n && card.n < card.min_walkforward_n) &&
+    !(card.min_regime_n && (card.pocket?.[regimeKey]?.n ?? 0) < card.min_regime_n) &&
+    !(learner.learn_phase === "EXPLOIT" && card.n >= 16 && card.wilson < 0.42),
+  );
+  const ready = selectable.filter((card) => directionalHoldReason(
+    { lean: "UP", skill_used: card.id, skill_status: "LIVE" }, learner, regimeKey,
+  ) == null);
+  return { selectable_live_cards: selectable.length, authority_ready_cards: ready.length };
+}
+
+/** One population predicate for the Chair quorum and its saved roster receipts.
+ * Legacy rows without the new marker retain their original recorded semantics.
+ */
+export function chairQuorumMember(
+  row: Pick<Vote, "seat" | "lean" | "forced_sit"> & Partial<Pick<SeatRow, "status" | "abstention_eligible">>,
+  muted: ReadonlySet<SeatId>, nonVoters: ReadonlySet<SeatId>,
+): boolean {
+  return !nonVoters.has(row.seat) && !muted.has(row.seat) && row.status !== "MUTED" &&
+    !row.forced_sit && (row.lean !== "WAIT" || row.abstention_eligible !== false);
 }

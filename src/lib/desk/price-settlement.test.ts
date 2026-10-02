@@ -226,3 +226,19 @@ test("PROVISIONAL, not settlement: with all 60 prints known and the average exac
   assert.equal(Math.round(f2.mean * 100) / 100, strike);
   assert.ok(f2.p_up < 0.5, `provisional p_up ${f2.p_up}`);
 });
+
+
+test("empty legacy settlement values never invent DOWN; official outcomes and explicit legacy 0/1 still grade", () => {
+  for (const settlement_value of [undefined, null, "", " ", "\t"]) {
+    const row = { ...LIVE_ACTIVE, settlement_value };
+    assert.equal(parseKalshiResult(row), null);
+    const into: OfficialSettle[] = [];
+    collectSettles([row], 123, "fixture", into);
+    assert.equal(into.length, 0);
+    assert.equal(parseKalshiResult({ ...row, result: "yes" }), "UP");
+    assert.equal(parseKalshiResult({ ...row, result: "no" }), "DOWN");
+  }
+  for (const settlement_value of [0, "0", 1, "1"]) {
+    assert.equal(parseKalshiResult({ ...LIVE_ACTIVE, settlement_value }), Number(settlement_value) === 1 ? "UP" : "DOWN");
+  }
+});

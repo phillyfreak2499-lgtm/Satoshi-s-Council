@@ -8,7 +8,7 @@ import ts from 'typescript';
 // the downstream grading consumer are substituted; no copied rollover loop.
 const engine = readFileSync(new URL('../src/lib/desk/server-engine.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('server-engine.ts', engine, ts.ScriptTarget.Latest, true);
-const functions = ['freshEng', 'loadState', 'persistState', 'previousDecision', 'settleIfNeeded', 'resolvePending', 'gradeSource', 'gradeableBook', 'noteGradeCand', 'markPending', 'windowKey'];
+const functions = ['freshEng', 'loadState', 'persistState', 'previousDecision', 'settleIfNeeded', 'resolvePending', 'gradeSource', 'gradeableBook', 'noteGradeCand', 'markPending', 'windowKey', 'noteErr'];
 const constants = ['STATE_ID', 'PERSIST_EVERY_MS', 'DEFAULT_SERVER_SETTINGS', 'IDENTITY_FAULT_CAP', 'GRADED_KEY_CAP'];
 const selected = ast.statements.filter((n) =>
   (ts.isFunctionDeclaration(n) && functions.includes(n.name?.text)) ||
@@ -37,6 +37,12 @@ function pureModule(path, dependencies = {}) {
 const identity = pureModule('../src/lib/desk/window-identity.ts');
 const reliability = pureModule('../src/lib/desk/reliability.ts');
 const active = pureModule('../src/lib/desk/active-window.ts', { './window-identity.ts': identity });
+const authority = pureModule('../src/lib/desk/council-authority.ts');
+const math = pureModule('../src/lib/desk/math.ts');
+const ownerRestore = pureModule('../src/lib/desk/owner-restore.ts', {
+  './council-authority.ts': authority, './math.ts': math,
+});
+const statusTransitions = pureModule('../src/lib/desk/status-transitions.ts');
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const CLOSE = Date.parse('2026-09-14T12:45:00Z');
 const TICKER = 'KXBTC15M-26SEP140845-45';
@@ -72,16 +78,34 @@ function harness(options = {}) {
   let durable = options.durable ?? null;
   const writes = [];
   const grades = [];
+  const transitions = [];
+  const events = [];
   const db = async (strings, ...params) => {
     if (strings.join('').includes('select state')) return durable ? [{ state: plain(durable) }] : [];
     const state = JSON.parse(params[1]);
     writes.push(state);
+    events.push('save-start');
     await options.beforeWrite?.(state, writes.length);
     durable = state;
+    events.push('save-ack');
     return [];
   };
   const context = vm.createContext({
-    ...reliability, ...active, Date, JSON, Promise, SELECTIVE_ENTRY_ID: 'ENTRY_SELECTIVE_V2',
+    ...reliability, ...active, Date, JSON, Promise, structuredClone,
+    SELECTIVE_ENTRY_ID: 'ENTRY_OWNER_ROLLBACK_V1',
+    OWNER_ROLLBACK_V1_FROZEN_AT: '2026-09-30T21:00:00.000Z',
+    recoveryPilotEnabled: () => false,
+    applyOwnerRestore: ownerRestore.applyOwnerRestore,
+    ownerRestoreMode: () => ownerRestore.ownerRestoreMode({ OWNER_RESTORE_E1_PAIR_V1: options.ownerRestoreMode }),
+    skillStatusSnapshot: statusTransitions.skillStatusSnapshot,
+    queueStatusTransitions: (before, after, writer) => {
+      events.push('transitions');
+      transitions.push(...plain(statusTransitions.diffStatuses(before, after, Date.now(), writer)));
+    },
+    recoveryPilotStartAtBoot: (now, enabled, previousEnabled, previousStart) =>
+      enabled && previousEnabled && Number.isFinite(previousStart) && previousStart > 0
+        ? previousStart
+        : Math.ceil(now / 900000) * 900000,
     sql: async () => db,
     freshLearner: () => ({ window_memory: {}, settle_tape: [] }),
     freshWatchdog: () => ({}),
@@ -102,7 +126,7 @@ function harness(options = {}) {
     await persistState(e, true);
   }`;
   vm.runInContext(transpile(riskSource + '\n' + selected + '\n' + gradeStub), context);
-  return { ...context, writes, grades, durable: () => plain(durable) };
+  return { ...context, writes, grades, transitions, events, durable: () => plain(durable) };
 }
 function setCurrent(e, w) {
   e.prevSnap = w.snap; e.lastVotes = w.votes; e.lastChair = w.chair;
@@ -175,6 +199,31 @@ test('legacy state without a checkpoint does not invent a lost decision', async 
   assert.equal(h.grades.length, 0);
 });
 
+test('expired market settles from frozen pre-close votes, never post-result votes', async () => {
+  const h = harness(); const e = h.freshEng(); const original = fixture();
+  setCurrent(e, original); h.noteGradeCand(e, original.snap, original.votes, original.chair);
+  const expired = { ...original.snap, as_of: CLOSE + 4000, secs_left: 0,
+    official_settles: [{ ticker: TICKER, close_time: CLOSE, lean: 'DOWN' }] };
+  const postResult = [{ seat: 'DRIFT', lean: 'UP', confidence: 99 }];
+  h.noteGradeCand(e, expired, postResult, original.chair);
+  await h.settleIfNeeded(e, expired, postResult, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 1);
+  assert.deepEqual(h.grades[0].votes, original.votes);
+  assert.equal(h.grades[0].snap.as_of, original.snap.as_of);
+  await h.settleIfNeeded(e, expired, postResult, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 1, 'the retained expired contract grades once');
+});
+
+test('expired market without any pre-close evidence stays missing, not reconstructed', async () => {
+  const h = harness(); const e = h.freshEng(); const original = fixture();
+  const expired = { ...original.snap, as_of: CLOSE + 4000, secs_left: 0,
+    official_settles: [{ ticker: TICKER, close_time: CLOSE, lean: 'DOWN' }] };
+  await h.settleIfNeeded(e, expired, original.votes, original.chair, h.previousDecision(e));
+  assert.equal(h.grades.length, 0);
+  assert.equal(e.pending.length, 0);
+  assert.match(e.errors.at(-1).msg, /no retained pre-close grading input/);
+});
+
 test('wrong identities, missing votes, nonfinite data and completed windows are refused', () => {
   const w = fixture();
   for (const bad of [null, {}, { ...w, close_time: CLOSE + 900000 }, { ...w, votes: [] }, { ...w, chair: {} }, { ...w, snap: { ...w.snap, spot: NaN } }, { ...w, snap: { ...w.snap, as_of: CLOSE + 120000 } }]) {
@@ -205,4 +254,125 @@ test('a failed save does not poison subsequent checkpoint writes', async () => {
   const e = h.freshEng(); setCurrent(e, fixture());
   await h.persistState(e, true); assert.match(e.lastError, /database unavailable/);
   await h.persistState(e, true); assert.deepEqual(h.durable().active_window, fixture());
+});
+
+function ownerRestoreLearner() {
+  const card = { n: 100, ev_n: 100, wilson: 0.8, ev: 5, status: 'SHADOW' };
+  return {
+    skills: {
+      'STRIKE.itm_time': { ...card, id: 'STRIKE.itm_time', owner: 'STRIKE' },
+      'CHAIN.oi_with_price': { ...card, id: 'CHAIN.oi_with_price', owner: 'CHAIN' },
+      'STREAK.continue_young': { ...card, id: 'STREAK.continue_young', owner: 'STREAK' },
+    },
+    seat_n: { STRIKE: 210, CHAIN: 210 },
+    seat_calib_debt: { STRIKE: 210, CHAIN: 0 },
+    window_memory: { original: 'retained' }, settle_tape: [{ original: true }],
+  };
+}
+
+function ownerRestoreDurable(riskValid = true) {
+  const risk = { id: 'real-existing-call', ticker: TICKER, t: CLOSE - 600000, close_time: CLOSE, lean: 'UP', cents: 82, settle: 0, flipped: false };
+  const priorClose = CLOSE - 900000;
+  const priorTicker = 'KXBTC15M-26SEP140830-30';
+  return {
+    learner: ownerRestoreLearner(), call_log: [risk], risk_calls: [risk], risk_history_valid: riskValid,
+    baseline_calls: [{ ...risk, id: 'baseline', ticker: priorTicker, t: priorClose - 600000, close_time: priorClose }],
+    selective_start: CLOSE - 9000000, selective_policy: 'ENTRY_SELECTIVE_V2',
+    settings: { bar_override: 0.62, mutes: ['ODDS'], adaptive_bar: false, beast: false },
+    last_call: { ticker: TICKER, close_time: CLOSE, lean: 'UP' },
+    v2: { w: { STRIKE: 0.2 }, b: 0.1 }, last_ledger_ok_at: CLOSE - 30000,
+    ledger_queue: [{ key: `${priorTicker}:${priorClose}`, row: { ticker: priorTicker, close_time: priorClose, values: ['original', 2] }, attempts: 3, firstAt: priorClose, nextAt: priorClose + 8000, lastErr: 'retry' }],
+    shadow_fills: { original: 'shadow-fill' }, entry_state: { original: 'booked-state' },
+    pending: [fixture({ ticker: priorTicker, close_time: priorClose })],
+    identity_faults: [{ key: 'original-fault', at: priorClose }],
+    graded_keys: [`older-window:${priorClose - 900000}`], active_window: fixture(),
+    ledger_recon_baseline: priorClose - 900000, readiness_alerted: true,
+  };
+}
+
+test('owner restore saves only after complete recovery and queues transitions only after durable acknowledgement', async () => {
+  const original = ownerRestoreDurable();
+  let release; let started;
+  const startedPromise = new Promise((resolve) => { started = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const h = harness({
+    durable: original, ownerRestoreMode: 'STATUS_AND_STRIKE_CALIBRATION',
+    beforeWrite: async (state) => {
+      started();
+      assert.equal(state.learner.skills['STRIKE.itm_time'].status, 'LIVE');
+      assert.equal(state.learner.skills['CHAIN.oi_with_price'].status, 'LIVE');
+      assert.equal(state.learner.skills['STREAK.continue_young'].status, 'SHADOW');
+      assert.equal(state.learner.seat_calib_debt.STRIKE, 190);
+      assert.equal(state.learner.owner_restore.state, 'APPLIED');
+      // A boot-time save must retain everything restored after the learner.
+      for (const key of ['call_log', 'risk_calls', 'risk_history_valid', 'baseline_calls', 'settings', 'last_call', 'v2', 'last_ledger_ok_at', 'ledger_queue', 'shadow_fills', 'entry_state', 'pending', 'identity_faults', 'graded_keys', 'active_window', 'ledger_recon_baseline', 'readiness_alerted']) {
+        assert.deepEqual(state[key], original[key], `automatic save preserves ${key}`);
+      }
+      assert.equal(state.selective_policy, 'ENTRY_OWNER_ROLLBACK_V1');
+      assert.equal(state.selective_start, e.selectiveStart,
+        'a distinct admission version receives its prospective boundary during the same durable save');
+      assert.equal(h.transitions.length, 0, 'no authority transition is advertised before the save completes');
+      await blocked;
+    },
+  });
+  const e = h.freshEng();
+  const loading = h.loadState(e);
+  assert.equal(await Promise.race([startedPromise.then(() => true), loading.then(() => false)]), true,
+    `restore must reach its durable write: ${JSON.stringify(e.ownerRestore)}`);
+  assert.deepEqual(h.events, ['save-start']);
+  assert.equal(e.ownerRestore, null, 'no successful boot receipt before acknowledgement');
+  assert.equal(e.ownerRestorePending, true, 'health must hide the candidate marker while pending');
+  assert.deepEqual(h.durable(), original, 'the durable learner is unchanged while acknowledgement is pending');
+  release();
+  await loading;
+  assert.deepEqual(h.events, ['save-start', 'save-ack', 'transitions']);
+  assert.equal(e.ownerRestorePending, false);
+  assert.equal(e.ownerRestore.outcome, 'APPLIED');
+  assert.equal(e.ownerRestore.changed, true);
+  assert.equal(e.riskReady, true);
+  assert.equal(h.writes.length, 1, 'loadState itself performs exactly one force-persist');
+  assert.deepEqual(h.transitions.map(({ card, from, to, writer }) => ({ card, from, to, writer })), [
+    { card: 'CHAIN.oi_with_price', from: 'SHADOW', to: 'LIVE', writer: 'ownerRestore' },
+    { card: 'STRIKE.itm_time', from: 'SHADOW', to: 'LIVE', writer: 'ownerRestore' },
+  ]);
+  const reboot = harness({ durable: h.durable(), ownerRestoreMode: 'STATUS_AND_STRIKE_CALIBRATION' });
+  const again = reboot.freshEng(); await reboot.loadState(again);
+  assert.equal(again.ownerRestore.outcome, 'ALREADY_DONE');
+  assert.equal(reboot.writes.length, 0);
+  assert.equal(reboot.transitions.length, 0);
+});
+
+test('a successful owner restore preserves an invalid durable risk latch', async () => {
+  const h = harness({ durable: ownerRestoreDurable(false), ownerRestoreMode: 'STATUS_AND_STRIKE_CALIBRATION' });
+  const e = h.freshEng(); await h.loadState(e);
+  assert.equal(e.ownerRestore.outcome, 'APPLIED');
+  assert.equal(e.riskReady, false, 'authority restoration cannot release invalid restored risk history');
+  assert.equal(h.durable().risk_history_valid, false);
+  assert.deepEqual(h.durable().risk_calls, ownerRestoreDurable(false).risk_calls);
+});
+
+test('failed boot saves retain original authority and calibration and publish no restore or rollback transition', async () => {
+  for (const mode of ['STATUS_AND_STRIKE_CALIBRATION', 'ROLLBACK']) {
+    const original = ownerRestoreDurable();
+    if (mode === 'ROLLBACK') {
+      assert.equal(ownerRestore.applyOwnerRestore(original.learner, 'STATUS_AND_STRIKE_CALIBRATION', Date.now() - 1000).outcome, 'APPLIED');
+      original.learner = plain(original.learner);
+    }
+    const h = harness({ durable: original, ownerRestoreMode: mode, beforeWrite: () => { throw Error('database unavailable'); } });
+    const e = h.freshEng(); await h.loadState(e);
+    assert.equal(h.writes.length, 1, `${mode} attempted automatic persistence`);
+    assert.equal(e.ownerRestore.outcome, mode === 'ROLLBACK' ? 'ROLLBACK_REFUSED' : 'REFUSED');
+    assert.equal(e.ownerRestore.changed, false);
+    assert.deepEqual(plain(e.ownerRestore.status), []);
+    assert.deepEqual(plain(e.ownerRestore.debt), []);
+    assert.match(e.ownerRestore.reason, /save was not acknowledged/);
+    assert.match(e.lastError, /database unavailable/);
+    assert.deepEqual(plain(e.learner), original.learner, `${mode} keeps the original in-memory learner`);
+    assert.deepEqual(h.durable(), original, `${mode} keeps the original durable learner`);
+    assert.deepEqual(h.transitions, []);
+    assert.deepEqual(h.events, ['save-start']);
+    assert.equal(e.riskReady, true);
+    assert.deepEqual(plain(e.pending), original.pending);
+    assert.deepEqual(plain(e.riskCalls), original.risk_calls);
+  }
 });

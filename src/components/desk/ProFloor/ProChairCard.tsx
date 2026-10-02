@@ -52,7 +52,7 @@ export function ProChairCard({ facts, plain }: { facts: ProFloorFacts; plain: st
 
       <p className="mt-2 max-w-[70ch] font-sans text-ui leading-snug text-fg">{plain}</p>
 
-      <p className="mt-1 font-mono text-micro text-subtle">
+      <p className="mt-1 font-sans text-micro text-subtle">
         {conclusion.confidence.gloss}.
       </p>
 
@@ -70,9 +70,9 @@ export function ProChairCard({ facts, plain }: { facts: ProFloorFacts; plain: st
               ))}
             </ul>
           ) : null}
-          {wait.note ? <p className="mt-2 max-w-[76ch] font-mono text-micro leading-relaxed text-subtle">{wait.note}</p> : null}
+          {wait.note ? <p className="mt-2 max-w-[76ch] font-sans text-micro leading-relaxed text-subtle">{wait.note}</p> : null}
           {wait.more_than_one_thing_missing ? (
-            <p className="mt-2 max-w-[76ch] font-mono text-micro leading-relaxed text-wait">
+            <p className="mt-2 max-w-[76ch] font-sans text-micro leading-relaxed text-wait">
               More than one condition is missing. Clearing any single one of them would still not produce a call.
             </p>
           ) : null}
@@ -113,7 +113,7 @@ export function ProChairCard({ facts, plain }: { facts: ProFloorFacts; plain: st
           v={
             paper.held ? (
               <>
-                a paper position is held: {paper.entry_side} locked at {paper.entry_cents?.toFixed(1) ?? "—"}¢. The
+                a {paper.entry_source === "RECOVERY_FAV85_V1" ? "recovery-pilot " : ""}paper position is held: {paper.entry_side} locked at {paper.entry_cents?.toFixed(1) ?? "—"}¢. The
                 read above is the desk&apos;s opinion now; the position is what the book already did.
               </>
             ) : (

@@ -1,3 +1,6 @@
+import { publishDiscordLeans } from "./discord-events.server";
+import { directionAlreadyBooked, directionalAsk } from "./directional-regret";
+import { captureDirectionalRegret } from "./directional-regret.server";
 /**
  * The shared brain. One engine loop on the server: pulls the live tape,
  * runs the 21 seats and the chair, prints calls, grades every finished
@@ -7,6 +10,7 @@
  * Demo mode never touches this — it stays a per-browser sandbox.
  */
 import { runBots } from "./bots";
+import { readApprovedGaps } from "./venue-pause.ts";
 import { checkpointActiveWindow, restoreActiveWindow, type ActiveWindow } from "./active-window";
 import { runChair } from "./chair";
 import { readClock, takerFeeCents } from "./clock";
@@ -15,6 +19,7 @@ import { auditAdmission, type AdmissionAudit } from "./admission-audit";
 import { beginSkillScoreAudit, finishSkillScoreAudit, withSkillAuditColumn, type SkillScoreAudit } from "./skill-score-audit";
 import { captureEntrySkillRoster, withEntrySkillRosterColumn } from "./entry-skill-roster";
 import { evaluateEntrySkillQuality, withEntrySkillQualityColumn } from "./entry-skill-quality";
+import { FLOOR_OWNER_ROLLBACK_V1 } from "./floor-policy";
 import { appendPeriod, FUNDING_PERIOD_MS, nativePeriodMs, OI_PERIOD_MS, type HistPoint } from "./hist";
 import { bundleToSnapshot } from "./live";
 import {
@@ -27,12 +32,38 @@ import {
 } from "./learner";
 import { mergeLearner, sliceLearner } from "./persist";
 import { queueStatusTransitions, skillStatusSnapshot } from "./status-transitions";
+import {
+  applyOwnerRestore,
+  OWNER_RESTORE_CARDS,
+  OWNER_RESTORE_E1_PAIR_V1,
+  ownerRestoreMode,
+  type OwnerRestoreReceipt,
+} from "./owner-restore";
 import { CHAIR_SCALP, markSide, onLean, settleAll } from "./scalp";
-import { bookable, bookableShadow, CHAIR_MIN_ASK_CENTS, paperBookEdgeOk, paperBookTeamOk } from "./book-floor";
+import {
+  bookable,
+  bookableShadow,
+  CHAIR_MIN_ASK_CENTS,
+  FLOOR_LIVE_CENTS,
+  FLOOR_SHADOW_CENTS,
+  paperBookEdgeOk,
+  paperBookTeamOk,
+} from "./book-floor";
 import {
   dailyAdmission, hasPaperPosition, paperSummary, restoreRiskCalls, selectiveBookOk, selectiveChair,
-  settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, type EntryWatch,
+  settleRiskCalls, SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, OWNER_ROLLBACK_V1_FROZEN_AT, type EntryWatch,
 } from "./selective-entry";
+import {
+  RECOVERY_PILOT_SOURCE,
+  chairOnlyCalls,
+  recoveryPilotBookOk,
+  recoveryPilotDecision,
+  recoveryPilotEnabled,
+  recoveryPilotStartAtBoot,
+  withRecoveryPilotSourceColumn,
+  type RecoveryPilotDecision,
+  type RecoveryPilotWatch,
+} from "./recovery-pilot";
 import {
   bookedDecisionAtGrade,
   sanitizeBookedDecisionState,
@@ -73,9 +104,17 @@ import { noteReplay, pruneReplays, recordReplay, replayLive } from "./replay.ser
 import { noteSeatTelemetry } from "./telemetry.server";
 import { decisionSnapshotFrom, recordDecisionSnapshot } from "./decision-snapshot.server";
 import { observeChairWaitMilestone } from "./chamber-wait.server";
-import { notifyCall, notifySettle, notifyWatchdog } from "./push.server";
+import { notifyCall, notifySettle, notifyWatchdog, pushDeliverySummary, pushRecipientCounts } from "./push.server";
+import { pushDeliveryNote, type PushDeliverySummary } from "./push-receipts";
 import { weeklyRecap } from "./recap.server";
-import { applyWatchdog, freshWatchdog, watchdogDecision, watchdogPayload, type WatchdogState } from "./push-rules";
+import {
+  applyWatchdog,
+  freshWatchdog,
+  WATCHDOG_REPEAT_MS,
+  watchdogDecision,
+  watchdogPayload,
+  type WatchdogState,
+} from "./push-rules";
 import {
   V2_POPULATION,
   V2_SAMPLE_MINS,
@@ -111,11 +150,15 @@ import {
   type LedgerRow,
   ledgerGaps,
   oldestQueueAgeMs,
+  operationalVerdict,
   recentIdentityFaultCount,
   OUTBOX_CAP,
   partitionResolved,
   PENDING_CAP,
   persistOnce,
+  producerVerdict,
+  type OperationalVerdict,
+  type ProducerVerdict,
   type PersistIO,
   pushErr,
   removeKeyed,
@@ -149,8 +192,15 @@ type Eng = {
   callLog: CallLogRow[];
   riskCalls: CallLogRow[];
   riskReady: boolean;
+  /** Process-local proof: this exact complete history was valid before a reservation save failed. Never restored from storage. */
+  riskReservationPending: string | null;
   entryWatch: EntryWatch | null;
+  recoveryPilotWatch: RecoveryPilotWatch | null;
+  recoveryPilotStart: number;
   lastAdmissionAudit: AdmissionAudit | null;
+  /** Last OWNER_RESTORE_E1_PAIR_V1 outcome at state load (default OFF). Read-only health evidence. */
+  ownerRestore: OwnerRestoreReceipt | null;
+  ownerRestorePending: boolean;
   selectiveStart: number;
   baselineCalls: CallLogRow[];
   lastCall: { ticker: string; close_time: number; lean: Lean } | null;
@@ -206,9 +256,17 @@ type Eng = {
   ledgerFlushing: boolean;
   /** Interior holes found in the recent ledger by the last gap scan (lost windows). */
   ledgerGapCount: number;
+  ledgerGapRawCount: number;
+  ledgerGapClassifiedCount: number;
   lastGapScanAt: number;
   /** Owner push subscriptions the watchdog could reach, from the last probe. */
   alertOwnerSubs: number;
+  /** Visitor subscriptions eligible for a paper-call or settlement push. These
+   *  are readiness facts only; they never gate or create a call. */
+  alertCallSubs: number;
+  alertSettleSubs: number;
+  /** Durable provider-attempt evidence, refreshed with recipient readiness. */
+  alertDelivery: PushDeliverySummary | null;
   /** Recent failures with scope + text, bounded — which window/feed/write, and why. */
   errors: ErrLog[];
   /** When this process booted (for the health boot-grace). */
@@ -219,11 +277,16 @@ type Eng = {
   reconAt: number;
   reconHoles: number;
   reconMissing: number[];
+  reconClassified: number;
+  reconUnresolved: number;
   reconBaseline: number | null;
   /** Owner readiness latch: the "enough data to evaluate" push fires ONCE. Persisted. */
   readinessAlerted: boolean;
   watchdog: WatchdogState;
   watchdogTimer: ReturnType<typeof setInterval> | null;
+  /** Distinct producer-path incident, repeated hourly until it clears. */
+  producerAlertKey: string;
+  producerAlertAt: number;
 };
 
 /** A window graded once its official Kalshi result arrives; held in a bounded
@@ -312,9 +375,17 @@ function freshEng(): Eng {
     callLog: [],
     riskCalls: [],
     riskReady: false,
+    riskReservationPending: null,
     entryWatch: null,
+    recoveryPilotWatch: null,
+    recoveryPilotStart: recoveryPilotStartAtBoot(Date.now(), recoveryPilotEnabled(), false, null),
     lastAdmissionAudit: null,
-    selectiveStart: Math.ceil(Date.now() / 900_000) * 900_000,
+    ownerRestore: null,
+    ownerRestorePending: false,
+    selectiveStart: Math.max(
+      Math.ceil(Date.now() / 900_000) * 900_000,
+      Date.parse(OWNER_ROLLBACK_V1_FROZEN_AT),
+    ),
     baselineCalls: [],
     lastCall: null,
     prevSnap: null,
@@ -354,23 +425,38 @@ function freshEng(): Eng {
     entryState: {},
     ledgerFlushing: false,
     ledgerGapCount: 0,
+    ledgerGapRawCount: 0,
+    ledgerGapClassifiedCount: 0,
     lastGapScanAt: 0,
     alertOwnerSubs: 0,
+    alertCallSubs: 0,
+    alertSettleSubs: 0,
+    alertDelivery: null,
     errors: [],
     startedAt: Date.now(),
     reconAt: 0,
     reconHoles: 0,
     reconMissing: [],
+    reconClassified: 0,
+    reconUnresolved: 0,
     reconBaseline: null,
     readinessAlerted: false,
     watchdog: freshWatchdog(),
     watchdogTimer: null,
+    producerAlertKey: "",
+    producerAlertAt: 0,
   };
 }
 
 /** Integration-test access to the exact entry functions used by `tick`.
  * Tests use the normal PGlite fallback, never an injected persistence stub. */
-export const __entryIntegration = { freshEng, applyEntryMode, noteCall };
+export const __entryIntegration = { freshEng, applyEntryMode, noteCall, persistState, loadState };
+
+/** REACHABILITY-A harness access to the remaining decision steps `tick` runs, in
+ * the same order (a rail test pins the order in `tick`). Read-only exposure: no
+ * behaviour changes, and the harness refuses DATABASE_URL so persistence stays
+ * on the disposable in-memory PGlite. */
+export const __tickIntegration = { freshEng, loadState, stickyVotes, lastSide, decideChair, noteUnfilteredCall, applyEntryMode, noteCall };
 
 /** Record a failure with its scope and text: sets the single lastError (kept for
  *  the UI/watchdog) and appends to the bounded ring so recent failures keep
@@ -391,6 +477,9 @@ async function sql() {
 }
 
 async function loadState(e: Eng) {
+  // Restored history must establish its own validity. Process-local failed-save
+  // proof can never override a newly loaded durable invalid-history marker.
+  e.riskReservationPending = null;
   try {
     const db = await sql();
     const rows = await db<{ state: unknown }>`select state from desk_state where id = ${STATE_ID} limit 1`;
@@ -416,6 +505,8 @@ async function loadState(e: Eng) {
           selective_start?: number;
           selective_policy?: string;
           baseline_calls?: unknown;
+          recovery_pilot_enabled?: boolean;
+          recovery_pilot_start?: number;
         }
       | undefined;
     if (!raw) {
@@ -430,6 +521,12 @@ async function loadState(e: Eng) {
     e.riskCalls = risk.calls;
     e.riskReady = risk.valid && raw.risk_history_valid !== false;
     e.baselineCalls = restoreRiskCalls(raw.baseline_calls, []).calls;
+    e.recoveryPilotStart = recoveryPilotStartAtBoot(
+      Date.now(),
+      recoveryPilotEnabled(),
+      raw.recovery_pilot_enabled === true,
+      raw.recovery_pilot_start,
+    );
     if (raw.selective_policy === SELECTIVE_ENTRY_ID && Number.isFinite(raw.selective_start) && raw.selective_start! > 0) e.selectiveStart = raw.selective_start!;
     e.settings = { ...DEFAULT_SERVER_SETTINGS, ...(raw.settings ?? {}), source: "live" };
     e.settings.mutes = (e.settings.mutes ?? []).filter(Boolean);
@@ -460,6 +557,40 @@ async function loadState(e: Eng) {
     e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
+    // Restore all history before attempting the one-time authority write.
+    // A candidate learner stays private until its full-state save is acknowledged;
+    // no timers or first tick run until loadState returns.
+    const ownerRestore = ownerRestoreMode();
+    if (ownerRestore !== "OFF") {
+      const originalLearner = e.learner;
+      try {
+        const candidate = structuredClone(originalLearner);
+        const result = applyOwnerRestore(candidate, ownerRestore, Date.now());
+        if (result.changed) {
+          e.ownerRestorePending = true;
+          e.learner = candidate;
+          if (await persistState(e, true)) {
+            e.ownerRestore = result;
+            queueStatusTransitions(skillStatusSnapshot(originalLearner), skillStatusSnapshot(candidate), "ownerRestore");
+          } else {
+            e.learner = originalLearner;
+            e.ownerRestore = { ...result, changed: false, status: [], debt: [],
+              outcome: ownerRestore === "ROLLBACK" ? "ROLLBACK_REFUSED" : "REFUSED",
+              reason: "owner restore save was not acknowledged; original learner retained" };
+          }
+        } else {
+          e.ownerRestore = result;
+        }
+      } catch (err) {
+        e.learner = originalLearner;
+        e.ownerRestore = { version: "OWNER_RESTORE_E1_PAIR_2026_09_30_V1", mode: ownerRestore,
+          outcome: ownerRestore === "ROLLBACK" ? "ROLLBACK_REFUSED" : "REFUSED", changed: false,
+          reason: "owner restore failed; original learner retained", status: [], debt: [] };
+        noteErr(e, "owner-restore", err instanceof Error ? err.message : String(err));
+      } finally {
+        e.ownerRestorePending = false;
+      }
+    }
   } catch (err) {
     e.lastError = `state load: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -469,14 +600,23 @@ async function persistState(e: Eng, force = false) {
   if (!force && Date.now() - e.lastPersistAt < PERSIST_EVERY_MS) return true;
   e.lastPersistAt = Date.now();
   try {
+    const riskSnapshot = JSON.stringify(e.riskCalls);
+    const restoredRisk = restoreRiskCalls(e.riskCalls, e.callLog);
+    // A failed reservation write closes admission immediately. Only the exact
+    // complete history previously known valid may regain readiness after its
+    // full-state retry is acknowledged. Invalid restored history has no proof.
+    const recoveringRisk = !e.riskReady && e.riskReservationPending === riskSnapshot &&
+      restoredRisk.valid && JSON.stringify(restoredRisk.calls) === riskSnapshot;
     const state = JSON.stringify({
       learner: sliceLearner(e.learner),
       call_log: e.callLog.slice(0, 80),
       risk_calls: e.riskCalls,
-      risk_history_valid: e.riskReady,
+      risk_history_valid: e.riskReady || recoveringRisk,
       selective_start: e.selectiveStart,
       selective_policy: SELECTIVE_ENTRY_ID,
       baseline_calls: e.baselineCalls,
+      recovery_pilot_enabled: recoveryPilotEnabled(),
+      recovery_pilot_start: e.recoveryPilotStart,
       settings: {
         bar_override: e.settings.bar_override,
         adaptive_bar: e.settings.adaptive_bar,
@@ -515,6 +655,13 @@ async function persistState(e: Eng, force = false) {
     });
     e.stateWrite = write;
     await write;
+    const currentRisk = recoveringRisk ? restoreRiskCalls(e.riskCalls, e.callLog) : null;
+    if (recoveringRisk && e.stateWrite === write && !e.riskReady && e.riskReservationPending === riskSnapshot &&
+        JSON.stringify(e.riskCalls) === riskSnapshot &&
+        currentRisk?.valid && JSON.stringify(currentRisk.calls) === riskSnapshot) {
+      e.riskReady = true;
+      e.riskReservationPending = null;
+    }
     return true;
   } catch (err) {
     e.lastError = `state save: ${err instanceof Error ? err.message : String(err)}`;
@@ -617,7 +764,12 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
   const key = windowKey(snap);
   if (e.entryState[key]) return;
   const touch = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
+  const policy = { entry_policy: FLOOR_OWNER_ROLLBACK_V1.entry_policy,
+    floor_policy: FLOOR_OWNER_ROLLBACK_V1.policy_id, prospective_start: e.selectiveStart };
+  const roster = captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha(), takerFeeCents);
+  if (roster) Object.assign(roster.book, policy);
   e.entryState[key] = {
+    ...policy,
     lean: chair.lean,
     regime: snap.regime_key ?? "",
     secs_left: Math.round((snap.secs_left ?? 0) * 10) / 10,
@@ -630,7 +782,7 @@ function noteEntryState(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
     touch_size: Math.round(Number(touch) || 0),
     fee_cents: takerFeeCents(cents),
     build_sha: runningBuildSha(),
-    entry_roster: captureEntrySkillRoster(snap, chair, votes, cents, takerFeeCents(cents), runningBuildSha(), takerFeeCents),
+    entry_roster: roster,
   };
   const keys = Object.keys(e.entryState);
   if (keys.length > 12) for (const k of keys.slice(0, keys.length - 12)) delete e.entryState[k];
@@ -693,11 +845,57 @@ async function noteCall(e: Eng, snap: Snapshot, chair: ChairResult, votes: Vote[
   e.riskCalls = restoreRiskCalls(e.riskCalls, [e.callLog[0]!]).calls;
   e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: chair.lean };
   // Save the daily reservation before publishing the new call. A restart must not reset its allowance.
+  const validReservation = e.riskReady ? JSON.stringify(e.riskCalls) : null;
   if (!(await persistState(e, true))) {
     e.riskReady = false;
+    e.riskReservationPending = validReservation;
     return;
   }
-  notifyCall(chair.lean, Math.round(cents), snap.mins_left, snap.ticker);
+  notifyCall(chair.lean, e.callLog[0]!.cents, snap.mins_left, snap.ticker, undefined, snap.close_time);
+}
+
+/**
+ * Publish the bounded recovery pilot only when the canonical Chair book did
+ * not take the window. The source marker is intentional and mandatory: the
+ * real-money follower rejects any row that names a source, so this position is
+ * visible on the research site without becoming a follower instruction.
+ */
+async function noteRecoveryPilotCall(e: Eng, snap: Snapshot, decision: RecoveryPilotDecision) {
+  if (!recoveryPilotEnabled()) return;
+  if (hasPaperPosition(e.riskCalls, snap)) return;
+  const ctx = {
+    calls: e.riskCalls,
+    ready: e.riskReady,
+    callNotificationRecipients: e.alertCallSubs,
+    callNotificationAccepted24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+    start: e.recoveryPilotStart,
+    watch: e.recoveryPilotWatch,
+  };
+  if (!recoveryPilotBookOk(snap, ctx, decision) || !decision.candidate) return;
+  const { side, ask } = decision.candidate;
+  const row: CallLogRow = {
+    id: `${snap.close_time}-${side}-${snap.as_of}`,
+    t: snap.as_of,
+    ticker: snap.ticker,
+    close_time: snap.close_time,
+    lean: side,
+    cents: Math.round(ask * 10) / 10,
+    settle: null,
+    flipped: false,
+    source: RECOVERY_PILOT_SOURCE,
+  };
+  e.callLog = [row, ...e.callLog].slice(0, 80);
+  e.riskCalls = restoreRiskCalls(e.riskCalls, [row]).calls;
+  e.lastCall = { ticker: snap.ticker, close_time: snap.close_time, lean: side };
+  e.recoveryPilotWatch = null;
+  // Reserve the daily slot durably before making the pilot public.
+  const validReservation = e.riskReady ? JSON.stringify(e.riskCalls) : null;
+  if (!(await persistState(e, true))) {
+    e.riskReady = false;
+    e.riskReservationPending = validReservation;
+    return;
+  }
+  notifyCall(side, e.callLog[0]!.cents, snap.mins_left, snap.ticker, RECOVERY_PILOT_SOURCE, snap.close_time);
 }
 
 function settleCallLog(e: Eng, ticker: string, close_time: number, winner: "UP" | "DOWN") {
@@ -781,11 +979,11 @@ const LEDGER_COLUMNS =
   "settle_feed, settle_feed_n, official_value, shadow_entry_cents, shadow_ev_cents, " +
   "entry_regime, entry_secs_left, entry_conf, entry_score, entry_bar, entry_fair_yes, " +
   "entry_spread_cents, entry_leftover_cents, entry_touch_size, entry_fee_cents, " +
-  "entry_lean, entry_build_sha, skill_score_audit, entry_skill_roster, entry_skill_quality)";
+  "entry_lean, entry_source, entry_build_sha, skill_score_audit, entry_skill_roster, entry_skill_quality)";
 const LEDGER_INSERT =
   `insert into desk_ledger ${LEDGER_COLUMNS} values ` +
   "($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29," +
-  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb,$43::jsonb,$44::jsonb) " +
+  "$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43::jsonb,$44::jsonb,$45::jsonb) " +
   "on conflict (ticker, close_time) do nothing";
 
 /** Build one graded window's ledger row synchronously, at grade time, from the
@@ -875,6 +1073,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
     entry?.touch_size ?? null,
     entry?.fee_cents ?? null,
     booked?.lean ?? null,
+    booked?.source ?? null,
     booked?.build_sha ?? null,
     scoreAudit == null ? null : JSON.stringify(scoreAudit),
     booked && entry?.entry_roster && entry.entry_roster.ticker === snap.ticker &&
@@ -893,7 +1092,7 @@ function buildLedgerRow(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResul
 function ledgerIO(db: Sql): PersistIO {
   return {
     write: async (r) => {
-      await db.query(LEDGER_INSERT, withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(r.values))));
+      await db.query(LEDGER_INSERT, withRecoveryPilotSourceColumn(withEntrySkillQualityColumn(withEntrySkillRosterColumn(withSkillAuditColumn(r.values)))));
     },
     verify: async (r) => {
       const rows = await db.query<{ n: number }>(
@@ -1084,12 +1283,17 @@ async function applyGrade(
     scoreAudit = finishSkillScoreAudit(scoreAudit, e.learner);
   }
   settleCallLog(e, snap.ticker, snap.close_time, finish);
+  // buildLedgerRow consumes entry state; retain its immutable paid-policy
+  // metadata for the asynchronous exit writer before that deletion.
+  const bookedEntryPolicy = e.entryState[windowKey(snap)];
   // Enqueue the ledger row (built now, from this window's state) for a durable,
   // verified write off the tick. lastLedgerOkAt only advances once it lands.
   e.ledgerQueue = enqueueLedger(e.ledgerQueue, buildLedgerRow(e, snap, votes, chair, finish, source, scoreAudit), Date.now());
   void gradeV2(e, snap, finish);
   void gradeTaker(e, snap, finish); // shadow seat, recorded only — no chair/learner effect
-  const booked = e.callLog.find((r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000);
+  const booked = chairOnlyCalls(e.callLog).find(
+    (r) => r.ticker === snap.ticker && Math.abs(r.close_time - snap.close_time) < 90_000,
+  );
   const chairBits =
     booked && booked.settle != null
       ? { entry: booked.cents, settle: booked.settle, ev: Math.round((booked.settle - booked.cents - takerFeeCents(booked.cents)) * 10) / 10 }
@@ -1148,7 +1352,7 @@ async function applyGrade(
     // means no booked position or no replay for this exact window — either way, nothing
     // to measure and nothing written.
     if (!exitReplayPath || !booked || !(booked.cents > 0)) return;
-    const champion = await activeChampion();
+    const champion = await activeChampion(bookedEntryPolicy);
     await recordExitArena(
       {
         ticker: snap.ticker,
@@ -1157,7 +1361,8 @@ async function applyGrade(
         entry: { side: booked.lean, cents: booked.cents, t: booked.t },
         path: exitReplayPath,
       },
-      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at), e.selectiveStart)).toISOString() },
+      { ...champion, prospective_start_at: new Date(Math.max(Date.parse(champion.prospective_start_at),
+        bookedEntryPolicy?.prospective_start ?? e.selectiveStart)).toISOString() },
     );
   })().catch((err) => {
     e.lastError = `lab: ${err instanceof Error ? err.message : String(err)}`;
@@ -1220,6 +1425,8 @@ function gradeableBook(snap: Snapshot): boolean {
 }
 
 function noteGradeCand(e: Eng, snap: Snapshot, votes: Vote[], chair: ChairResult) {
+  // A retained expired market is useful for settlement identity, never fitting.
+  if (snap.as_of > snap.close_time) return;
   if (e.gradeCand && e.gradeCand.snap.close_time !== snap.close_time) e.gradeCand = null;
   if (gradeableBook(snap)) e.gradeCand = { snap, votes, chair };
 }
@@ -1274,6 +1481,22 @@ async function settleIfNeeded(
         : { snap: prev.snap!, votes: prev.votes, chair: prev.chair! };
   } else {
     s = gradeSource(e, snap, votes, chair);
+  }
+  // When an expired market is retained, the first post-close tick may carry
+  // its result. Grade only an original pre-close decision, never fresh votes
+  // evaluated with that result already available.
+  if (s.snap.as_of > w.close_time) {
+    const frozen = e.gradeCand?.snap.close_time === w.close_time && e.gradeCand.snap.ticker === w.ticker && e.gradeCand.snap.as_of <= w.close_time
+      ? e.gradeCand
+      : prev.snap?.close_time === w.close_time && prev.snap.ticker === w.ticker && prev.snap.as_of <= w.close_time && prev.chair
+        ? { snap: prev.snap, votes: prev.votes, chair: prev.chair }
+        : null;
+    if (!frozen) {
+      noteErr(e, "settlement evidence", `${w.ticker}:${w.close_time} has no retained pre-close grading input; not graded`);
+      await persistState(e, true);
+      return;
+    }
+    s = frozen;
   }
   const hit = officialHit(e, snap, w.ticker, w.close_time);
   if (hit) {
@@ -1374,7 +1597,7 @@ function noteDecisionSnapshot(e: Eng, snap: Snapshot, chair: ChairResult): void 
     }
     return;
   }
-  void observeChairWaitMilestone(snap, chair, e.callLog).catch(() => {});
+  void observeChairWaitMilestone(snap, chair, chairOnlyCalls(e.callLog)).catch(() => {});
   try {
     const row = decisionSnapshotFrom(snap, chair);
     void recordDecisionSnapshot(row).catch((err) => {
@@ -1418,7 +1641,48 @@ async function tick(e: Eng) {
     // the decision and cannot change what the Chair said or whether the book fills.
     noteDecisionSnapshot(e, snap, chair);
     onLean(e.learner, CHAIR_SCALP, chair.lean, snap);
+    // The canonical Council book always gets first refusal. Only a window it
+    // leaves unbooked can advance or fill the separately labelled recovery pilot.
     await noteCall(e, snap, chair, votes);
+    if (recoveryPilotEnabled() && !hasPaperPosition(e.riskCalls, snap)) {
+      const pilot = recoveryPilotDecision(snap, {
+        calls: e.riskCalls,
+        ready: e.riskReady,
+        callNotificationRecipients: e.alertCallSubs,
+        callNotificationAccepted24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+        start: e.recoveryPilotStart,
+        watch: e.recoveryPilotWatch,
+      });
+      e.recoveryPilotWatch = pilot.watch;
+      await noteRecoveryPilotCall(e, snap, pilot);
+    } else {
+      e.recoveryPilotWatch = null;
+    }
+    // Observe only after both books have made their decision. No research result
+    // changes eligibility, a call, a paid position, or the real-money follower.
+    {
+      const reasons: string[] = (admissionAudit?.checks ?? [])
+        .filter(check => check.pass !== true && check.blocking !== false && check.id !== "direction" && check.id !== "quote")
+        .map(check => `${check.label}: ${check.pass === null ? "unverified" : "requirement not met"}`);
+      const ask = directionalAsk(snap, chair);
+      if (chair.lean !== "WAIT" && !paperBookEdgeOk(snap, chair.lean))
+        reasons.push("non-positive after-fee booking edge");
+      if (chair.lean !== "WAIT" && !paperBookTeamOk(chair, chair.lean))
+        reasons.push("eligible team support requirement not met");
+      const selective = chair.gates.find((g) => g.id === "selective" && !g.pass);
+      if (selective && !admissionAudit) reasons.push(selective.value || selective.label);
+      const sideAsk = chair.lean === "UP" ? snap.yes_ask : snap.no_ask;
+      const bid = chair.lean === "UP" ? snap.yes_bid : snap.no_bid;
+      const size = chair.lean === "UP" ? snap.no_bid_size : snap.yes_bid_size;
+      if (!(Number.isFinite(sideAsk) && Number.isFinite(bid) && Number.isFinite(size)) || sideAsk >= 99 || bid < 0 || bid > sideAsk || sideAsk - bid > SELECTIVE_PARAMS.max_spread_cents || size < 1 || snap.yes_ask + snap.no_ask < 100)
+        reasons.push("executable quote, spread or resting-size requirement not met");
+      if (!(ask > 0 && ask < 100)) reasons.push("executable ask unavailable");
+      else if (!bookable(ask)) reasons.push(`${ask}¢ ask is below the 80¢ paper floor`);
+      if (e.riskReservationPending) reasons.push("paper booking awaits durable risk reservation");
+      if (hasPaperPosition(e.riskCalls, snap) && !directionAlreadyBooked(e.riskCalls, snap, chair))
+        reasons.push("an existing paper position in the opposite direction blocks another booking");
+      void captureDirectionalRegret(snap, chair, [...new Set(reasons)], directionAlreadyBooked(e.riskCalls, snap, chair) && !e.riskReservationPending);
+    }
     noteReplay(snap, votes, chair, e.callLog.some((r) => r.ticker === snap.ticker), labFairNow(snap.ticker));
     // MEASUREMENT ONLY (authority: none). Buffers per-seat + Chair-gating telemetry
     // for research. OFF unless SEAT_TELEMETRY_ENABLED; buffers in memory and flushes
@@ -1458,6 +1722,8 @@ async function tick(e: Eng) {
     e.recoveredWindow = null;
     e.lastError = null;
     e.lastTickAt = Date.now();
+    // Outbound publication only: this frame is now the public getServerFrame result.
+    publishDiscordLeans(snap, votes, chair, e.learner.knobs);
     await persistState(e);
     void flushLedger(e); // off the tick's critical path — a slow DB must never wedge grading
   } catch (err) {
@@ -1932,15 +2198,29 @@ async function scanLedgerGaps(e: Eng): Promise<void> {
       select (extract(epoch from close_time) * 1000)::bigint as ms
       from desk_ledger where close_time > now() - interval '6 hours' order by close_time
     `;
-    e.ledgerGapCount = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n))).length;
+    const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
+    // On any classification read failure keep every raw hole blocking. Only
+    // separately executed owner-approved records may reduce integrity counting.
+    e.ledgerGapCount = holes.length;
+    e.ledgerGapRawCount = holes.length;
+    e.ledgerGapClassifiedCount = 0;
+    const classified = await readApprovedGaps(db, holes);
+    e.ledgerGapCount = classified.unresolved.length;
+    e.ledgerGapClassifiedCount = classified.classified.length;
   } catch (err) {
     noteErr(e, "gap scan", err instanceof Error ? err.message : String(err));
   }
   try {
-    const { ownerSubCount } = await import("./push.server");
-    e.alertOwnerSubs = await ownerSubCount();
+    const [counts, delivery] = await Promise.all([pushRecipientCounts(), pushDeliverySummary()]);
+    e.alertOwnerSubs = counts.owner;
+    e.alertCallSubs = counts.call;
+    e.alertSettleSubs = counts.settle;
+    e.alertDelivery = delivery;
   } catch {
-    /* alert-channel probe is best-effort */
+    // The probe is best-effort for service health, but pilot readiness must not
+    // survive a failed refresh on stale in-memory evidence.
+    e.alertCallSubs = 0;
+    e.alertDelivery = null;
   }
   await reconcile(e);
 }
@@ -1966,6 +2246,11 @@ async function reconcile(e: Eng): Promise<void> {
     const holes = ledgerGaps(rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n)));
     e.reconHoles = holes.length;
     e.reconMissing = holes.slice(-8);
+    e.reconClassified = 0;
+    e.reconUnresolved = holes.length;
+    const classified = await readApprovedGaps(db, holes);
+    e.reconClassified = classified.classified.length;
+    e.reconUnresolved = classified.unresolved.length;
     if (e.reconBaseline == null) {
       e.reconBaseline = holes.length; // first run absorbs existing history silently
     } else if (holes.length > e.reconBaseline) {
@@ -2010,6 +2295,72 @@ async function reconcile(e: Eng): Promise<void> {
   }
 }
 
+function engineHealth(e: Eng, now: number) {
+  return healthVerdict({
+    now,
+    started: e.started,
+    startedAt: e.startedAt,
+    lastTickAt: e.lastTickAt,
+    lastLedgerOkAt: e.lastLedgerOkAt,
+    queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
+    gaps: e.ledgerGapCount,
+    recentIdentityFaults: recentIdentityFaultCount(e.identityFaults.map((f) => f.at), now),
+  });
+}
+
+/** The exact restored pair is an operational dependency. This deliberately
+ * reads only authority/heartbeat state; it never participates in a decision. */
+function producerPathVerdict(e: Eng): ProducerVerdict {
+  const marker = e.learner.owner_restore;
+  const restoreActive = marker?.version === OWNER_RESTORE_E1_PAIR_V1 && marker.state === "APPLIED";
+  return producerVerdict({
+    restore_active: restoreActive,
+    restore_pending: e.ownerRestorePending,
+    cards: OWNER_RESTORE_CARDS.map((id) => {
+      const card = e.learner.skills?.[id];
+      const seat = id.split(".")[0]!;
+      const appliedDebt = marker?.applied.debt[seat];
+      const currentDebt = e.learner.seat_calib_debt?.[seat];
+      return {
+        id,
+        status: card?.status ?? null,
+        manual_hold: card?.manual_hold === true,
+        // Normal successful reviews can pay debt down. Only a move above the
+        // restored value is a regression to the failure state we are guarding.
+        calibration_ok: appliedDebt == null || (currentDebt != null && currentDebt <= appliedDebt),
+        // During boot grace there is no completed frame to inspect yet.
+        seat_seen: e.lastTickAt <= 0 || e.lastVotes.some((vote) => vote.seat === seat),
+      };
+    }),
+  });
+}
+
+function criticalFeedReasons(e: Eng): string[] {
+  const health = e.prevSnap?.health;
+  if (!health) return [];
+  // STALE is already visible on the desk and can clear on the next poll. DEAD
+  // is reserved for a feed that has crossed its own hard DOWN threshold.
+  return (["spot", "kalshi", "derivs"] as const)
+    .filter((feed) => health[feed] === "DOWN")
+    .map((feed) => `${feed} feed is ${health[feed]}`);
+}
+
+export type DeskOperational = OperationalVerdict & { producer: ProducerVerdict };
+
+function deskOperational(e: Eng, now: number): DeskOperational {
+  const producer = producerPathVerdict(e);
+  return {
+    ...operationalVerdict({
+      engine: engineHealth(e, now),
+      producer,
+      critical_reasons: criticalFeedReasons(e),
+      chair_lean: e.lastChair?.lean,
+      booked: e.prevSnap ? hasPaperPosition(e.riskCalls, e.prevSnap) : false,
+    }),
+    producer,
+  };
+}
+
 /** Its own timer, on purpose: a tick loop that is stuck or throwing every
  *  pass is exactly what this has to notice, so it must not live inside it. It
  *  also drains the ledger queue and scans for holes, so persistence keeps
@@ -2021,6 +2372,29 @@ function watchdogTick(e: Eng) {
   void scanLedgerGaps(e);
   try {
     const now = Date.now();
+    const producerIncident = [...producerPathVerdict(e).reasons, ...criticalFeedReasons(e)];
+    const producerKey = producerIncident.join(" | ");
+    if (producerKey) {
+      if (producerKey !== e.producerAlertKey || now - e.producerAlertAt >= WATCHDOG_REPEAT_MS) {
+        notifyWatchdog({
+          title: e.producerAlertKey ? "Desk producer path still broken" : "Desk producer path broken",
+          body: `${producerIncident.join(" · ")} · this is an outage, not an ordinary WAIT · see /status`.slice(0, 220),
+          tag: "producer-watchdog",
+          url: "/",
+        });
+        e.producerAlertKey = producerKey;
+        e.producerAlertAt = now;
+      }
+    } else if (e.producerAlertKey) {
+      notifyWatchdog({
+        title: "Desk producer path recovered",
+        body: "STRIKE and CHAIN authority, seat heartbeat and critical feeds are healthy again.",
+        tag: "producer-watchdog",
+        url: "/",
+      });
+      e.producerAlertKey = "";
+      e.producerAlertAt = 0;
+    }
     const d = watchdogDecision({ now, lastGradeAt: e.lastLedgerOkAt, state: e.watchdog });
     if (d.kind === "quiet") return;
     e.watchdog = applyWatchdog(e.watchdog, d, now, e.lastLedgerOkAt);
@@ -2045,18 +2419,10 @@ function watchdogTick(e: Eng) {
 export async function getHealth(): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const e = eng();
   ensureServerEngine();
+  if (e.ready) await e.ready;
   const now = Date.now();
   const recentIdentityFaults = recentIdentityFaultCount(e.identityFaults.map((f) => f.at), now);
-  const v = healthVerdict({
-    now,
-    started: e.started,
-    startedAt: e.startedAt,
-    lastTickAt: e.lastTickAt,
-    lastLedgerOkAt: e.lastLedgerOkAt,
-    queueOldestAgeMs: oldestQueueAgeMs(e.ledgerQueue, now),
-    gaps: e.ledgerGapCount,
-    recentIdentityFaults,
-  });
+  const operational = deskOperational(e, now);
   let lastSend: string | null = null;
   try {
     const { pushLastLog } = await import("./push.server");
@@ -2067,25 +2433,82 @@ export async function getHealth(): Promise<{ ok: boolean; status: number; body: 
   const alerts = alertHealth({ ownerSubs: e.alertOwnerSubs, lastSend });
   const s = e.prevSnap;
   return {
-    ok: v.ok,
-    status: v.ok ? 200 : 503,
+    ok: operational.ok,
+    status: operational.ok ? 200 : 503,
     body: {
-      ok: v.ok,
-      reasons: v.reasons,
+      ok: operational.ok,
+      state: operational.state,
+      summary: operational.summary,
+      reasons: operational.reasons,
+      producer_path: operational.producer,
+      books: {
+        live_floor_cents: FLOOR_LIVE_CENTS,
+        shadow_floor_cents: FLOOR_SHADOW_CENTS,
+        shadow_contract: "same signal and integrity gates; price floor is the only admission difference",
+      },
       tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 1000) : -1,
       last_recorded_age_s: Math.round((now - e.lastLedgerOkAt) / 1000),
       ledger_queue: e.ledgerQueue.length,
       ledger_queue_oldest_s: Math.round(oldestQueueAgeMs(e.ledgerQueue, now) / 1000),
       ledger_gaps: e.ledgerGapCount,
-      reconcile: { window_days: 90, holes: e.reconHoles, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
+      ledger_gaps_raw: e.ledgerGapRawCount,
+      ledger_gaps_classified: e.ledgerGapClassifiedCount,
+      reconcile: { window_days: 90, holes: e.reconHoles, classified: e.reconClassified, unresolved: e.reconUnresolved, missing_recent: e.reconMissing, checked_at: e.reconAt || null },
       feeds: s ? { spot: s.health.spot, kalshi: s.health.kalshi, derivs: s.health.derivs } : null,
-      alerts: { deliverable: alerts.deliverable, owner_subs: e.alertOwnerSubs, note: alerts.note },
+      alerts: {
+        deliverable: alerts.deliverable,
+        owner_subs: e.alertOwnerSubs,
+        note: alerts.note,
+        call_notifications: {
+          configured: e.alertCallSubs > 0,
+          subscribers: e.alertCallSubs,
+          provider_accepted_24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+          recovery_pilot_ready:
+            e.alertCallSubs > 0 && (e.alertDelivery?.call_ready_accepted_24h ?? 0) > 0,
+          note:
+            e.alertCallSubs < 1
+              ? "no eligible call-alert subscriber; do not rely on call notifications for rollout"
+              : (e.alertDelivery?.call_ready_accepted_24h ?? 0) < 1
+                ? "eligible subscribers exist, but no recent provider-accepted owner call/test receipt proves the owner channel"
+                : "an eligible owner call subscriber has recent provider acceptance; device display and human receipt are not guaranteed",
+        },
+        settlement_notifications: {
+          configured: e.alertSettleSubs > 0,
+          subscribers: e.alertSettleSubs,
+        },
+        delivery_evidence: {
+          observed: e.alertDelivery?.last_attempted_at != null,
+          accepted_24h: e.alertDelivery?.accepted_24h ?? 0,
+          call_ready_accepted_24h: e.alertDelivery?.call_ready_accepted_24h ?? 0,
+          failed_24h: e.alertDelivery?.failed_24h ?? 0,
+          gone_24h: e.alertDelivery?.gone_24h ?? 0,
+          last_event_kind: e.alertDelivery?.last_event_kind ?? null,
+          last_event_key: e.alertDelivery?.last_event_key ?? null,
+          last_outcome: e.alertDelivery?.last_outcome ?? null,
+          last_attempted_at: e.alertDelivery?.last_attempted_at ?? null,
+          note: pushDeliveryNote(e.alertDelivery),
+        },
+      },
       // The grading race, both halves: windows decided but not yet settled, and
       // windows refused because their identity did not hold. Faults stay persisted
       // for forensics; only faults observed inside the current two-window incident
       // horizon flip deep health. Old Sep-style scars remain visible without making
       // the recovered desk permanently 503.
       pending_windows: e.pending.map((p) => ({ ticker: p.ticker, close_time: p.close_time })),
+      // Inactive policy intervention (owner-restore.ts): this boot's receipt and
+      // the persisted marker, so an applied restore stays visible after the env is cleared.
+      owner_restore: {
+        pending: e.ownerRestorePending,
+        boot: e.ownerRestore
+          ? { outcome: e.ownerRestore.outcome, mode: e.ownerRestore.mode, reason: e.ownerRestore.reason,
+              status: e.ownerRestore.status, debt: e.ownerRestore.debt }
+          : null,
+        marker: !e.ownerRestorePending && e.learner.owner_restore
+          ? { version: e.learner.owner_restore.version, mode: e.learner.owner_restore.mode, state: e.learner.owner_restore.state,
+              applied_at: e.learner.owner_restore.applied_at, upgraded_at: e.learner.owner_restore.upgraded_at ?? null,
+              rolled_back_at: e.learner.owner_restore.rolled_back_at ?? null }
+          : null,
+      },
       integrity: {
         ok: recentIdentityFaults === 0,
         recent_identity_faults: recentIdentityFaults,
@@ -2146,6 +2569,7 @@ export type ServerFrame = {
   call_log: CallLogRow[];
   lastError: string | null;
   settling: boolean;
+  operational: DeskOperational;
   v2: V2Frame;
   selective: {
     policy: string;
@@ -2162,9 +2586,10 @@ export async function getServerFrame(): Promise<ServerFrame> {
   const e = eng();
   ensureServerEngine();
   if (e.ready) await e.ready;
+  const now = Date.now();
   return {
-    as_of: Date.now(),
-    tick_age_s: e.lastTickAt ? Math.round((Date.now() - e.lastTickAt) / 100) / 10 : -1,
+    as_of: now,
+    tick_age_s: e.lastTickAt ? Math.round((now - e.lastTickAt) / 100) / 10 : -1,
     snap: e.prevSnap,
     votes: e.lastVotes,
     chair: e.lastChair,
@@ -2178,6 +2603,7 @@ export async function getServerFrame(): Promise<ServerFrame> {
     call_log: e.callLog,
     lastError: e.lastError,
     settling: e.pending.length > 0,
+    operational: deskOperational(e, now),
     v2: v2Frame(e),
     selective: {
       audit: e.lastAdmissionAudit,

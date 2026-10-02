@@ -22,6 +22,7 @@ import { labRegistrySnapshot, recoveryRegistryCounts, recoveryRegistrySnapshot, 
 import { astraDirectorSnapshot, type AstraDirectorSnapshot } from "./astra-director.server";
 import { askLeadSnapshot, type AskLeadSnapshot } from "./ask-lead.server";
 import { disagreementEdgeSnapshot, type PublicDisagreementEdgeSnapshot } from "./disagreement-edge.server";
+import { executionLabReport } from "./execution-lab.server";
 
 export type PublicLabSpecimen = {
   id: string;
@@ -42,6 +43,7 @@ export type PublicLabSpecimen = {
 };
 
 export type PublicLabSnapshot = {
+  execution_lab?: Awaited<ReturnType<typeof executionLabReport>> | null;
   at: string;
   champion: { policy_id: string; version: number };
   control_id: string;
@@ -111,6 +113,7 @@ export const publicLabSnapshot = createServerFn({ method: "GET" }).handler(
     });
 
     return {
+      execution_lab: await executionLabReport().catch(() => null),
       at: standing.at,
       champion: { policy_id: standing.champion.policy_id, version: standing.champion.version },
       control_id: control?.id ?? "HOLD_V1",

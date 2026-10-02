@@ -146,7 +146,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
     setAlert("busy");
     setAlertMsg(null);
     try {
-      const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true });
+      const p = await enablePush({ on_call: prefsRef.current?.on_call ?? false, on_settle: true, on_read: prefsRef.current?.on_read ?? false });
       prefsRef.current = p;
       setAlert("on");
       setAlertMsg(
@@ -271,7 +271,7 @@ export function PitRoom({ initial }: { initial?: PublicArenaSnapshot | null }) {
         action={{ label: "Arena tour", hint: "60-second guide", onSelect: startTour }}
       />
       <div className="gutter mx-auto flex max-w-md flex-col gap-3 pb-10 pt-3 sm:max-w-lg lg:max-w-3xl">
-        <p className="font-mono text-micro text-muted">
+        <p className="font-sans text-micro text-muted">
           Paper calls only. Not advice. Not Kalshi orders.
         </p>
 

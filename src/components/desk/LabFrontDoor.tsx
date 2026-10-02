@@ -27,7 +27,7 @@ function Card({ c }: { c: FrontDoorCard }) {
       {c.purpose ? (
         <p className="mt-1.5 font-sans text-ui leading-relaxed text-muted">{c.purpose}</p>
       ) : null}
-      <p className="mt-2 font-mono text-micro text-subtle">
+      <p className="mt-2 font-sans text-micro text-subtle">
         {c.status}
         {c.sample == null ? "" : ` · ${c.sample.toLocaleString("en-US")} recorded`}
       </p>
@@ -62,7 +62,7 @@ function Group({
           ))}
         </ul>
       ) : (
-        <p className="mt-3 font-mono text-micro text-subtle">Nothing in this state right now.</p>
+        <p className="mt-3 font-sans text-micro text-subtle">Nothing in this state right now.</p>
       )}
     </section>
   );
@@ -79,7 +79,7 @@ export function LabFrontDoor({ registry }: { registry: PublicLabRegistrySnapshot
       <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-door">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <p className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">The Lab</p>
+            <p className="font-sans text-micro uppercase tracking-[0.18em] text-subtle">The Lab</p>
             <h2 id="lab-door" className="mt-1 font-sans text-title font-medium text-fg">
               The bench at a glance
             </h2>
@@ -92,7 +92,7 @@ export function LabFrontDoor({ registry }: { registry: PublicLabRegistrySnapshot
           {FRONT_DOOR_COPY.pending}
         </p>
         <Group id="lab-declared" title="On the bench" note={FRONT_DOOR_COPY.declared} cards={declared} />
-        <p className="mt-5 max-w-[80ch] border-t border-border pt-3 font-mono text-micro leading-relaxed text-subtle">
+        <p className="mt-5 max-w-[80ch] border-t border-border pt-3 font-sans text-micro leading-relaxed text-subtle">
           {FRONT_DOOR_COPY.footer}
         </p>
       </section>
@@ -103,7 +103,7 @@ export function LabFrontDoor({ registry }: { registry: PublicLabRegistrySnapshot
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="lab-door">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <p className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">The Lab</p>
+          <p className="font-sans text-micro uppercase tracking-[0.18em] text-subtle">The Lab</p>
           <h2 id="lab-door" className="mt-1 font-sans text-title font-medium text-fg">
             The bench at a glance
           </h2>
@@ -134,12 +134,12 @@ export function LabFrontDoor({ registry }: { registry: PublicLabRegistrySnapshot
             ))}
           </ul>
         ) : (
-          <p className="mt-3 font-mono text-micro text-subtle">The register is empty this request.</p>
+          <p className="mt-3 font-sans text-micro text-subtle">The register is empty this request.</p>
         )}
       </section>
       <Group id="lab-notready" title="Not ready" note={FRONT_DOOR_COPY.not_ready} cards={door.not_ready} />
 
-      <p className="mt-5 max-w-[80ch] border-t border-border pt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-5 max-w-[80ch] border-t border-border pt-3 font-sans text-micro leading-relaxed text-subtle">
         {FRONT_DOOR_COPY.footer}
       </p>
     </section>

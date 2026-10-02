@@ -85,12 +85,12 @@ export function DataHealthCard({ facts }: { facts: ProFloorFacts }) {
       ) : null}
 
       {h.all_clear ? null : (
-        <p className="mt-3 font-mono text-micro leading-relaxed text-wait">
+        <p className="mt-3 font-sans text-micro leading-relaxed text-wait">
           Not clear: {h.blockers.join(" · ")}.
         </p>
       )}
 
-      <p className="mt-3 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">
         A book that has not moved in a while is a quiet market, not necessarily a stale one. The exchange&apos;s own
         quote timestamp is not available from this feed, so every age here is the desk&apos;s own clock. The
         perpetual basis above is an OKX/Binance reference, not the settlement index.

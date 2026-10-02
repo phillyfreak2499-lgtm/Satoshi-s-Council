@@ -1,0 +1,391 @@
+{
+  "captured_at": "2026-10-01T11:22:30.762Z",
+  "database": "satoshi-council-db",
+  "sql": "SELECT f FROM desk_state s CROSS JOIN LATERAL jsonb_array_elements(s.state->'identity_faults') f WHERE s.id='live' AND f->>'fault'='ticker-close-time-mismatch' ORDER BY (f->>'close_time')::bigint",
+  "records": [
+    {
+      "f": {
+        "at": 1789629301750,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789629300000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T07:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789629300000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789630201939,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789630200000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T07:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789630200000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789631102017,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789631100000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T07:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789631100000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789632002792,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789632000000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T08:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789632000000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789632902352,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789632900000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T08:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789632900000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789633802526,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789633800000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T08:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789633800000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789634702581,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789634700000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T08:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789634700000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1789635604271,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1789635600000,
+        "detail": "KXBTC15M-26SEP170300-00 encodes 2026-09-17T07:00:00.000Z but the window closes 2026-09-17T09:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP170300-00|1789635600000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP170300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790234103415,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790234100000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T07:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790234100000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790235003567,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790235000000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T07:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790235000000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790235903610,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790235900000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T07:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790235900000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790236799617,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790236800000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T08:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790236800000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790237699771,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790237700000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T08:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790237700000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790238603811,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790238600000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T08:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790238600000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790239503696,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790239500000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T08:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790239500000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790240399667,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790240400000,
+        "detail": "KXBTC15M-26SEP240300-00 encodes 2026-09-24T07:00:00.000Z but the window closes 2026-09-24T09:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26SEP240300-00|1790240400000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26SEP240300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790838900398,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790838900000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T07:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790838900000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790839800590,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790839800000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T07:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790839800000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790840700709,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790840700000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T07:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790840700000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790841600992,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790841600000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T08:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790841600000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790842501209,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790842500000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T08:15:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790842500000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790843401392,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790843400000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T08:30:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790843400000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790844301528,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790844300000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T08:45:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790844300000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    },
+    {
+      "f": {
+        "at": 1790845201763,
+        "checks": {
+          "close_ok": false,
+          "on_grid": true,
+          "ticker_seen": false,
+          "ticker_time_ok": false
+        },
+        "close_time": 1790845200000,
+        "detail": "KXBTC15M-26OCT010300-00 encodes 2026-10-01T07:00:00.000Z but the window closes 2026-10-01T09:00:00.000Z",
+        "fault": "ticker-close-time-mismatch",
+        "key": "KXBTC15M-26OCT010300-00|1790845200000|ticker-close-time-mismatch",
+        "ticker": "KXBTC15M-26OCT010300-00"
+      }
+    }
+  ]
+}

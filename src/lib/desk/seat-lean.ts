@@ -54,6 +54,7 @@ export type LeanDirection = "BULLISH" | "BEARISH" | "NEUTRAL" | "NO_READ";
 /** Truthful seat states, each one the frame can prove. */
 export type SeatLeanStatus =
   | "SPEAKING"
+  | "FOLDED"
   | "RESEARCH READ"
   | "BELOW BAR"
   | "SUPPRESSED"
@@ -81,6 +82,10 @@ export type SeatLean = {
   status: SeatLeanStatus;
   /** Plain-English status for the Guided Floor. */
   statusPlain: string;
+  selectable_live_cards?: number;
+  authority_ready_cards?: number;
+  authority_hold_reason?: string;
+  abstention_eligible?: boolean;
   /** True only when the Chair aggregated this seat's directional vote on this frame. */
   isAuthorizedSpeaker: boolean;
   /** The feed under the seat is STALE. The read is shown, the warning beside it. */
@@ -97,6 +102,7 @@ export type SeatLean = {
 
 const STATUS_PLAIN: Readonly<Record<SeatLeanStatus, string>> = Object.freeze({
   SPEAKING: "SATOSHI heard this read.",
+  FOLDED: "SATOSHI folded this read; it is not separate entry support.",
   "RESEARCH READ": "Directional read on the frame. No Chair row yet, so SATOSHI has not aggregated it.",
   "BELOW BAR": RESEARCH_ONLY_LINE,
   SUPPRESSED: RESEARCH_ONLY_LINE,
@@ -139,6 +145,7 @@ export function leanDirection(score: number | null): LeanDirection {
 }
 
 function statusOf(fact: SeatFact): SeatLeanStatus {
+  if (fact.status === "FOLDED" && fact.aggregated && (fact.voice === "speaking" || fact.voice === "suppressed" || fact.voice === "waiting")) return "FOLDED";
   switch (fact.voice) {
     case "speaking":
       // A directional final voice is SPEAKING only with the Chair row that proves
@@ -180,6 +187,7 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
   const sourceStrength = retained ? fact.raw_conf : null;
   const score = leanScore(researchSide, sourceStrength);
   const status = statusOf(fact);
+  const isAuthorizedSpeaker = fact.voice === "speaking" && fact.aggregated === true;
   return {
     seat: fact.seat,
     callsign: fact.callsign,
@@ -189,10 +197,14 @@ export function seatDirectionalLean(fact: SeatFact, window: LeanWindow): SeatLea
     sourceStrength,
     status,
     statusPlain: STATUS_PLAIN[status],
-    isAuthorizedSpeaker: fact.voice === "speaking" && fact.aggregated === true,
+    isAuthorizedSpeaker,
     stale: fact.health_warning === true,
-    heardLean: fact.final_lean,
+    heardLean: isAuthorizedSpeaker ? fact.final_lean : "WAIT",
     reason: fact.why ?? "",
+    selectable_live_cards: fact.selectable_live_cards,
+    authority_ready_cards: fact.authority_ready_cards,
+    authority_hold_reason: fact.authority_hold_reason,
+    abstention_eligible: fact.abstention_eligible,
     skillId: fact.skill_used && fact.skill_used !== "SIT" ? fact.skill_used : null,
     window: { ticker: window.ticker, close_time: window.close_time, as_of: window.as_of },
     disclaimer: DIRECTIONAL_LEAN_DISCLAIMER,
@@ -279,6 +291,7 @@ export function leanPlainLine(lean: Pick<SeatLean, "score" | "direction" | "stat
   const word = DIRECTION_WORD[lean.direction];
   const line =
     lean.status === "SPEAKING" ? `${word} read — SATOSHI counted it.`
+    : lean.status === "FOLDED" ? `${word} read — folded by SATOSHI; no separate entry support.`
     : lean.status === "BELOW BAR" ? `${word} read — not strong enough for SATOSHI to count.`
     : lean.status === "SUPPRESSED" ? `${word} read — SATOSHI did not count it.`
     : lean.status === "RESEARCH READ" ? "Directional research read — SATOSHI has not counted it."
@@ -298,4 +311,18 @@ export function leanSummaryText(lean: Pick<SeatLean, "score" | "direction">): st
  */
 export function leanKey(lean: Pick<SeatLean, "seat" | "window">): string {
   return `${lean.window.ticker}|${lean.window.close_time}|${lean.seat}`;
+}
+
+/** Shared display counts only. WAIT is neutral; missing retained evidence is no read. */
+export function researchLeanCounts(leans: readonly SeatLean[]) {
+  const directional = leans.filter((l) => l.direction === "BULLISH" || l.direction === "BEARISH").length;
+  const neutral = leans.filter((l) => l.direction === "NEUTRAL").length;
+  const noRead = leans.length - directional - neutral;
+  const counted = leans.filter((l) => l.isAuthorizedSpeaker).length;
+  return { total: leans.length, directional, neutral, noRead, counted };
+}
+
+export function researchLeanCountLine(leans: readonly SeatLean[]): string {
+  const c = researchLeanCounts(leans);
+  return `${c.total} research roles: ${c.directional} directional ${c.directional === 1 ? "lean" : "leans"} · ${c.neutral} neutral · ${c.noRead} without a retained read. SATOSHI counted ${c.counted} directional ${c.counted === 1 ? "read" : "reads"}. WAIT reads are neutral; research roles are not available voters.`;
 }

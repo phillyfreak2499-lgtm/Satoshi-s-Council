@@ -6,7 +6,7 @@ import { readScalp, scalpAvg } from "./scalp";
 import { fadeVerdict } from "./fade";
 import { binKey, calibNOf, clamp, listenCalib, round, seatCalib, WARM_N, wilsonLower } from "./math";
 import { holdScore } from "./stick";
-import { admitCouncilVotes, countChairQuorum } from "./council-authority";
+import { admitCouncilVotes, countChairQuorum, seatCardAvailability } from "./council-authority";
 import type {
   ChairResult,
   FeedHealth,
@@ -273,13 +273,32 @@ export function runChair(
 
   const dirAccs = liveAccs.filter((a) => a.vote.lean !== "WAIT");
   const sumWDir = dirAccs.reduce((s, a) => s + a.w, 0);
-  // Sit-mass is a ratio, so the chair's listen discount cancels out of it —
-  // an uncalibrated seat's "I see nothing" used to raise the bar as much as
-  // a proven seat's. Sits now count at 25% until a seat calibrates, ramping
-  // to 100%; leans are unchanged. Dead seats stop making the chair quieter.
-  const sitAccs = liveAccs.filter((a) => !a.vote.forced_sit);
+  // Only a currently authorized seat can express a WAIT opinion. Card
+  // authority alone is insufficient: COACH, feed, mute, calibration and
+  // zero-weight holds also remove abstention authority. Admitted directions
+  // and the existing calibration weighting are unchanged.
+  const cardAvailability = new Map(accs.map((a) => {
+    const cards = seatCardAvailability(a.vote.seat, learner, snap.regime_key);
+    const bench = (learner.knobs?.[a.vote.seat]?.benched_until ?? 0) > now;
+    const authority_hold_reason = bench ? "COACH bench active" :
+      a.status === "MUTED" ? "muted" : a.status === "VETO" ? "feed veto" :
+      a.vote.health !== "LIVE" ? "feed not LIVE" :
+      a.status === "UNCALIBRATED" ? "seat calibration incomplete" :
+      !Number.isFinite(a.w) || a.w <= 0 ? "zero Chair weight" :
+      cards.authority_ready_cards === 0 ? "no eligible LIVE card in this regime" : "";
+    const available = authority_hold_reason === "";
+    return [a.vote.seat, { ...cards,
+      authority_ready_cards: available ? cards.authority_ready_cards : 0,
+      authority_hold_reason,
+      abstention_eligible: available && !a.vote.forced_sit,
+    }] as const;
+  }));
+  const sitAccs = liveAccs.filter((a) => cardAvailability.get(a.vote.seat)?.abstention_eligible === true);
   const sitW = (a: Acc) => (a.vote.lean === "WAIT" ? a.w * (0.25 + 0.75 * a.calib) : a.w);
-  const sumWSit = sitAccs.reduce((s, a) => s + sitW(a), 0);
+  // Every admitted direction remains in the denominator, even if its producer
+  // bypassed the generic selector. Only authorized abstentions add sit weight.
+  const sumWSit = sumWDir + sitAccs.filter((a) => a.vote.lean === "WAIT")
+    .reduce((s, a) => s + sitW(a), 0);
   const sitMass = sumWSit > 0 ? clamp((sumWSit - sumWDir) / sumWSit, 0, 1) : 0;
   let rawScore = sumWDir > 0 ? dirAccs.reduce((s, a) => s + a.signed * a.w, 0) / sumWDir : 0;
 
@@ -614,6 +633,7 @@ export function runChair(
         callsign: SEAT_BY_ID[a.vote.seat].callsign,
         lean: a.vote.lean,
         forced_sit: a.vote.forced_sit === true,
+        ...cardAvailability.get(a.vote.seat)!,
         conf: a.vote.confidence,
         skill_used: a.vote.skill_used,
         base_w: a.base,
@@ -636,7 +656,7 @@ export function runChair(
       return Math.abs(b.contribution) - Math.abs(a.contribution);
     });
 
-  const quorum = countChairQuorum(votes, muted, CHAIR_NON_VOTERS);
+  const quorum = countChairQuorum(rows, muted, CHAIR_NON_VOTERS);
 
   const topSigned = [...rows]
     .filter((r) => r.lean !== "WAIT" && r.status !== "MUTED")

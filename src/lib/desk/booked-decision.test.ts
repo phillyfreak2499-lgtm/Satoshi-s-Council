@@ -39,7 +39,19 @@ test("a deployment round-trip preserves the exact booked decision", () => {
     score: 0.72,
     bar: 0.61,
     build_sha: sha,
+    source: null,
   });
+});
+
+test("a recovery pilot remains labelled and cannot enter the Chair mirror population", () => {
+  const got = bookedDecisionAtGrade(
+    [{ ticker, close_time: close, lean: "UP", cents: 88, source: "RECOVERY_FAV85_V1" }],
+    ticker,
+    close,
+    null,
+  );
+  assert.equal(got?.source, "RECOVERY_FAV85_V1");
+  assert.equal(got?.conf, null);
 });
 
 test("an older in-flight entry still uses the canonical call side", () => {

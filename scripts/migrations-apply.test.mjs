@@ -248,9 +248,9 @@ test("the Lab activates selective entry as the only Champion and starts every ca
   assert.equal(champs.rows.length, 1, "exactly one Champion");
   const c = champs.rows[0];
   // Explicit owner-selected entry policy; original policy remains in history.
-  assert.equal(c.policy_id, "FLOOR_SELECTIVE_V3");
+  assert.equal(c.policy_id, "FLOOR_OWNER_ROLLBACK_V1");
   assert.equal(c.signal_policy, "CHAIR_V1");
-  assert.equal(c.entry_policy, "ENTRY_SELECTIVE_V3");
+  assert.equal(c.entry_policy, "ENTRY_OWNER_ROLLBACK_V1");
   assert.equal(c.exit_policy, "HOLD_V1");
   assert.equal(c.risk_policy, "RISK_NONE_V1");
 
@@ -280,7 +280,7 @@ test("a second Champion is refused by the database", async () => {
      values ('FLOOR_V2', 2, 'CHAIR_V1', 'ENTRY_80_V1', 'PROVE180_V1', 'RISK_NONE_V1', 'SHADOW')`,
   );
   const n = await db.query("select count(*)::int as n from desk_floor_policy");
-  assert.equal(n.rows[0].n, 5); // retired original + selective V1/V2 + active V3 + new shadow
+  assert.equal(n.rows[0].n, 6); // retired original + selective V1/V2/V3 + active rollback + new shadow
   await db.close();
 });
 

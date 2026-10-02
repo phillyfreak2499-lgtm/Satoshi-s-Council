@@ -28,11 +28,21 @@ function productionWriter(db) {
   // source-extracted SQL or import of application db.ts. Only its exported
   // recordShadowReceipt is called; other services must not run in this test.
   const exports = {};
+  // Module-level frozen policy constants are real dependencies even when this
+  // harness calls only the receipt writer. Load the actual pure source.
+  const floorPolicy = {};
+  const floorPolicyCode = ts.transpileModule(source("src/lib/desk/floor-policy.ts"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  vm.runInNewContext(floorPolicyCode, {
+    exports: floorPolicy, require: (key) => { throw new Error(`unexpected pure floor-policy dependency ${key}`); },
+    Date, Math, JSON, Number, Array, Object, Map, Set, Promise, Error,
+  });
   const code = ts.transpileModule(source("src/lib/desk/shadow-lab.server.ts"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   vm.runInNewContext(code, {
-    exports, require: () => ({}), process: { env: {} }, globalThis: {},
+    exports, require: (key) => key.replace(/\.ts$/, "") === "./floor-policy" ? floorPolicy : {}, process: { env: {} }, globalThis: {},
     Date, Math, JSON, Number, Array, Object, Map, Set, Promise, Error,
   });
   const sql = async (strings, ...values) => {

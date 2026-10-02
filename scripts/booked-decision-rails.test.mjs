@@ -17,7 +17,7 @@ test("the booked decision receipt is captured at entry and persisted at grade", 
     compact(engine),
     /bookedDecisionAtGrade\(e\.callLog,snap\.ticker,snap\.close_time,entry,?\)/,
   );
-  assert.match(engine, /entry_lean, entry_build_sha/);
+  assert.match(engine, /entry_lean, entry_source, entry_build_sha/);
   assert.match(engine, /booked\?\.lean \?\? null/);
   assert.match(engine, /booked\?\.build_sha \?\? null/);
 });

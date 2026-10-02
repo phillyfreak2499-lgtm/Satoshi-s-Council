@@ -30,7 +30,7 @@ function Panel({ n, title, note, children }: { n: string; title: string; note?: 
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby={`hour-${n}`}>
       <div className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">{n}</div>
       <h2 id={`hour-${n}`} className="mt-1 font-sans text-title font-medium text-fg">{title}</h2>
-      {note ? <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">{note}</p> : null}
+      {note ? <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">{note}</p> : null}
       {children}
     </section>
   );
@@ -82,7 +82,7 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
       ) : (
         <>
           <div className="mt-3 font-mono text-display tabular leading-none text-fg">{left}</div>
-          <p className="mt-2 font-mono text-micro text-subtle">
+          <p className="mt-2 font-sans text-micro text-subtle">
             to settlement at {data.hour.close_et} Eastern · {utcStamp(data.hour.close_time)} · {data.hour.event_ticker}
           </p>
           <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -127,7 +127,7 @@ export function HourClockHero({ data }: { data: HourResearchBrief }) {
             </span>
             <ShadowTag />
           </div>
-          <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             Hourly research authority: {data.authority}. Live hourly rule: {data.live_rule ? "yes" : "no"}. {data.copy.sides}
           </p>
         </>
@@ -208,7 +208,7 @@ function Ladder({ data }: { data: HourResearchBrief }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-3 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             Edge is measured against the real observed ask on that side, after the hourly fee. A rung with no quoted ask reads
             &ldquo;no ask&rdquo;: an unavailable side is never priced off a midpoint.
           </p>
@@ -270,7 +270,7 @@ function Read({ data }: { data: HourResearchBrief }) {
             </div>
           </dl>
           <p className="mt-4 max-w-[78ch] font-sans text-ui leading-relaxed text-fg">{read.explanation}</p>
-          <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+          <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
             {data.copy.purpose} The sentence above is built from the stored numbers alone — no language model supplies the
             probability or casts the YES/NO read.
           </p>
@@ -376,7 +376,7 @@ function Calibration({ buckets }: { buckets: HourCalibrationBucket[] }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
         A calibrated model has the bar land on the hairline in every row. Rows with no graded rungs stay empty rather than borrow a
         neighbour&rsquo;s rate.
       </p>
@@ -400,7 +400,7 @@ function ByCheckpoint({ rows }: { rows: HourCheckpointScore[] }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 max-w-[78ch] font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
         The model has to beat both baselines prospectively — the market&rsquo;s own implied probability and a naive distance-to-strike
         rule — before any promotion conversation is worth having.
       </p>

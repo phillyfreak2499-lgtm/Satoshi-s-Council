@@ -5,9 +5,9 @@
  * returns "disabled" unless RESEARCH_FACTORY_ENABLED=true (the literal string).
  *
  * PRODUCTION WINS. Before every job, and between every unit of work inside a
- * job, the governor samples memory, load, event-loop delay (the direct cause of
- * request latency in this single Node process) and DB pool pressure; any one
- * over its threshold pauses research. A paused job is checkpointed and marked
+ * job, the governor samples memory, process CPU, event-loop delay (the direct
+ * cause of request latency in this single Node process) and DB pool pressure;
+ * any one over its threshold pauses research. A paused job is checkpointed and marked
  * `skipped_resource_guard`; it resumes on a later tick. Work runs in small
  * units separated by `setImmediate`, so no single unit holds the event loop,
  * and the timer is unref'd so it can never keep the process alive.
@@ -22,19 +22,20 @@
  * desk_research_integrity and desk_research_reports. It reads receipts, the
  * research ledger view and decision snapshots; it never updates them.
  */
-import { availableParallelism, loadavg } from "node:os";
+import { availableParallelism } from "node:os";
 import { readFileSync } from "node:fs";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { dbPoolStats, getSql, type Sql } from "@/lib/db";
 import {
   JOB_KINDS, LEASE_MS, MAX_ATTEMPTS, RESEARCH_FACTORY, governorDecision, retryDelayMs, thresholdsFromEnv,
-  type GovernorDecision, type JobKind, type ResourceSample,
+  type GovernorDecision, type GovernorThresholds, type JobKind, type ResourceSample,
 } from "./research-factory.ts";
+import { publishResourceGovernorWitness } from "./resource-governor-witness.ts";
 import {
   auditWindow, isDiagnosticOnly, windowFacts,
   type Annotation, type CardCounters, type IntegrityStatus, type LedgerRow, type OpeningRow, type ReceiptRow, type WindowFact, type WindowInput,
 } from "./research-factory-analysis.ts";
-import { gradeWindow, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
+import { gradeWindow, tapeIdentityQuality, type TapeEvent, type TapeRecord } from "./research-factory-tape.ts";
 import { collectionQuality, depthH0, type SettledDepth } from "./book-depth.ts";
 import { flowH0, flowQuality, indexMinutes, type FlowMark, type FlowVenue, type FlowWindow, type StoredMinute } from "./trade-flow.ts";
 import { wickShadowH0, wickShadowQuality, type ShadowRow } from "./wick-effort.ts";
@@ -78,6 +79,21 @@ export function containerMemoryLimitMb(read: (p: string) => string = (p) => read
   return null;
 }
 
+export type CpuMeter = { at_ms: number; used_us: number };
+
+/**
+ * Process CPU as a fraction of the capacity visible to this container.
+ * Linux loadavg is host-wide on Render and can permanently pause an otherwise
+ * quiet service, so it is not a valid container-pressure witness.
+ */
+export function processCpuPerCapacity(previous: CpuMeter | null, current: CpuMeter, cpus: number): number {
+  if (!previous || !Number.isFinite(previous.at_ms) || !Number.isFinite(previous.used_us) ||
+      !Number.isFinite(current.at_ms) || !Number.isFinite(current.used_us) ||
+      !(current.at_ms > previous.at_ms) || !(current.used_us >= previous.used_us) || !(cpus > 0)) return Number.NaN;
+  const elapsedUs = (current.at_ms - previous.at_ms) * 1_000;
+  return (current.used_us - previous.used_us) / (elapsedUs * cpus);
+}
+
 type State = {
   timer: ReturnType<typeof setInterval> | null;
   busy: boolean;
@@ -90,11 +106,62 @@ type State = {
   lastError: string | null;
   completed: number;
   paused: number;
+  lastReportedKey: string | null;
+  cpuMeter: CpuMeter | null;
 };
 const g = globalThis as typeof globalThis & { __researchFactory__?: State };
 const state = (): State => g.__researchFactory__ ??= {
-  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0,
+  timer: null, busy: false, owner: `pid-${process.pid}-${Math.random().toString(36).slice(2, 8)}`, eld: null, lastGuard: null, lastSample: null, lastTickAt: null, lastEnqueueAt: 0, lastError: null, completed: 0, paused: 0, lastReportedKey: null, cpuMeter: null,
 };
+
+type RuntimeStatus = "disabled" | "started" | "running" | "paused" | "error" | "progress";
+
+/**
+ * Render-visible, credential-free scheduler status. Keep this deliberately
+ * small: no environment values, job payloads, report contents or credentials.
+ */
+export function researchFactoryLogLine(status: RuntimeStatus, details: Record<string, unknown> = {}): string {
+  return `[research-factory] ${JSON.stringify({ status, ...details })}`;
+}
+
+function reportRuntime(status: RuntimeStatus, details: Record<string, unknown> = {}, dedupe = true, dedupeKey?: string): void {
+  const st = state();
+  const line = researchFactoryLogLine(status, details);
+  const key = dedupeKey ?? line;
+  if (dedupe && st.lastReportedKey === key) return;
+  st.lastReportedKey = key;
+  if (status === "error") console.error(line);
+  else if (status === "paused") console.warn(line);
+  else console.info(line);
+}
+
+type BoundedNumber = number | "INVALID";
+const bounded = (value: number, digits = 1): BoundedNumber => Number.isFinite(value)
+  ? Math.round(value * 10 ** digits) / 10 ** digits
+  : "INVALID";
+
+/** Stable, low-precision diagnostics only; no environment values or job data. */
+export function boundedResourceSample(sample: ResourceSample): Record<string, BoundedNumber | null> {
+  return {
+    rss_mb: bounded(sample.rss_mb, 0),
+    load_per_cpu: bounded(sample.load_per_cpu, 3),
+    event_loop_p99_ms: bounded(sample.event_loop_p99_ms, 1),
+    db_waiting: sample.db_waiting == null ? null : bounded(sample.db_waiting, 0),
+    db_in_use: sample.db_in_use == null ? null : bounded(sample.db_in_use, 0),
+    db_ping_ms: sample.db_ping_ms == null ? null : bounded(sample.db_ping_ms, 1),
+  };
+}
+
+export function boundedGovernorThresholds(thresholds: GovernorThresholds): Record<string, BoundedNumber> {
+  return {
+    max_rss_mb: bounded(thresholds.max_rss_mb, 0),
+    max_load_per_cpu: bounded(thresholds.max_load_per_cpu, 3),
+    max_event_loop_p99_ms: bounded(thresholds.max_event_loop_p99_ms, 1),
+    max_db_waiting: bounded(thresholds.max_db_waiting, 0),
+    max_db_in_use: bounded(thresholds.max_db_in_use, 0),
+    max_db_ping_ms: bounded(thresholds.max_db_ping_ms, 1),
+  };
+}
 
 export type Sampler = () => Promise<ResourceSample>;
 
@@ -106,9 +173,13 @@ async function defaultSample(sql: Sql | null): Promise<ResourceSample> {
   const pool = dbPoolStats();
   let ping: number | null = null;
   if (sql) { const t = performance.now(); await sql`select 1`; ping = performance.now() - t; }
+  const usage = process.cpuUsage();
+  const cpuMeter = { at_ms: performance.now(), used_us: usage.user + usage.system };
+  const processCpu = processCpuPerCapacity(st.cpuMeter, cpuMeter, availableParallelism());
+  st.cpuMeter = cpuMeter;
   return {
     rss_mb: process.memoryUsage().rss / 1_048_576,
-    load_per_cpu: loadavg()[0]! / Math.max(1, availableParallelism()),
+    load_per_cpu: processCpu,
     event_loop_p99_ms: p99,
     db_waiting: pool ? pool.waiting : null,
     db_in_use: pool ? pool.total - pool.idle : null,
@@ -231,6 +302,14 @@ async function finish(sql: Sql, job: JobRow, owner: string, status: "complete" |
 
 export class ResourceGuardPause extends Error { constructor(readonly reasons: string[]) { super(`resource guard: ${reasons.join(",")}`); } }
 export class Defer extends Error { constructor(readonly ms: number, why: string) { super(why); } }
+
+/**
+ * Rollups scan the historical cohort before their next checkpoint, so retrying
+ * one every minute under sustained pressure simply repeats the expensive read.
+ * Window jobs stay on the short retry because they are bounded and time-sensitive.
+ */
+export const resourceGuardBackoffMs = (jobKind: string): number =>
+  jobKind === "rollup" ? 15 * 60_000 : 60_000;
 
 export type JobContext = {
   sql: Sql;
@@ -488,13 +567,16 @@ export const windowHandler: Handler = async (ctx) => {
     ctx.scanned(events.length);
     if (events.length && input.ledger) {
       const timeline = gradeWindow(events, input.ledger.winner);
+      const identityReasons = timeline.identity_exclusion_reasons;
+      const replayQuality = timeline.identity_excluded_events > 0 ? "UNAVAILABLE" : timeline.partial_window ? "PARTIAL" : "EXACT";
+      const reportableEvents = events.filter((e) => tapeIdentityQuality(e.ticker, e.close_ms).reportable);
       const fact: WindowFact = {
         ticker, close_ms: closeMs, experiment: "PRODUCTION_TAPE", arm: "DECISION_TAPE", fact_version: RESEARCH_FACTORY.fact_version,
-        replay_quality: timeline.partial_window ? "PARTIAL" : "EXACT", quality_reasons: timeline.partial_window ? ["PARTIAL_WINDOW"] : [],
-        experiment_version: null, source_build_sha: [...new Set(events.map((e) => e.build_sha))].sort().join(",") || null, decided_ms: events[0]!.as_of,
-        observed: true, terminal_kind: timeline.terminal_label, side: null, ask_cents: null, fee_cents: null, official_winner: input.ledger.winner, net_cents: null,
+        replay_quality: replayQuality, quality_reasons: [...identityReasons, ...(timeline.partial_window ? ["PARTIAL_WINDOW"] : [])],
+        experiment_version: null, source_build_sha: [...new Set(events.map((e) => e.build_sha))].sort().join(",") || null, decided_ms: reportableEvents[0]?.as_of ?? null,
+        observed: reportableEvents.length > 0, terminal_kind: timeline.terminal_label, side: null, ask_cents: null, fee_cents: null, official_winner: input.ledger.winner, net_cents: null,
         production_lean: input.ledger.chair_lean, production_booked: input.ledger.entry_cents != null,
-        funnel_stage: null, first_blocker: null, blockers: [...new Set(events.flatMap((e) => e.blockers))],
+        funnel_stage: null, first_blocker: null, blockers: [...new Set(reportableEvents.flatMap((e) => e.blockers))],
         facts: { source: "desk_research_decision_tape", recorded_not_rederived: true, timeline },
       };
       ctx.written(await writeFacts(ctx.sql, [fact]));
@@ -689,7 +771,15 @@ export const HANDLERS: Record<JobKind, Handler> = { window: windowHandler, rollu
 // Runner.
 // ---------------------------------------------------------------------------
 
-export type RunOptions = { sampler?: Sampler; handlers?: Partial<Record<JobKind, Handler>>; now?: () => number; env?: Record<string, string | undefined> };
+export type RunOptions = {
+  sql?: Sql;
+  sampler?: Sampler;
+  handlers?: Partial<Record<JobKind, Handler>>;
+  now?: () => number;
+  env?: Record<string, string | undefined>;
+  onResourcePause?: (reasons: string[]) => void;
+  onJobError?: (message: string) => void;
+};
 
 /**
  * Run one claimed job to an outcome. Returns the status it ended in. A
@@ -736,7 +826,12 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
     return "complete";
   } catch (error) {
     if (error instanceof ResourceGuardPause) {
-      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), { guard: error.reasons.join(","), checkpoint, not_before_ms: now() + 60_000 }, now());
+      opts.onResourcePause?.(error.reasons);
+      await finish(rawSql, job, owner, "skipped_resource_guard", telemetry(), {
+        guard: error.reasons.join(","),
+        checkpoint,
+        not_before_ms: now() + resourceGuardBackoffMs(job.job_kind),
+      }, now());
       return "skipped_resource_guard";
     }
     if (error instanceof Defer) {
@@ -744,7 +839,9 @@ export async function runJob(rawSql: Sql, job: JobRow, owner: string, opts: RunO
       return "queued";
     }
     const message = error instanceof Error ? error.message : String(error);
-    await finish(rawSql, job, owner, "failed", telemetry(), { error: message.slice(0, 2000), checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) }, now());
+    const boundedMessage = message.slice(0, 2000);
+    opts.onJobError?.(boundedMessage);
+    await finish(rawSql, job, owner, "failed", telemetry(), { error: boundedMessage, checkpoint, not_before_ms: now() + retryDelayMs(job.attempts) }, now());
     return "failed";
   }
 }
@@ -757,30 +854,77 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
   const now = opts.now ?? Date.now;
   st.lastTickAt = now();
   let ran = 0;
+  let enqueued = 0;
+  let midJobPause: string[] | null = null;
+  let failed = 0;
+  let lastJobError: string | null = null;
   try {
-    const sql = await getSql();
+    const sql = opts.sql ?? await getSql();
     const sampler = opts.sampler ?? (() => defaultSample(sql));
     const thresholds = thresholdsFromEnv(opts.env ?? process.env, containerMemoryLimitMb());
     const sample = await sampler();
+    publishResourceGovernorWitness(now(), sample, thresholds);
     const guard = governorDecision(sample, thresholds);
     st.lastSample = sample;
     st.lastGuard = guard;
-    if (!guard.run) { st.paused += 1; return { ran: 0, guard }; }
-    if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) { await enqueueDue(sql, now()); st.lastEnqueueAt = now(); }
+    if (!guard.run) {
+      st.paused += 1;
+      reportRuntime("paused", {
+        reasons: guard.reasons,
+        sample: boundedResourceSample(sample),
+        thresholds: boundedGovernorThresholds(thresholds),
+      }, true, researchFactoryLogLine("paused", {
+        reasons: guard.reasons,
+        cpu_sample: Number.isFinite(sample.load_per_cpu) ? "MEASURED" : "WARMUP",
+      }));
+      return { ran: 0, guard };
+    }
+    if (now() - st.lastEnqueueAt >= ENQUEUE_EVERY_MS) {
+      enqueued = await enqueueDue(sql, now());
+      st.lastEnqueueAt = now();
+    }
     const started = performance.now();
     while (performance.now() - started < TICK_BUDGET_MS) {
       const job = await claim(sql, st.owner, now());
       if (!job) break;
-      const status = await runJob(sql, job, st.owner, opts);
+      const status = await runJob(sql, job, st.owner, {
+        ...opts,
+        onResourcePause: (reasons) => {
+          midJobPause = reasons;
+          opts.onResourcePause?.(reasons);
+        },
+        onJobError: (message) => {
+          lastJobError = message;
+          opts.onJobError?.(message);
+        },
+      });
       ran += 1;
       if (status === "complete") st.completed += 1;
+      if (status === "failed") failed += 1;
       if (status === "skipped_resource_guard") { st.paused += 1; break; }
       await yieldToLoop();
     }
-    st.lastError = null;
+    if (failed > 0) {
+      st.lastError = lastJobError ?? `${failed} research job(s) failed`;
+      if (midJobPause) st.lastGuard = { run: false, reasons: midJobPause };
+      reportRuntime("error", {
+        code: "JOB_FAILED",
+        failed,
+        ...(midJobPause ? { paused_reasons: midJobPause, phase: "job" } : {}),
+      });
+    } else if (midJobPause) {
+      st.lastError = null;
+      st.lastGuard = { run: false, reasons: midJobPause };
+      reportRuntime("paused", { reasons: midJobPause, phase: "job" });
+    } else {
+      st.lastError = null;
+      if (ran > 0 || enqueued > 0) reportRuntime("progress", { enqueued, ran }, false);
+      else reportRuntime("running", { enqueued: 0, ran: 0 });
+    }
     return { ran, guard };
   } catch (error) {
     st.lastError = error instanceof Error ? error.message : String(error);
+    reportRuntime("error", { code: "TICK_FAILED" });
     return { ran, guard: st.lastGuard };
   } finally {
     st.busy = false;
@@ -789,13 +933,20 @@ export async function factoryTick(opts: RunOptions = {}): Promise<{ ran: number;
 
 /** Env-gated, default OFF. */
 export function ensureResearchFactory(env: Record<string, string | undefined> = process.env): "started" | "already" | "disabled" {
-  if (!researchFactoryEnabled(env)) return "disabled";
+  if (!researchFactoryEnabled(env)) {
+    reportRuntime("disabled");
+    return "disabled";
+  }
   const st = state();
   if (st.timer) return "already";
   st.eld = monitorEventLoopDelay({ resolution: 20 });
   st.eld.enable();
   st.timer = setInterval(() => void factoryTick(), TICK_MS);
   st.timer.unref?.();
+  reportRuntime("started", { tick_ms: TICK_MS, enqueue_every_ms: ENQUEUE_EVERY_MS, max_concurrent_jobs: RESEARCH_FACTORY.max_concurrent_jobs });
+  // Do not leave a newly enabled factory opaque for the first interval. The
+  // same busy flag and governor used by scheduled ticks keep this bounded.
+  void factoryTick();
   return "started";
 }
 

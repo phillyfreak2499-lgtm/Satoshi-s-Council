@@ -20,7 +20,7 @@
  * typically 10–30 rows per window.
  */
 import { getSql } from "@/lib/db";
-import { MAX_EVENTS_PER_WINDOW, classifyTape, shouldRecord, type Audit, type TapeFrame, type TapeRecord } from "./research-factory-tape.ts";
+import { MAX_EVENTS_PER_WINDOW, classifyTape, observeE1Paper, shouldRecord, tapeIdentityQuality, type Audit, type TapeFrame, type TapeIdentityReason, type TapeRecord } from "./research-factory-tape.ts";
 
 export const TAPE_POLL_MS = 2_000;
 export const TAPE_ENV_FLAG = "RESEARCH_DECISION_TAPE_ENABLED";
@@ -39,9 +39,11 @@ type State = {
   written: number;
   error: string | null;
   lastAsOf: number | null;
+  identityRejected: number;
+  lastIdentityRejection: { ticker: string; close_ms: number; reasons: TapeIdentityReason[] } | null;
 };
 const g = globalThis as typeof globalThis & { __decisionTape__?: State };
-const state = (): State => g.__decisionTape__ ??= { timer: null, busy: false, sessionStartedAt: 0, window: null, written: 0, error: null, lastAsOf: null };
+const state = (): State => g.__decisionTape__ ??= { timer: null, busy: false, sessionStartedAt: 0, window: null, written: 0, error: null, lastAsOf: null, identityRejected: 0, lastIdentityRejection: null };
 
 /** One observation. Exported for the harness; the timer calls it. */
 export async function decisionTapeTick(now: number = Date.now()): Promise<TapeRecord | null> {
@@ -53,11 +55,18 @@ export async function decisionTapeTick(now: number = Date.now()): Promise<TapeRe
     const frame = await getServerFrame();
     if (!frame.snap || !frame.chair || frame.snap.demo) return null;
     const f = structuredClone({
-      snap: frame.snap, chair: frame.chair, audit: (frame.selective?.audit ?? null) as Audit | null, daily: frame.selective?.daily ?? null,
+      snap: frame.snap, chair: frame.chair, votes: frame.votes, audit: (frame.selective?.audit ?? null) as Audit | null, daily: frame.selective?.daily ?? null,
+      policy: frame.selective?.policy,
       call_log: (frame.call_log ?? []).slice(0, 50),
     }) as TapeFrame;
     const snap = f.snap;
     if (!Number.isFinite(snap.as_of) || !Number.isFinite(snap.close_time) || snap.as_of >= snap.close_time || snap.as_of > now + 5_000) return null;
+    const identity = tapeIdentityQuality(snap.ticker, snap.close_time);
+    if (!identity.reportable) {
+      st.identityRejected += 1;
+      st.lastIdentityRejection = { ticker: snap.ticker, close_ms: snap.close_time, reasons: identity.reasons };
+      return null;
+    }
     if (st.lastAsOf === snap.as_of) return null; // the same published frame: nothing new
     st.lastAsOf = snap.as_of;
     const key = `${snap.ticker}|${snap.close_time}`;
@@ -71,7 +80,7 @@ export async function decisionTapeTick(now: number = Date.now()): Promise<TapeRe
     if (!decision.record) return null;
     // Seat reads ride along on checkpoints only (signal-value research); change events stay compact.
     const record: TapeRecord = decision.checkpoint != null
-      ? { ...rec, seats: (f.chair.rows ?? []).map((r) => ({ seat: r.seat, lean: r.lean, conf: typeof r.conf === "number" ? r.conf : null, status: String(r.status), weight: typeof r.weight === "number" ? r.weight : null, folded: r.folded === true })) }
+      ? { ...rec, seats: (f.chair.rows ?? []).map((r) => ({ seat: r.seat, lean: r.lean, conf: typeof r.conf === "number" ? r.conf : null, status: String(r.status), weight: typeof r.weight === "number" ? r.weight : null, folded: r.folded === true })), e1_paper: observeE1Paper(f.votes) }
       : rec;
     const sql = await getSql();
     const rows = await sql<{ ok: number }>`
@@ -106,5 +115,7 @@ export function ensureDecisionTape(env: Record<string, string | undefined> = pro
 
 export function decisionTapeHealth() {
   const st = g.__decisionTape__;
-  return { env_flag: TAPE_ENV_FLAG, enabled: decisionTapeEnabled(), running: !!st?.timer, session_start: st?.sessionStartedAt || null, written: st?.written ?? 0, error: st?.error ?? null, production_authority: "NONE" };
+  return { env_flag: TAPE_ENV_FLAG, enabled: decisionTapeEnabled(), running: !!st?.timer, session_start: st?.sessionStartedAt || null, written: st?.written ?? 0,
+    identity_rejected: st?.identityRejected ?? 0, last_identity_rejection: st?.lastIdentityRejection ?? null,
+    error: st?.error ?? null, production_authority: "NONE" };
 }

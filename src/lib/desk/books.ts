@@ -1,6 +1,6 @@
 /** Client side of the books: the shapes GET /api/books returns and one fetcher. */
 import type { RosterReceipt } from "./roster-evidence";
-export type BooksCall = { lean: "UP" | "DOWN" | null; entry: number; settle: number | null; ev: number | null };
+export type BooksCall = { lean: "UP" | "DOWN" | null; entry: number; settle: number | null; ev: number | null; source?: "RECOVERY_FAV85_V1" | null };
 
 export type BooksWindow = {
   ticker: string;

@@ -27,12 +27,12 @@ export function BoardModeration({ onChanged }: { onChanged: () => void }) {
   return (
     <details className="rounded-md border border-border p-3">
       <summary className="min-h-11 cursor-pointer font-mono text-ui">Desk moderation</summary>
-      <p className="my-2 font-mono text-micro text-muted">Hide or restore posts. Original text is retained and every change records a reason.</p>
+      <p className="my-2 font-sans text-micro text-muted">Hide or restore posts. Original text is retained and every change records a reason.</p>
       <button type="button" disabled={busy} className="btn btn-secondary" onClick={() => void load()}>Load / refresh posts</button>
       <label className="mt-3 block font-mono text-micro">Reason for the next change
         <input className="input mt-1 w-full" maxLength={200} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. spam, harassment, restored after review" />
       </label>
-      <p role="status" className="my-2 font-mono text-micro text-muted">{status}</p>
+      <p role="status" className="my-2 font-sans text-micro text-muted">{status}</p>
       <ul className="max-h-96 space-y-2 overflow-y-auto">
         {posts.map((post) => (
           <li key={post.id} className="rounded border border-border p-2 font-mono text-micro">

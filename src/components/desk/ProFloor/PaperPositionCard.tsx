@@ -10,6 +10,7 @@
 import type { ProFloorFacts } from "@/lib/desk/pro-floor";
 import { Panel, StatBox } from "./panels";
 import { leanTone } from "./tones";
+import { DecisionLayerMark } from "../DecisionLayerMark";
 
 function stamp(t: number | null): string {
   if (t == null) return "time not recorded";
@@ -23,6 +24,7 @@ function stamp(t: number | null): string {
 export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full: boolean }) {
   const p = facts.paper;
   const lean = facts.conclusion.lean;
+  const pilot = p.entry_source === "RECOVERY_FAV85_V1";
   return (
     <Panel
       id="paper"
@@ -31,16 +33,18 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
     >
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <StatBox
-          label="current read"
+          label={<DecisionLayerMark layer="decision" />}
+          className="border-gold/50 bg-gold/5 border-dashed"
           value={lean}
           tone={leanTone(lean)}
           sub="what SATOSHI says on this frame"
         />
         <StatBox
-          label="paper position"
+          label={<DecisionLayerMark layer="position" />}
+          className="border-border-strong bg-surface-2 border-l-4"
           value={p.held ? "HELD" : "NONE"}
           tone={p.held ? "text-fg" : "text-subtle"}
-          sub={p.held ? `${p.entry_side} on this window` : p.no_position_why}
+          sub={p.held ? `${pilot ? "recovery pilot · " : ""}${p.entry_side} on this window` : p.no_position_why}
         />
         <StatBox
           label="entry"
@@ -51,10 +55,11 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
 
       {p.held ? (
         <p className="mt-3 max-w-[80ch] font-sans text-ui leading-relaxed text-muted">
-          The book holds {p.entry_side} at {p.entry_cents?.toFixed(1) ?? "—"}¢
+          {pilot ? "The recovery pilot" : "The book"} holds {p.entry_side} at {p.entry_cents?.toFixed(1) ?? "—"}¢
           {p.ask_now == null ? "" : `, and that side's ask is ${p.ask_now.toFixed(1)}¢ now`}. One position per window, so
           the held side does not change when the read does
           {p.entry_side && p.entry_side !== lean ? ` — and right now it does differ from the ${lean} read above` : ""}.
+          {pilot ? " This is a bounded paper-only price-favourite test, not a Council call." : ""}
         </p>
       ) : (
         <p className="mt-3 max-w-[80ch] font-sans text-ui leading-relaxed text-muted">
@@ -64,7 +69,7 @@ export function PaperPositionCard({ facts, full }: { facts: ProFloorFacts; full:
       )}
 
       {full ? (
-        <p className="mt-2 font-mono text-micro leading-relaxed text-subtle">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-subtle">
           Book state: {p.state.kind}. Floor {p.floor_cents}¢. Paper only — no live orders, and nothing here is a
           recommendation to take a position.
         </p>

@@ -2,7 +2,7 @@ const origin = (process.env.PUBLIC_ORIGIN || "https://satoshiscouncil.com").repl
 const timeoutMs = Number(process.env.PUBLIC_SMOKE_TIMEOUT_MS || 20000);
 
 const surfaces = [
-  ["/", ["A clearer view.", "Paper research. Public prices. No live orders."]],
+  ["/", ["Bitcoin every 15 minutes.", "Every paper call gets graded.", "Paper only", "Public prices", "No live orders", "Not affiliated with Kalshi."]],
   ["/desk", ["Satoshi", "Paper position"]],
   ["/books", ["Results, on the record.", "outages, not sits"]],
   ["/record", ["The week on the record.", "One fill that was wrong"]],
@@ -13,8 +13,8 @@ const surfaces = [
   ["/training/tape", ["TAPE"]],
   ["/training/drift", ["DRIFT"]],
   ["/legal", ["Paper only, in plain words", "Questions about the desk", "LEGAL, TRADEMARK or SECURITY"]],
-  ["/about", ["How the desk works", "15 currently voting", "3 retired from votes", "3 non-voting pit crew"]],
-  ["/faq", ["Questions people ask", "How many Council seats actually vote?", "15 currently voting", "3 non-voting pit crew"]],
+  ["/about", ["How the desk works", "15-role voting roster", "already retired from votes", "are non-voting pit crew"]],
+  ["/faq", ["Questions people ask", "How many Council seats can vote?", "15-role voting roster", "are non-voting pit crew"]],
 ];
 
 let failed = false;

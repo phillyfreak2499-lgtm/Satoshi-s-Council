@@ -243,6 +243,7 @@ test("6d. SPEAKING needs the Chair row: a directional vote without one is RESEAR
   let l = seatDirectionalLean(noRow, WINDOW);
   assert.equal(l.status, "RESEARCH READ");
   assert.equal(l.isAuthorizedSpeaker, false);
+  assert.equal(l.heardLean, "WAIT", "an unaggregated producer direction cannot claim a Chair hearing");
   assert.equal(l.score, 85, "the read itself still shows");
   assert.doesNotMatch(l.statusPlain, /SATOSHI heard/);
   assert.match(l.statusPlain, /No Chair row yet/);
@@ -253,6 +254,7 @@ test("6d. SPEAKING needs the Chair row: a directional vote without one is RESEAR
   l = seatDirectionalLean(withRow, WINDOW);
   assert.equal(l.status, "SPEAKING");
   assert.equal(l.isAuthorizedSpeaker, true);
+  assert.equal(l.heardLean, "UP");
   assert.equal(l.statusPlain, "SATOSHI heard this read.");
   // The disclaimer is the same sentence in both cases.
   assert.equal(seatDirectionalLean(noRow, WINDOW).disclaimer, seatDirectionalLean(withRow, WINDOW).disclaimer);
@@ -260,6 +262,22 @@ test("6d. SPEAKING needs the Chair row: a directional vote without one is RESEAR
   const crew = seatDirectionalLean(fact({ seat: "WARDEN", voice: "speaking", aggregated: false }), WINDOW);
   assert.equal(crew.status, "RESEARCH READ");
   assert.equal(crew.isAuthorizedSpeaker, false);
+});
+
+test("a Chair-only eligibility sit preserves the producer columns without reconstructing a missing raw meter", () => {
+  const v = vote({ lean: "UP", confidence: 70, raw_lean: undefined, raw_conf: undefined, forced_sit: false });
+  const r = row({ lean: "WAIT", conf: 70, forced_sit: true, contribution: 0 });
+  const f = seatFactFor("DRIFT", v, r, undefined, WINDOW.as_of);
+  assert.equal(f.final_lean, "WAIT", "actual admitted side outranks the producer opinion");
+  assert.equal(f.voice, "suppressed");
+  assert.equal(f.suppression, null, "the frame does not prove a below-bar reason");
+  assert.equal(f.raw_lean, "UP", "legacy tape fallback remains the producer side");
+  assert.equal(f.raw_conf, 70);
+  assert.equal(f.raw_retained, false);
+  const lean = seatDirectionalLean(f, WINDOW);
+  assert.equal(lean.score, null, "the raw meter still requires both explicit raw fields");
+  assert.equal(lean.heardLean, "WAIT");
+  assert.equal(lean.isAuthorizedSpeaker, false);
 });
 
 test("6e. one meter identity per complete window and seat", () => {
@@ -300,6 +318,11 @@ test("7. SHADOW and BENCH reads are research only and never an authorized speake
   const muted = seatDirectionalLean(fact({ voice: "muted", suppression: "muted", status: "MUTED", weight: 0 }), WINDOW);
   assert.equal(muted.status, "MUTED");
   assert.equal(muted.isAuthorizedSpeaker, false);
+  assert.equal(muted.heardLean, "WAIT", "retained row direction is not a hearing after authority is removed");
+  const vetoed = seatDirectionalLean(fact({ voice: "vetoed", suppression: "veto", status: "VETO", weight: 0 }), WINDOW);
+  assert.equal(vetoed.status, "VETO");
+  assert.equal(vetoed.isAuthorizedSpeaker, false);
+  assert.equal(vetoed.heardLean, "WAIT");
   const retired = seatDirectionalLean(fact({ seat: "ODDS", voice: "retired", suppression: "retired", aggregated: false }), WINDOW);
   assert.equal(retired.status, "RETIRED");
   const crew = seatDirectionalLean(fact({ seat: "WARDEN", voice: "non-voter", aggregated: false }), WINDOW);

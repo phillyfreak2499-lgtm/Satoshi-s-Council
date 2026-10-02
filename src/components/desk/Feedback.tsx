@@ -233,7 +233,7 @@ function Composer({
                 : "Feedback on the tape"
         }
       />
-      <p id={`${formId}-hint`} className="font-mono text-micro text-subtle">Up to 400 characters. Enter adds a line. No spam or impersonation. Posts may be hidden by the desk.<span className="hidden sm:inline"> Ctrl/⌘ + Enter posts.</span></p>
+      <p id={`${formId}-hint`} className="font-sans text-micro text-subtle">Up to 400 characters. Enter adds a line. No spam or impersonation. Posts may be hidden by the desk.<span className="hidden sm:inline"> Ctrl/⌘ + Enter posts.</span></p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
@@ -252,7 +252,7 @@ function Composer({
           </button>
         ) : null}
       </div>
-      {status ? <p role="status" className="font-mono text-micro text-wait">{status}</p> : null}
+      {status ? <p role="status" className="font-sans text-micro text-wait">{status}</p> : null}
     </form>
   );
 }
@@ -318,7 +318,7 @@ export function BoardTab({ frame, initial }: { frame: DeskFrame; initial?: Board
     <div className="flex flex-col gap-3 p-3">
       <div>
         <h2 className="font-sans text-title font-medium tracking-tight">Ideas & feedback</h2>
-        <p className="mt-1 max-w-xl font-mono text-micro text-muted">
+        <p className="mt-1 max-w-xl font-sans text-micro text-muted">
           One shared board. Post an idea. Reply with feedback. The call you were looking at rides
           along. DESK posts an update here whenever the floor changes. Paper talk only.
         </p>
@@ -355,9 +355,9 @@ export function BoardTab({ frame, initial }: { frame: DeskFrame; initial?: Board
         }} />
       </section>
 
-      {err ? <p role="status" className="font-mono text-micro text-wait">{err}</p> : null}
+      {err ? <p role="status" className="font-sans text-micro text-wait">{err}</p> : null}
       {admin ? <BoardModeration onChanged={() => void pull()} /> : null}
-      {!loaded ? <p role="status" className="font-mono text-micro text-muted">Loading the shared Board…</p> : null}
+      {!loaded ? <p role="status" className="font-sans text-micro text-muted">Loading the shared Board…</p> : null}
 
       {updates.length > 0 ? (
         <details id="board-updates" open={quiet || undefined} className="scroll-mt-20 rounded-md border border-border bg-canvas">
@@ -396,7 +396,7 @@ export function BoardTab({ frame, initial }: { frame: DeskFrame; initial?: Board
         <section id="board-ideas" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{ideas.length ? <>Ideas · {ideas.length}</> : "Ideas"}</h3>
           {!loaded && !err ? null : !ideas.length ? (
-            <p className="font-mono text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Ideas will appear when the Board is available."}</p>
+            <p className="font-sans text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Ideas will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestIdeas, ideaPage).map((p) => (
@@ -425,7 +425,7 @@ export function BoardTab({ frame, initial }: { frame: DeskFrame; initial?: Board
         <section id="board-feedback" className="scroll-mt-20">
           <h3 className="mb-2 font-mono text-micro uppercase tracking-widest text-subtle">{notes.length ? <>Feedback · {notes.length}</> : "Feedback"}</h3>
           {!loaded && !err ? null : !notes.length ? (
-            <p className="font-mono text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Feedback will appear when the Board is available."}</p>
+            <p className="font-sans text-micro text-muted">{loaded && !err ? BOARD_EMPTY : "Feedback will appear when the Board is available."}</p>
           ) : (
             <div className="space-y-3">
               {pageRows(newestNotes, feedbackPage).map((p) => (

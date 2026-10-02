@@ -21,7 +21,9 @@ import {
   ledgerGaps,
   MAX_QUEUE,
   oldestQueueAgeMs,
+  operationalVerdict,
   persistOnce,
+  producerVerdict,
   type PersistIO,
   recentIdentityFaultCount,
   pushErr,
@@ -29,6 +31,7 @@ import {
   TICK_STALL_MS,
   WINDOW_MS,
 } from "./reliability.ts";
+import { pushDeliveryNote, pushReceipt } from "./push-receipts.ts";
 
 const row = (ticker: string, closeTime: number): LedgerRow => ({ ticker, close_time: closeTime, values: [ticker, closeTime] });
 const job = (r: LedgerRow, now = 0): LedgerJob => ({ key: jobKey(r.ticker, r.close_time), row: r, attempts: 0, firstAt: now, nextAt: now, lastErr: null });
@@ -343,6 +346,66 @@ test("before boot the service is not a failure", () => {
   assert.equal(healthVerdict({ ...healthy, started: false, lastTickAt: 0 }).ok, true);
 });
 
+// --- producer liveness: a grading desk can still be operationally dead ---
+
+const healthyProducers = producerVerdict({
+  restore_active: true,
+  restore_pending: false,
+  cards: [
+    { id: "STRIKE.itm_time", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+    { id: "CHAIN.oi_with_price", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+  ],
+});
+
+test("an all-WAIT desk with live restored producers is explicitly QUIET, not dead", () => {
+  const v = operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "WAIT" });
+  assert.equal(v.ok, true);
+  assert.equal(v.state, "QUIET");
+  assert.match(v.summary, /real decision, not an outage/);
+});
+
+test("a de-authorized producer makes a ticking and grading desk DEAD", () => {
+  const producer = producerVerdict({
+    restore_active: true,
+    restore_pending: false,
+    cards: [
+      { id: "STRIKE.itm_time", status: "SHADOW", seat_seen: true, manual_hold: false, calibration_ok: true },
+      { id: "CHAIN.oi_with_price", status: "LIVE", seat_seen: true, manual_hold: false, calibration_ok: true },
+    ],
+  });
+  const v = operationalVerdict({ engine: healthVerdict(healthy), producer, chair_lean: "WAIT" });
+  assert.equal(v.ok, false);
+  assert.equal(v.state, "DEAD");
+  assert.match(v.reasons.join(" "), /STRIKE\.itm_time is SHADOW, not LIVE/);
+});
+
+test("missing restoration, a missing seat heartbeat and calibration drift are loud", () => {
+  const v = producerVerdict({
+    restore_active: false,
+    restore_pending: false,
+    cards: [
+      { id: "STRIKE.itm_time", status: "LIVE", seat_seen: false, manual_hold: false, calibration_ok: false },
+    ],
+  });
+  assert.equal(v.ok, false);
+  assert.match(v.reasons.join(" "), /authority is not active/);
+  assert.match(v.reasons.join(" "), /seat is absent/);
+  assert.match(v.reasons.join(" "), /calibration has regressed/);
+});
+
+test("directional reads and booked positions are distinct healthy states", () => {
+  assert.equal(operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "UP" }).state, "READING");
+  assert.equal(operationalVerdict({ engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "UP", booked: true }).state, "BOOKED");
+});
+
+test("critical feed failure is DEAD even while tick, ledger and producers look healthy", () => {
+  const v = operationalVerdict({
+    engine: healthVerdict(healthy), producer: healthyProducers, chair_lean: "WAIT", critical_reasons: ["Kalshi feed is DOWN"],
+  });
+  assert.equal(v.state, "DEAD");
+  assert.match(v.reasons.join(" "), /Kalshi feed is DOWN/);
+});
+
 // --- alert-channel health: surfaced separately, never a single point of failure ---
 
 test("no push subscriber is reported as undeliverable, separately from data health", () => {
@@ -359,6 +422,39 @@ test("a push-send failure is visible in the alert note without failing data heal
   assert.equal(a.deliverable, true);
   assert.match(a.note, /2 failed/);
   assert.equal(healthVerdict(healthy).ok, true);
+});
+
+test("push receipts are bounded, omit secrets and distinguish provider acceptance from human receipt", () => {
+  const receipt = pushReceipt({
+    eventKind: "call",
+    eventKey: ` KX${"X".repeat(400)} `,
+    subscriptionId: 7.9,
+    outcome: "accepted",
+    providerStatus: 201.8,
+    errorCode: "e".repeat(200),
+    buildSha: "a".repeat(100),
+    attemptedAtMs: NOW,
+  });
+  assert.equal(receipt.event_key.length, 300);
+  assert.equal(receipt.subscription_id, 7);
+  assert.equal(receipt.provider_status, 201);
+  assert.equal(receipt.error_code?.length, 120);
+  assert.equal(receipt.build_sha.length, 80);
+  assert.equal("endpoint" in receipt, false);
+  assert.match(pushDeliveryNote({
+    accepted_24h: 1, call_ready_accepted_24h: 1, failed_24h: 0, gone_24h: 0,
+    last_event_kind: "call", last_event_key: "KX", last_outcome: "accepted",
+    last_attempted_at: receipt.attempted_at,
+  }), /human receipt are not guaranteed/);
+});
+
+test("push delivery status is explicit before evidence and after failure", () => {
+  assert.match(pushDeliveryNote(null), /no durable push attempt receipt/);
+  assert.match(pushDeliveryNote({
+    accepted_24h: 0, call_ready_accepted_24h: 0, failed_24h: 1, gone_24h: 0,
+    last_event_kind: "watchdog", last_event_key: "grade-stale", last_outcome: "failed",
+    last_attempted_at: new Date(NOW).toISOString(),
+  }), /failed before provider acceptance/);
 });
 
 // --- error ring: keep scope + text, bounded ---

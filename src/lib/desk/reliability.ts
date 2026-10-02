@@ -282,6 +282,88 @@ export function healthVerdict(i: HealthInput): HealthVerdict {
   return { ok: reasons.length === 0, reasons };
 }
 
+/**
+ * The restored producer pair is a production dependency, not merely a source
+ * of directional votes. A healthy tick loop can keep grading WAIT forever
+ * while a saved-state change silently removes both cards from authority; that
+ * is the Sep-18 failure mode the ordinary ledger watchdog could not see.
+ *
+ * Keep this contract generic and pure. The engine supplies the exact cards
+ * named by the owner-approved restoration and the current seat heartbeat. No
+ * decision code imports this verdict and it never changes a vote.
+ */
+export type ProducerProbe = {
+  id: string;
+  status: string | null;
+  seat_seen: boolean;
+  manual_hold: boolean;
+  calibration_ok: boolean;
+};
+
+export type ProducerVerdict = {
+  ok: boolean;
+  reasons: string[];
+  cards: ProducerProbe[];
+};
+
+export function producerVerdict(i: {
+  restore_active: boolean;
+  restore_pending: boolean;
+  cards: readonly ProducerProbe[];
+}): ProducerVerdict {
+  const cards = i.cards.map((card) => ({ ...card }));
+  const reasons: string[] = [];
+  if (i.restore_pending) reasons.push("producer restoration is not durably persisted");
+  else if (!i.restore_active) reasons.push("producer restoration authority is not active");
+  for (const card of cards) {
+    if (card.status == null) reasons.push(`${card.id} is missing`);
+    else if (card.status !== "LIVE") reasons.push(`${card.id} is ${card.status}, not LIVE`);
+    if (card.manual_hold) reasons.push(`${card.id} is manually held`);
+    if (!card.calibration_ok) reasons.push(`${card.id} calibration has regressed past the restored state`);
+    if (!card.seat_seen) reasons.push(`${card.id} seat is absent from the current evaluation frame`);
+  }
+  return { ok: reasons.length === 0, reasons, cards };
+}
+
+export type DeskOperationalState = "DEAD" | "QUIET" | "READING" | "BOOKED";
+export type OperationalVerdict = {
+  ok: boolean;
+  state: DeskOperationalState;
+  summary: string;
+  reasons: string[];
+};
+
+/** One public answer to the owner's question: is the desk quiet, or broken? */
+export function operationalVerdict(i: {
+  engine: HealthVerdict;
+  producer: ProducerVerdict;
+  critical_reasons?: readonly string[];
+  chair_lean?: string | null;
+  booked?: boolean;
+}): OperationalVerdict {
+  const reasons = [...i.engine.reasons, ...i.producer.reasons, ...(i.critical_reasons ?? [])];
+  if (reasons.length) {
+    return {
+      ok: false,
+      state: "DEAD",
+      summary: "The desk is not operating normally. This is an outage, not an ordinary WAIT.",
+      reasons,
+    };
+  }
+  if (i.booked) {
+    return { ok: true, state: "BOOKED", summary: "The producer path is healthy and this window has a recorded paper position.", reasons: [] };
+  }
+  if (i.chair_lean === "UP" || i.chair_lean === "DOWN") {
+    return { ok: true, state: "READING", summary: "The producer path is healthy. A directional read exists; paper-entry rules still decide whether it books.", reasons: [] };
+  }
+  return {
+    ok: true,
+    state: "QUIET",
+    summary: "Ticking, grading and producer authority are healthy. WAIT is a real decision, not an outage.",
+    reasons: [],
+  };
+}
+
 export type AlertStatus = { ownerSubs: number; lastSend: string | null };
 
 /**

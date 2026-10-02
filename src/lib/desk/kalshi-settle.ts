@@ -1,7 +1,7 @@
 /**
  * Official KXBTC15M settlement readers (pure). Moved verbatim from
  * server-feeds.ts so the official-result path can be exercised by the
- * offline test runner; behavior is unchanged.
+ * offline test runner. Empty legacy values never supply an outcome.
  *
  * Grading authority is Kalshi's own `result` on the market object. Kalshi's
  * contract rule (CRYPTO terms; KXBTC15M rules_primary, strike_type
@@ -17,7 +17,7 @@ import type { OfficialSettle } from "./types";
 export type KalshiMarketRow = {
   ticker?: string;
   result?: string;
-  settlement_value?: string | number;
+  settlement_value?: string | number | null;
   settlement_ts?: string;
   close_time?: string;
   expiration_time?: string;
@@ -28,7 +28,9 @@ export function parseKalshiResult(row: KalshiMarketRow): "UP" | "DOWN" | null {
   const r = String(row.result ?? "").toLowerCase();
   if (r === "yes") return "UP";
   if (r === "no") return "DOWN";
-  const v = Number(row.settlement_value);
+  const legacy = row.settlement_value;
+  if (legacy == null || (typeof legacy === "string" && legacy.trim() === "")) return null;
+  const v = Number(legacy);
   if (v === 1) return "UP";
   if (v === 0) return "DOWN";
   return null;

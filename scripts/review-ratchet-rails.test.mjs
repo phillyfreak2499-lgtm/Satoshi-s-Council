@@ -56,8 +56,8 @@ function fixture(calls = 700) {
   return learner;
 }
 
-test("the freeze switch defaults OFF in source and in the module: production behaviour is unchanged", () => {
-  // Optional freeze commit (docs/SEAT_REVIEW_FREEZE_DECISION_2026-09-22.md): the constant is true here.
+test("the owner-activated freeze defaults ON in source and in the module", () => {
+  // Owner-activated freeze: the source, module and production call sites agree.
   assert.match(read("src/lib/desk/learner.ts"), /export const SEAT_REVIEW_DEMOTION_FROZEN = true;/);
   assert.equal(learnerMod.SEAT_REVIEW_DEMOTION_FROZEN, true);
   assert.equal(learnerMod.AUTO_SKILL_PROMOTION_ENABLED, false);
@@ -70,7 +70,7 @@ test("REPRODUCTION: at 700 calls the review benches the LIVE card and re-zeroes 
   assert.equal(before.would_demote, true);
   assert.equal(before.first_to_bench, "STRIKE.itm_time");
 
-  // The reproduction is of the UNFROZEN rule: pass frozen:false explicitly on this optional freeze branch.
+  // The reproduction is of the UNFROZEN rule: pass frozen:false explicitly to exercise the historical rule.
   const lines = learnerMod.reviewSeats(learner, { frozen: false });
   assert.equal(lines.length, 1);
   assert.match(lines[0], /STRIKE (1\.9|2\.0)¢ < 15¢ demote · bench STRIKE\.itm_time/);
@@ -101,10 +101,10 @@ test("at 699 calls nothing fires; a thin book holds; a passing average holds and
   assert.equal(rich.seat_calib_debt.STRIKE, 50);
 });
 
-test("FROZEN branch (opt-in only): the verdict is printed, no status or debt moves, nothing benched is restored", () => {
+test("FROZEN default: the verdict is printed, no status or debt moves, nothing benched is restored", () => {
   const learner = fixture(700);
   learner.skills["STREAK.continue_young"].status = "SHADOW"; // an earlier victim stays where it is
-  const lines = learnerMod.reviewSeats(learner, { frozen: true });
+  const lines = learnerMod.reviewSeats(learner);
   assert.equal(lines.length, 1);
   assert.match(lines[0], /STRIKE (1\.9|2\.0)¢ < 15¢ would demote · FROZEN \(no change\) · would bench STRIKE\.itm_time/);
   assert.equal(learner.skills["STRIKE.itm_time"].status, "LIVE");
@@ -118,4 +118,25 @@ test("the engine still calls reviewSeats with no override: the constant, not a c
   const engine = read("src/lib/desk/server-engine.ts");
   assert.match(engine, /reviewSeats\(e\.learner\);/);
   assert.doesNotMatch(engine, /reviewSeats\(e\.learner, \{/);
+});
+
+test("default frozen review preserves every seat's LIVE cards across repeated due reviews", () => {
+  const learner = fixture();
+  const seats = load("src/lib/desk/seats.ts").SEATS.filter((s) => s.id !== "WARDEN");
+  for (const seat of seats) {
+    learner.seat_calls[seat.id] = math.FULL_N;
+    learner.seat_scalp[seat.id] = { open: null, legs: Array(20).fill(-20) };
+    learner.seat_calib_debt[seat.id] = 7;
+  }
+  const statuses = Object.fromEntries(Object.values(learner.skills).map((c) => [c.id, c.status]));
+  for (let review = 0; review < 3; review += 1) {
+    const lines = learnerMod.reviewSeats(learner);
+    assert.equal(lines.length, seats.length);
+    assert.ok(lines.every((line) => line.includes("FROZEN (no change)")));
+    assert.deepEqual(Object.fromEntries(Object.values(learner.skills).map((c) => [c.id, c.status])), statuses);
+    for (const seat of seats) {
+      assert.equal(learner.seat_calib_debt[seat.id], 7);
+      learner.seat_calls[seat.id] += math.REVIEW_EVERY;
+    }
+  }
 });

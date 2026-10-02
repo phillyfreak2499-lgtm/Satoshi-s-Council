@@ -195,7 +195,7 @@ export type BookState =
   /** No read and no position. */
   | { kind: "wait" }
   /** A position is held on this window, booked at `cents`; `ask` is that side's ask now. */
-  | { kind: "booked"; lean: "UP" | "DOWN"; cents: number; ask: number }
+  | { kind: "booked"; lean: "UP" | "DOWN"; cents: number; ask: number; source?: CallLogRow["source"] }
   /** The chair leans a side but its ask sits under the floor: no paper fill. */
   | { kind: "floor"; lean: "UP" | "DOWN"; ask: number }
   /** The chair leans a side at or above the floor and the book has not filled yet (next tick books). */
@@ -217,7 +217,7 @@ export function openRow(snap: Snapshot, callLog: CallLogRow[]): CallLogRow | nul
 /** What the book is doing with the chair's read on this window. */
 export function bookState(snap: Snapshot, lean: Lean, callLog: CallLogRow[]): BookState {
   const row = openRow(snap, callLog);
-  if (row) return { kind: "booked", lean: row.lean, cents: row.cents, ask: markSide(snap, row.lean) };
+  if (row) return { kind: "booked", lean: row.lean, cents: row.cents, ask: markSide(snap, row.lean), source: row.source };
   if (lean !== "UP" && lean !== "DOWN") return { kind: "wait" };
   const ask = markSide(snap, lean);
   return bookable(ask) ? { kind: "filling", lean, ask } : { kind: "floor", lean, ask };

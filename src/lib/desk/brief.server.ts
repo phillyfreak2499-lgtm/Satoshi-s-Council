@@ -9,6 +9,7 @@
  * Paper settlement/P&L exists only when a position was actually booked.
  */
 import { currentSnap } from "./server-engine";
+import { AsyncStaleCache } from "./async-stale-cache";
 import { gavelLeanOf, toGavelRow, type GavelRow, type GavelSourceRow } from "./gavel";
 
 async function sql() {
@@ -54,23 +55,17 @@ function btcOvernight(): Pick<Overnight, "btc_open" | "btc_now" | "btc_lo" | "bt
   };
 }
 
-let cache: { at: number; body: Brief } | null = null;
-let inflight: Promise<Brief> | null = null;
+/**
+ * The first-screen brief is a read-only display model. Coalesce concurrent
+ * refreshes and keep the last successful result for a short bounded interval
+ * when Postgres is temporarily saturated, matching the Arena summary's
+ * failure mode without extending the normal 30-second freshness window.
+ */
+const briefCache = new AsyncStaleCache<"brief", Brief>(30_000, 5 * 60_000, 1);
 
 /** The brief. Cached 30s; the floor polls it about once a minute. */
 export async function deskBrief(): Promise<Brief> {
-  if (cache && Date.now() - cache.at < 30_000) return cache.body;
-  if (!inflight) {
-    inflight = build()
-      .then((body) => {
-        cache = { at: Date.now(), body };
-        return body;
-      })
-      .finally(() => {
-        inflight = null;
-      });
-  }
-  return inflight;
+  return briefCache.get("brief", build);
 }
 
 async function build(): Promise<Brief> {

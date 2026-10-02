@@ -24,7 +24,9 @@ import type { dailyAdmission } from "./selective-entry.ts";
 import { SELECTIVE_PARAMS } from "./floor-policy.ts";
 import { eligibleSupportRows } from "./support-eligibility.ts";
 import { chairWaitReason } from "./telemetry.ts";
-import type { CallLogRow, ChairResult, Snapshot } from "./types";
+import type { CallLogRow, ChairResult, Snapshot, Vote } from "./types";
+import { onGrid, tickerAgrees } from "./window-identity.ts";
+import { E1_ROSTER_CARDS } from "./shadow-arms.ts";
 
 // ---------------------------------------------------------------------------
 // Taxonomy.
@@ -82,10 +84,48 @@ export type Audit = { checks: readonly AuditCheck[]; positioned: boolean; eligib
 export type TapeFrame = {
   snap: Snapshot;
   chair: ChairResult;
+  /** Same-frame producer output; absent on older callers. Never admission evidence. */
+  votes?: readonly Vote[];
   audit: Audit | null;
+  /** The entry policy named by the production frame; absent in historical callers. */
+  policy?: string;
   daily: ReturnType<typeof dailyAdmission> | null;
   call_log: readonly CallLogRow[];
 };
+
+export type E1PaperObservation = {
+  source: "FRAME_VOTES_PAPER";
+  authority: "NONE";
+  qualification: "UNKNOWN";
+  outputs: Array<{ kind: "PAPER_EVALUATED"; card_id: string; seat: string; lean: "UP" | "DOWN" | "WAIT"; conf: number; status: string }>;
+  missing: Array<{ card_id: string; seat: string; reason: "PAPER_SOURCE_MISSING" | "CARD_NOT_PRESENT" | "ACTIVE_SELECTION_NOT_IN_PAPER" | "MALFORMED_RECEIPT" | "DUPLICATE_RECEIPT" }>;
+};
+
+/** Copy only existing paper receipts. These unscaled outputs may include
+ * exploit-rejected cards, so they establish neither eligibility nor support. */
+export function observeE1Paper(votes: unknown): E1PaperObservation {
+  const observation: E1PaperObservation = { source: "FRAME_VOTES_PAPER", authority: "NONE", qualification: "UNKNOWN", outputs: [], missing: [] };
+  const rows = Array.isArray(votes) ? votes : [];
+  for (const card_id of E1_ROSTER_CARDS) {
+    const seat = card_id.split(".")[0]!;
+    const owned = rows.filter((row) => row && typeof row === "object" && row.seat === seat);
+    const papers = owned.flatMap((row) => Array.isArray(row.paper) ? row.paper : []);
+    const matching = papers.filter((paper) => paper && typeof paper === "object" && paper.id === card_id);
+    let reason: E1PaperObservation["missing"][number]["reason"] | null = null;
+    if (!owned.some((row) => Array.isArray(row.paper))) reason = "PAPER_SOURCE_MISSING";
+    else if (!matching.length) reason = owned.some((row) => row.skill_used === card_id) ? "ACTIVE_SELECTION_NOT_IN_PAPER" : "CARD_NOT_PRESENT";
+    else if (matching.length > 1) reason = "DUPLICATE_RECEIPT";
+    else {
+      const p = matching[0];
+      if (!["UP", "DOWN", "WAIT"].includes(p.lean) || typeof p.confidence !== "number" ||
+          !Number.isFinite(p.confidence) || p.confidence < 0 || p.confidence > 100 ||
+          !["LIVE", "SHADOW", "BENCH", "CANDIDATE"].includes(p.status)) reason = "MALFORMED_RECEIPT";
+      else observation.outputs.push({ kind: "PAPER_EVALUATED", card_id, seat, lean: p.lean, conf: p.confidence, status: p.status });
+    }
+    if (reason) observation.missing.push({ card_id, seat, reason });
+  }
+  return observation;
+}
 
 // ---------------------------------------------------------------------------
 // Conditions.
@@ -136,7 +176,7 @@ export type TapeRecord = {
   primary_blocker: WaitReason | null;
   blockers: WaitReason[];
   /** Production's own words, preserved verbatim (chair_wait is telemetry's chairWaitReason, the same string desk_chair_evals stores). */
-  raw: { chair_wait: string; failing_checks: Array<{ id: string; label: string | null }>; failing_chair_gates: Array<{ id: string; value: string }>; mode: string | null };
+  raw: { chair_wait: string; failing_checks: Array<{ id: string; label: string | null }>; failing_chair_gates: Array<{ id: string; value: string }>; mode: string | null; policy?: string };
   conditions: Condition[];
   /** Every measured value a condition can be graded against later. */
   values: Record<string, number | boolean | null>;
@@ -145,12 +185,15 @@ export type TapeRecord = {
     raw_side: "UP" | "DOWN" | null;
     score: number | null; vs_bar: number | null; bar: number | null; sit_mass: number | null; sit_term: number | null; dir_mass: number | null;
     aggressiveness: number | null; directional_seats: string[]; supporters: string[]; families: string[]; opposing: number | null;
+    raw_directional_seats: string[] | null; producer_directional_seats: string[] | null;
     /** The bar the Chair's own breakdown gives without its sit-mass term (clamped at 0.24). A LEVER for survival analysis, never a graded condition. */
     bar_without_sit: number | null;
   };
   market: { yes_ask: number | null; no_ask: number | null; yes_bid: number | null; no_bid: number | null; yes_mid: number | null; favorite_ask: number | null; regime: string | null };
   /** Compact seat reads for signal-value research (checkpoints only). */
   seats?: Array<{ seat: string; lean: string; conf: number | null; status: string; weight: number | null; folded: boolean }>;
+  /** Supplemental checkpoint-only producer paper outputs; never classification input. */
+  e1_paper?: E1PaperObservation;
 };
 
 const fin = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
@@ -162,8 +205,15 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   const side = dir(chair.lean);
   const rows = Array.isArray(chair.rows) ? chair.rows : [];
   const dirRows = rows.filter((r) => (r.lean === "UP" || r.lean === "DOWN") && !r.forced_sit);
+  // Guard/context seats are not research voters. Preserve raw and post-producer
+  // direction separately from Chair-admitted direction; neither grants authority.
+  const votingInputs = f.votes?.filter((v) => !["WARDEN", "ORBIT", "WIRE"].includes(v.seat));
+  const rawInputs = votingInputs?.filter((v) => dir(v.raw_lean ?? v.lean) != null);
+  const producerInputs = votingInputs?.filter((v) => dir(v.lean) != null && !v.forced_sit);
   const rawSide = fin(chair.score) == null || chair.score === 0 ? null : chair.score > 0 ? "UP" : "DOWN";
-  const req = f.daily ? admissionRequirements(f.daily) : null;
+  // The audit is the decision-time mode; the published daily summary may be
+  // read after settlement changed that mode. Keep unknown requirements unknown.
+  const req = f.daily ? admissionRequirements({ ...f.daily, tightened: audit ? audit.mode === "tight" : f.daily.tightened }) : null;
   const p = SELECTIVE_PARAMS;
   const checks = new Map((audit?.checks ?? []).map((c) => [c.id, c]));
   const failing = (audit?.checks ?? []).filter((c) => c.pass === false);
@@ -185,6 +235,8 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   // Values every later frame is graded against (null where production did not measure).
   const values: Record<string, number | boolean | null> = {
     directional_seats: dirRows.length,
+    raw_directional_seats: rawInputs?.length ?? null,
+    producer_directional_seats: producerInputs?.length ?? null,
     dir_mass: fin(chair.dir_mass),
     vs_bar_minus_bar: fin(chair.vs_bar) != null && fin(chair.bar) != null ? chair.vs_bar - chair.bar : null,
     chair_directional: side != null,
@@ -207,12 +259,15 @@ export function classifyTape(f: TapeFrame): TapeRecord {
     profit_reserve_pass: checks.get("profit_reserve")?.pass ?? null,
     eligible: audit ? audit.eligible : null,
     positioned: audit ? audit.positioned : null,
+    complete_window_pass: checks.get("complete_window")?.pass ?? null,
+    time_pass: checks.get("time")?.pass ?? null,
   };
+  for (const gate of chair.gates ?? []) values[`chair:${gate.id}_pass`] = gate.pass;
 
   // The Chair's own WAIT reason, when it waits.
   let directionReason: WaitReason | null = null;
   if (!side) {
-    if (dirRows.length === 0) directionReason = "NO_RESEARCH_READ";
+    if (dirRows.length === 0) directionReason = producerInputs?.length ? "STATUS_OR_AUTHORITY_SUPPRESSED" : "NO_RESEARCH_READ";
     else if (!(fin(chair.dir_mass) != null && chair.dir_mass > 0)) directionReason = "STATUS_OR_AUTHORITY_SUPPRESSED";
     else if (hardGates.some((g) => g.id !== "bar")) directionReason = CHAIR_GATE_REASON[hardGates.find((g) => g.id !== "bar")!.id] ?? "OTHER_EXPLICIT";
     else if ((chair.gates ?? []).some((g) => g.id === "top3" && !g.pass)) directionReason = "DIRECTION_CONFLICT";
@@ -243,7 +298,7 @@ export function classifyTape(f: TapeFrame): TapeRecord {
   const pass = (id: string) => checks.get(id)?.pass === true;
   const precond = ["risk_history", "daily_risk", "complete_window", "time", "feeds"].every(pass);
   const reached: boolean[] = [
-    true, dirRows.length > 0, side != null, pass("team"), pass("supporters"), pass("families"), pass("opposition"), pass("quote"),
+    true, dirRows.length > 0 || (producerInputs?.length ?? 0) > 0, side != null, pass("team"), pass("supporters"), pass("families"), pass("opposition"), pass("quote"),
     precond && pass("model_edge") && pass("profit_reserve"), pass("index_fresh") && pass("index_edge"), pass("confirmation"), qualified || booked, booked,
   ];
   let stageIndex = 0;
@@ -258,12 +313,15 @@ export function classifyTape(f: TapeFrame): TapeRecord {
       failing_checks: failing.map((c) => ({ id: c.id, label: c.label ?? null })),
       failing_chair_gates: hardGates.map((g) => ({ id: g.id, value: String(g.value ?? "") })),
       mode: audit?.mode ?? null,
+      ...(f.policy ? { policy: f.policy } : {}),
     },
     conditions: primary ? conditionsFor(primary, values, { req, sitTerm, barPre, bar: fin(chair.bar), vsBar: fin(chair.vs_bar) }) : [],
     values,
     evidence: {
       side, raw_side: rawSide, score: fin(chair.score), vs_bar: fin(chair.vs_bar), bar: fin(chair.bar), sit_mass: fin(chair.sit_mass), sit_term: sitTerm, dir_mass: fin(chair.dir_mass),
       aggressiveness: fin(chair.aggressiveness), directional_seats: dirRows.map((r) => r.seat), supporters, families, opposing,
+      raw_directional_seats: rawInputs?.map((v) => v.seat) ?? null,
+      producer_directional_seats: producerInputs?.map((v) => v.seat) ?? null,
       bar_without_sit: sitTerm != null && barPre != null ? Math.min(0.72, Math.max(0.24, barPre - sitTerm)) : null,
     },
     market: {
@@ -288,7 +346,7 @@ export function conditionsFor(r: WaitReason, v: Record<string, number | boolean 
     case "TEAM_FAIL": return [{ metric: "team_pass", op: "pass", current: v.team_pass as boolean | null, required: true, changeable_within_window: true }];
     case "SUPPORTER_FAIL": return [{ metric: "supporters", op: ">=", current: n("supporters"), required: c.req?.min_speaking ?? null, changeable_within_window: true, note: "healthy LIVE/FADED unfolded supporters on the side" }];
     case "FAMILY_DIVERSITY_FAIL": return [{ metric: "families", op: ">=", current: n("families"), required: c.req?.min_families ?? null, changeable_within_window: true }];
-    case "OPPOSITION_FAIL": return [{ metric: "opposing", op: "<=", current: n("opposing"), required: p.max_opposing, changeable_within_window: true }];
+    case "OPPOSITION_FAIL": return [{ metric: "opposing", op: "<=", current: n("opposing"), required: c.req?.max_opposing ?? null, changeable_within_window: true }];
     case "ENTRY_PRICE_FAIL": return [{ metric: "ask_cents", op: ">=", current: n("ask_cents"), required: p.floor_cents, changeable_within_window: true, note: "the side's ask reaches the production floor" }];
     case "QUOTE_FAIL": {
       const out: Condition[] = [];
@@ -297,10 +355,16 @@ export function conditionsFor(r: WaitReason, v: Record<string, number | boolean 
       if (n("ask_cents") != null && n("ask_cents")! >= 99) out.push({ metric: "ask_cents", op: "<", current: n("ask_cents"), required: 99, changeable_within_window: true });
       return out.length ? out : [{ metric: "quote_pass", op: "pass", current: v.quote_pass as boolean | null, required: true, changeable_within_window: true, note: "book validity" }];
     }
-    case "MODEL_EDGE_FAIL": return [{ metric: "model_edge_cents", op: ">=", current: n("model_edge_cents"), required: c.req?.min_edge_cents ?? null, changeable_within_window: true }];
+    case "MODEL_EDGE_FAIL": return [{ metric: "model_edge_cents", op: c.req?.edge_must_exceed_min ? ">" : ">=", current: n("model_edge_cents"), required: c.req?.min_edge_cents ?? null, changeable_within_window: true }];
     case "INDEX_EDGE_FAIL": return [{ metric: "index_margin_cents", op: ">", current: n("index_margin_cents"), required: c.req?.min_index_edge_cents ?? null, changeable_within_window: true }];
     case "CONFIRMATION_INCOMPLETE": return [{ metric: "confirmation_pass", op: "pass", current: false, required: true, changeable_within_window: true, note: `needs ${c.req?.confirmation_frames ?? "?"} frames over ${c.req?.confirmation_seconds ?? "?"} s; the production latch count is not published in the frame` }];
-    case "TIME_WINDOW_FAIL": return [{ metric: "secs_left", op: "in_range", current: n("secs_left"), required: [p.min_seconds_left, p.max_seconds_left], changeable_within_window: true, note: "clock-driven" }];
+    case "TIME_WINDOW_FAIL": {
+      if (v.complete_window_pass === false) return [{ metric: "complete_window_pass", op: "pass", current: false, required: true, changeable_within_window: false, note: "this market opened before the production policy's complete-window boundary" }];
+      if (v.time_pass !== false) {
+        for (const id of ["early", "late"]) if (v[`chair:${id}_pass`] === false) return [{ metric: `chair:${id}_pass`, op: "pass", current: false, required: true, changeable_within_window: true, note: "the current Chair's hard time gate must pass" }];
+      }
+      return [{ metric: "secs_left", op: "in_range", current: n("secs_left"), required: c.req ? [c.req.min_seconds_left, c.req.max_seconds_left] : null, changeable_within_window: true, note: "clock-driven" }];
+    }
     case "FEED_OR_DATA_HEALTH_FAIL": return [{ metric: "feeds_pass", op: "pass", current: v.feeds_pass as boolean | null, required: true, changeable_within_window: true }];
     case "DAILY_RISK_FAIL": return [{ metric: "daily_risk_pass", op: "pass", current: v.daily_risk_pass as boolean | null, required: true, changeable_within_window: false, note: "a daily risk lock does not change inside the window" }];
     default: return [];
@@ -335,6 +399,19 @@ export function shouldRecord(rec: TapeRecord, prev: { label: string; stage_index
 
 export type TapeEvent = TapeRecord & { checkpoint: number | null; partial_window: boolean; build_sha: string };
 
+export type TapeIdentityReason = "WINDOW_OFF_GRID" | "TICKER_CLOSE_TIME_MISMATCH";
+export type TapeIdentityQuality = { reportable: boolean; on_grid: boolean; ticker_time_ok: boolean | null; reasons: TapeIdentityReason[] };
+
+/** Reuses the production window-identity witnesses without rewriting source rows. */
+export function tapeIdentityQuality(ticker: string, closeMs: number): TapeIdentityQuality {
+  const grid = onGrid(closeMs);
+  const tickerTimeOk = tickerAgrees(ticker, closeMs);
+  const reasons: TapeIdentityReason[] = [];
+  if (!grid) reasons.push("WINDOW_OFF_GRID");
+  if (tickerTimeOk === false) reasons.push("TICKER_CLOSE_TIME_MISMATCH");
+  return { reportable: reasons.length === 0, on_grid: grid, ticker_time_ok: tickerTimeOk, reasons };
+}
+
 export type BriefGrade = {
   checkpoint: number;
   secs_left: number;
@@ -357,6 +434,10 @@ export type BriefGrade = {
 };
 
 export type WindowTimeline = {
+  /** Raw append-only source count, including identity-excluded rows. */
+  source_events: number;
+  identity_excluded_events: number;
+  identity_exclusion_reasons: TapeIdentityReason[];
   partial_window: boolean;
   events: number;
   labels: Array<{ label: string; stage_index: number; from_secs_left: number; dwell_s: number }>;
@@ -381,7 +462,9 @@ const stageIdx = (label: string): number => {
 };
 
 export function gradeWindow(events: readonly TapeEvent[], winner: "UP" | "DOWN" | null): WindowTimeline {
-  const ev = [...events].sort((a, b) => a.as_of - b.as_of);
+  const source = [...events].sort((a, b) => a.as_of - b.as_of);
+  const excluded = source.filter((e) => !tapeIdentityQuality(e.ticker, e.close_ms).reportable);
+  const ev = source.filter((e) => tapeIdentityQuality(e.ticker, e.close_ms).reportable);
   const closeMs = ev[0]?.close_ms ?? 0;
   const labels: WindowTimeline["labels"] = [];
   const transitions: WindowTimeline["transitions"] = [];
@@ -425,6 +508,9 @@ export function gradeWindow(events: readonly TapeEvent[], winner: "UP" | "DOWN" 
   const deepest = ev.reduce<TapeEvent | null>((m, e) => (!m || e.stage_index > m.stage_index ? e : m), null);
   const before = firstDir ? ev.filter((e) => e.as_of < firstDir.as_of) : ev;
   return {
+    source_events: source.length,
+    identity_excluded_events: excluded.length,
+    identity_exclusion_reasons: [...new Set(excluded.flatMap((e) => tapeIdentityQuality(e.ticker, e.close_ms).reasons))],
     partial_window: ev.some((e) => e.partial_window), events: ev.length, labels, transitions,
     first_blocker: ev[0]?.label ?? null, terminal_label: ev[ev.length - 1]?.label ?? null, deepest_stage: deepest?.stage ?? null,
     became_directional: !!firstDir, qualified: ev.some((e) => e.state === "QUALIFIED" || e.state === "BOOKED"), booked: ev.some((e) => e.state === "BOOKED"),

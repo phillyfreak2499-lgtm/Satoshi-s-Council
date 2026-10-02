@@ -8,8 +8,9 @@
  *
  * Tapping a family jumps to its existing specialist desk.
  */
+import { researchLeanCountLine, seatDirectionalLeans } from "@/lib/desk/seat-lean";
 import { cn } from "@/lib/utils";
-import { COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
 import { SUPPRESSION_LABEL, VOICE_LABEL, type FamilyFacts, type ProFloorFacts, type SeatFact } from "@/lib/desk/pro-floor";
 import type { SeatId, SeatTab } from "@/lib/desk/types";
 import { Chip, Panel } from "./panels";
@@ -39,18 +40,20 @@ function SeatLine({ s, onJump }: { s: SeatFact; onJump: (seat: SeatId) => void }
         type="button"
         onClick={() => onJump(s.seat)}
         className="flex min-h-11 w-full items-center gap-2 rounded-sm px-1 text-left hover:bg-surface-2/60"
-        aria-label={`${s.seat}: ${VOICE_LABEL[s.voice]}${speaking ? `, ${s.final_lean}` : ""}. Open the ${s.family} desk.`}
+        aria-label={`${s.seat}: ${seatAvailabilityLabel(s)}. ${VOICE_LABEL[s.voice]}${speaking ? `, ${s.final_lean}` : ""}. Open the ${s.family} desk.`}
       >
         <span className="w-[4.5rem] shrink-0 font-mono text-micro text-fg">{s.seat}</span>
-        <span className={cn("w-[5.25rem] shrink-0 whitespace-nowrap font-mono text-micro tabular", tone)}>
-          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : s.aggregated ? "WAIT" : VOICE_LABEL[s.voice]}
+        <span className="flex min-w-0 flex-1 flex-col gap-1 py-2">
+        <span className={cn("break-words font-mono text-micro tabular", tone)}>
+          {speaking ? `${s.final_lean} ${s.final_conf ?? "—"}` : suppressed ? `(${s.raw_lean} ${s.raw_conf ?? "—"})` : s.selectable_live_cards === 0 ? "RESEARCH" : s.authority_ready_cards === 0 ? "HELD" : s.aggregated ? "WAIT" : VOICE_LABEL[s.voice]}
         </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-micro text-subtle">
+        <span className="min-w-0 break-words font-sans text-micro leading-snug text-subtle">
           {suppressed
             ? `raw read · ${s.suppression ? SUPPRESSION_LABEL[s.suppression] : "suppressed"}`
             : speaking
               ? `${s.health_warning ? "STALE feed · " : ""}${s.why || "speaking"}`
-              : VOICE_LABEL[s.voice]}
+              : seatAvailabilityLabel(s)}
+        </span>
         </span>
       </button>
     </li>
@@ -71,7 +74,7 @@ function FamilyCard({ f, onJump }: { f: FamilyFacts; onJump: (tab: SeatTab, seat
         <h3 className="font-mono text-micro uppercase tracking-widest text-fg">{f.label}</h3>
         {f.split ? <Chip tone="wait">split</Chip> : null}
       </div>
-      <p className="mt-0.5 font-mono text-micro text-subtle">{f.eyes}</p>
+      <p className="mt-0.5 font-sans text-micro text-subtle">{f.eyes}</p>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-data tabular">
         <span className="text-up">{f.up} UP</span>
         <span className="text-down">{f.down} DOWN</span>
@@ -95,15 +98,16 @@ export function EvidenceFamilies({
   onJump: (seat: SeatId) => void;
 }) {
   const b = facts.balance;
+  const countLine = researchLeanCountLine(seatDirectionalLeans(facts.seats, { ticker: "", close_time: 0, as_of: 0 }));
   const votingWait = facts.families.reduce((n, f) => n + f.wait, 0);
   return (
     <Panel
       id="families"
       title="What the desk sees"
-      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did. WAIT counts only the 15 currently voting specialists."
+      note="Five specialist families. A number in brackets is a RAW read the Chair never heard; a plain number is a vote it did. The roster is not the available-source count. Quarantined research seats do not vote."
       right={
         <span className="font-mono text-micro text-subtle">
-          {b.aggregated} currently voting · {facts.seats.length} seats
+          {b.speaking.up + b.speaking.down} speaking · {facts.seats.length} research roles
         </span>
       }
     >
@@ -122,9 +126,10 @@ export function EvidenceFamilies({
             suppressed directional {b.suppressed.up} UP · {b.suppressed.down} DOWN
           </span>
         </div>
-        <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">{b.disclaimer}</p>
-        <p className="mt-1 max-w-[80ch] font-mono text-micro leading-relaxed text-subtle">
-          {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
+        <p className="mt-1 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">{b.disclaimer}</p>
+        <p className="mt-1 font-sans text-micro text-subtle">{countLine}</p>
+        <p className="mt-1 max-w-[80ch] font-sans text-micro leading-relaxed text-subtle">
+          {availabilityLine(facts.seats.filter((s) => s.aggregated))} {COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}
         </p>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

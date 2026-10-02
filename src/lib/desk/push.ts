@@ -2,9 +2,9 @@
  *  subscription, and the three calls the SETTINGS panel makes. */
 import { arenaToken } from "./arena";
 
-export type PushPrefs = { on_call: boolean; on_settle: boolean; owner: boolean };
+export type PushPrefs = { on_call: boolean; on_read?: boolean; on_settle: boolean; owner: boolean };
 /** What a visitor chooses; the owner flag is set separately, with the admin key. */
-export type PushChoice = { on_call: boolean; on_settle: boolean };
+export type PushChoice = { on_call: boolean; on_read?: boolean; on_settle: boolean };
 
 export function pushSupported(): boolean {
   return (
@@ -19,9 +19,13 @@ export function pushSupported(): boolean {
 /** iPhone and iPad only deliver web push to apps on the Home Screen. */
 export function needsHomeScreen(): boolean {
   if (typeof navigator === "undefined") return false;
-  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const ios =
+    /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   if (!ios) return false;
-  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || window.matchMedia?.("(display-mode: standalone)").matches;
+  const standalone =
+    (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches;
   return !standalone;
 }
 
@@ -46,7 +50,10 @@ function bytesToB64(b: ArrayBuffer | null): string {
 
 async function serverKey(endpoint?: string): Promise<{ key: string; prefs: PushPrefs | null }> {
   const q = endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : "";
-  const r = await fetch(`/push${q}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+  const r = await fetch(`/push${q}`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(12_000),
+  });
   const j = (await r.json()) as { key?: string; prefs?: PushPrefs | null; error?: string };
   if (!r.ok || !j.key) throw new Error(j.error || `push ${r.status}`);
   return { key: j.key, prefs: j.prefs ?? null };
@@ -89,7 +96,10 @@ export async function currentPrefs(): Promise<PushPrefs | null> {
 export async function enablePush(prefs: PushChoice): Promise<PushPrefs> {
   if (!pushSupported()) throw new Error("this browser cannot receive push alerts");
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("notifications are blocked for this site — allow them in the browser's site settings");
+  if (perm !== "granted")
+    throw new Error(
+      "notifications are blocked for this site — allow them in the browser's site settings",
+    );
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const { key } = await serverKey();
@@ -102,7 +112,10 @@ export async function enablePush(prefs: PushChoice): Promise<PushPrefs> {
     }
   }
   if (!sub) {
-    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) as BufferSource });
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: b64ToBytes(key) as BufferSource,
+    });
   }
   return post({
     action: "subscribe",
@@ -110,6 +123,7 @@ export async function enablePush(prefs: PushChoice): Promise<PushPrefs> {
     token: arenaToken(),
     on_call: prefs.on_call,
     on_settle: prefs.on_settle,
+    on_read: prefs.on_read === true,
     ua: navigator.userAgent.slice(0, 200),
   });
 }
@@ -137,4 +151,38 @@ export async function testPush(): Promise<void> {
   const sub = await currentSubscription();
   if (!sub) throw new Error("alerts are off in this browser");
   await post({ action: "test", endpoint: sub.endpoint });
+}
+
+export type OwnerAlertVerification = {
+  build_sha: string;
+  held: boolean;
+  verification_id?: string;
+  tiers?: { tier: string; outcome: string }[];
+};
+export async function verifyOwnerAlerts(
+  key: string,
+  action: "status" | "verify" | "release" | "hold",
+  verificationId?: string,
+): Promise<OwnerAlertVerification> {
+  const sub = await currentSubscription();
+  if (!sub) throw Error("turn alerts on and register this browser as owner first");
+  const response = await fetch("/api/alert-verification", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      key,
+      endpoint: sub.endpoint,
+      action,
+      verification_id: verificationId,
+      confirm_test_fixtures: action === "verify",
+      confirm_device_display: action === "release",
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  const result = (await response.json()) as OwnerAlertVerification & {
+    ok?: boolean;
+    error?: string;
+  };
+  if (!response.ok || !result.ok) throw Error(result.error || "owner verification failed");
+  return result;
 }

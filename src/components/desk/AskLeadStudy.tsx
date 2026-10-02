@@ -22,7 +22,7 @@ export function AskLeadStudy({ data }: { data: AskLeadSnapshot | null }) {
         <div className="font-mono text-micro uppercase tracking-widest text-subtle">
           Higher-ask swaps
         </div>
-        <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+        <p className="mt-2 font-sans text-micro leading-relaxed text-muted">
           The swap clock is temporarily unavailable. No live decision path depends on it.
         </p>
       </section>
@@ -100,13 +100,13 @@ export function AskLeadStudy({ data }: { data: AskLeadSnapshot | null }) {
           Weekday avg {avg(data.weekday.avg_swaps)} n={data.weekday.n}
         </div>
       </div>
-      <p className="mt-3 font-mono text-micro leading-relaxed text-subtle">
+      <p className="mt-3 font-sans text-micro leading-relaxed text-subtle">
         Prospective from {new Date(data.since).toISOString().slice(0, 16)}Z. Median first swap{" "}
         {secs(data.median_first_swap_secs)}. A flat histogram and a last-lead rate near the
         priced favorite is a valid result. Authority: none.
       </p>
       {data.health.last_error ? (
-        <p role="status" className="mt-3 font-mono text-micro text-wait">
+        <p role="status" className="mt-3 font-sans text-micro text-wait">
           Observer: {data.health.last_error}
         </p>
       ) : null}

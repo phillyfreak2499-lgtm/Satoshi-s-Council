@@ -135,7 +135,9 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   };
   const opts = () => ({ sampler: () => sampler(), handlers: { window: handler }, now: () => t0 });
   const job = await m.claim(sql, "p", t0);
-  assert.equal(await m.runJob(sql, job, "p", opts()), "skipped_resource_guard");
+  let pausedFor = [];
+  assert.equal(await m.runJob(sql, job, "p", { ...opts(), onResourcePause: (reasons) => { pausedFor = reasons; } }), "skipped_resource_guard");
+  assert.deepEqual(pausedFor, ["MEMORY"], "a mid-job governor pause is available to the runtime reporter");
   let row = (await jobsOf(sql))[0];
   assert.equal(row.status, "skipped_resource_guard");
   assert.equal(row.guard_reason, "MEMORY");
@@ -151,6 +153,102 @@ test("the resource governor pauses a job under pressure, keeps its checkpoint an
   // The tick itself refuses to start work under pressure.
   const tick = await m.factoryTick({ sampler: pressure, now: () => t0 });
   assert.deepEqual(tick, { ran: 0, guard: { run: false, reasons: ["MEMORY"] } });
+});
+
+test("guarded rollups back off for fifteen minutes without delaying bounded window retries", async (t) => {
+  const m = await factory(t);
+  assert.equal(m.resourceGuardBackoffMs("window"), 60_000);
+  assert.equal(m.resourceGuardBackoffMs("digest"), 60_000);
+  assert.equal(m.resourceGuardBackoffMs("rollup"), 15 * 60_000);
+
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "rollup", "2026-09-29T13|r2", {}, EPOCH);
+  const job = await m.claim(sql, "p", EPOCH);
+  assert.equal(await m.runJob(sql, job, "p", {
+    sampler: pressure,
+    handlers: { rollup: async (ctx) => { await ctx.unit(); } },
+    now: () => EPOCH,
+  }), "skipped_resource_guard");
+  assert.equal(await m.claim(sql, "p", EPOCH + 14 * 60_000), null,
+    "the expensive rollup is not re-read every minute while pressure persists");
+  assert.ok(await m.claim(sql, "p", EPOCH + 15 * 60_000 + 1),
+    "the rollup becomes eligible after the bounded backoff");
+});
+
+test("a governor pause logs bounded measurements and thresholds once per unchanged reason set", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const lines = [];
+  const originalWarn = console.warn;
+  console.warn = (line) => lines.push(String(line));
+  t.after(() => { console.warn = originalWarn; });
+  const sample = {
+    rss_mb: 200.49,
+    load_per_cpu: 0.98765,
+    event_loop_p99_ms: 88.84,
+    db_waiting: 1,
+    db_in_use: 7,
+    db_ping_ms: 301.26,
+  };
+
+  const env = { RESEARCH_FACTORY_MAX_RSS_MB: "1536" };
+  const first = await m.factoryTick({ sql, sampler: async () => sample, env, now: () => EPOCH });
+  const second = await m.factoryTick({ sql, sampler: async () => sample, env, now: () => EPOCH + 30_000 });
+
+  assert.deepEqual(first.guard.reasons, ["SYSTEM_LOAD", "REQUEST_LATENCY", "DB_POOL_WAITING", "DB_POOL_BUSY", "DB_LATENCY"]);
+  assert.deepEqual(second.guard, first.guard);
+  assert.equal(lines.length, 1, "unchanged reasons do not turn low-precision samples into per-tick log spam");
+  const payload = JSON.parse(lines[0].replace(/^\[research-factory\] /, ""));
+  assert.deepEqual(payload.sample, {
+    rss_mb: 200,
+    load_per_cpu: 0.988,
+    event_loop_p99_ms: 88.8,
+    db_waiting: 1,
+    db_in_use: 7,
+    db_ping_ms: 301.3,
+  });
+  assert.deepEqual(payload.thresholds, {
+    max_rss_mb: 1536,
+    max_load_per_cpu: 0.7,
+    max_event_loop_p99_ms: 80,
+    max_db_waiting: 0,
+    max_db_in_use: 6,
+    max_db_ping_ms: 300,
+  });
+  assert.deepEqual(m.boundedResourceSample({ ...sample, load_per_cpu: Number.NaN }), { ...payload.sample, load_per_cpu: "INVALID" });
+});
+
+test("the CPU governor uses scoped process work rather than host load average", async (t) => {
+  const m = await factory(t);
+  assert.equal(m.processCpuPerCapacity(null, { at_ms: 1_000, used_us: 50_000 }, 2), Number.NaN);
+  assert.equal(m.processCpuPerCapacity(
+    { at_ms: 1_000, used_us: 50_000 },
+    { at_ms: 31_000, used_us: 6_050_000 },
+    2,
+  ), 0.1, "six CPU-seconds over 30 wall-seconds on two CPUs is ten percent of capacity");
+  assert.equal(Number.isNaN(m.processCpuPerCapacity(
+    { at_ms: 31_000, used_us: 6_050_000 },
+    { at_ms: 30_000, used_us: 6_100_000 },
+    2,
+  )), true, "backward clocks fail closed");
+});
+
+test("a warm-up CPU pause reports once again when a measured breach replaces it", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  const lines = [];
+  const originalWarn = console.warn;
+  console.warn = (line) => lines.push(String(line));
+  t.after(() => { console.warn = originalWarn; });
+  const base = { rss_mb: 200, event_loop_p99_ms: 5, db_waiting: 0, db_in_use: 1, db_ping_ms: 10 };
+
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: Number.NaN }), now: () => EPOCH });
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: 0.9 }), now: () => EPOCH + 30_000 });
+  await m.factoryTick({ sql, sampler: async () => ({ ...base, load_per_cpu: 0.91 }), now: () => EPOCH + 60_000 });
+
+  assert.equal(lines.length, 2, "warm-up and first measured breach are distinct, later numeric drift stays deduped");
+  assert.equal(JSON.parse(lines[0].replace(/^\[research-factory\] /, "")).sample.load_per_cpu, "INVALID");
+  assert.equal(JSON.parse(lines[1].replace(/^\[research-factory\] /, "")).sample.load_per_cpu, 0.9);
 });
 
 test("a failing job is retried with back-off and stops at the attempt limit; the error is recorded", async (t) => {
@@ -170,6 +268,70 @@ test("a failing job is retried with back-off and stops at the attempt limit; the
   assert.equal(row.status, "failed");
   assert.equal(row.error, "boom");
   assert.equal(row.attempts, 3);
+});
+
+test("a tick with a failed job reports error rather than healthy progress", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "TICK-FAIL|1", {}, EPOCH);
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: calm,
+    handlers: { window: async () => { throw new Error("bounded boom"); } },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 1);
+  assert.equal((await jobsOf(sql))[0].status, "failed");
+  assert.equal(m.researchFactoryHealth().error, "bounded boom");
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", { code: "JOB_FAILED", failed: 1 })));
+  assert.equal(lines.some((line) => line.includes("bounded boom")), false, "runtime logs do not expose the stored job error");
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
+});
+
+test("a later resource pause cannot hide an earlier failure in the same tick", async (t) => {
+  const m = await factory(t);
+  const { sql } = await freshDb();
+  await m.enqueue(sql, "window", "A-FAIL|1", {}, EPOCH);
+  await m.enqueue(sql, "window", "B-PAUSE|2", {}, EPOCH);
+  let samples = 0;
+  const lines = [];
+  const originalError = console.error;
+  console.error = (line) => lines.push(String(line));
+  t.after(() => { console.error = originalError; });
+
+  const result = await m.factoryTick({
+    sql,
+    sampler: async () => {
+      samples += 1;
+      return samples === 1 ? calm() : pressure();
+    },
+    handlers: {
+      window: async (ctx) => {
+        if (ctx.job.job_key === "A-FAIL|1") throw new Error("first job failed");
+        await ctx.unit();
+      },
+    },
+    now: () => EPOCH,
+  });
+
+  assert.equal(result.ran, 2);
+  assert.deepEqual((await jobsOf(sql)).map((row) => row.status), ["failed", "skipped_resource_guard"]);
+  assert.equal(m.researchFactoryHealth().error, "first job failed");
+  assert.deepEqual(m.researchFactoryHealth().last_guard, { run: false, reasons: ["MEMORY"] });
+  assert.ok(lines.includes(m.researchFactoryLogLine("error", {
+    code: "JOB_FAILED",
+    failed: 1,
+    paused_reasons: ["MEMORY"],
+    phase: "job",
+  })));
+  assert.equal(lines.some((line) => line.includes("first job failed")), false, "combined failure/pause logs remain research-data free");
+  assert.equal(lines.some((line) => line.includes('"status":"progress"')), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -336,8 +498,10 @@ function walk(dir, out = []) {
 
 test("rails: default OFF on a literal flag, kicked by healthz, writes only its own tables, no paid API, and production imports none of it", async (t) => {
   const m = await factory(t);
+  assert.equal(m.researchFactoryLogLine("paused", { reasons: ["MEMORY"] }), '[research-factory] {"status":"paused","reasons":["MEMORY"]}');
+  assert.equal(m.researchFactoryLogLine("error", { code: "TICK_FAILED" }), '[research-factory] {"status":"error","code":"TICK_FAILED"}');
   for (const v of [undefined, "", "TRUE", "1", "yes"]) assert.equal(m.ensureResearchFactory({ RESEARCH_FACTORY_ENABLED: v }), "disabled", String(v));
-  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => \{\}\);/);
+  assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory\.server"\)\s*\.then\(\(m\) => m\.ensureResearchFactory\(\)\)\s*\.catch\(\(\) => console\.error\('\[research-factory\] \{"status":"error","code":"STARTUP_IMPORT_FAILED"\}'\)\);/);
   assert.match(read("server/routes/healthz.get.ts"), /void import\("\.\.\/\.\.\/src\/lib\/desk\/research-factory-tape\.server"\)\s*\.then\(\(m\) => m\.ensureDecisionTape\(\)\)\s*\.catch\(\(\) => \{\}\);/);
   const files = ["src/lib/desk/research-factory.ts", "src/lib/desk/research-factory-analysis.ts", "src/lib/desk/research-factory-reports.ts", "src/lib/desk/research-factory.server.ts",
     "src/lib/desk/research-factory-tape.ts", "src/lib/desk/research-factory-insight.ts", "src/lib/desk/research-factory-tape.server.ts",
@@ -418,7 +582,67 @@ const AUDIT_IDS = ["risk_history", "daily_risk", "complete_window", "direction",
 /** A full production admission audit: directional frames pass everything but confirmation; WAIT frames leave side checks unevaluated. */
 const tapeAudit = (lean) => ({ mode: "normal", positioned: false, eligible: false, checks: AUDIT_IDS.map((id) => ({ id, label: id,
   pass: id === "confirmation" ? (lean === "WAIT" ? null : false) : id === "direction" ? lean !== "WAIT" : lean === "WAIT" && ["team", "supporters", "families", "opposition", "quote", "profit_reserve", "model_edge", "index_edge"].includes(id) ? null : true })) });
-const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { audit: tapeAudit(lean), daily: { tightened: false } } });
+const tapeFrame = (secsLeft, lean = "WAIT", vs = 0.4) => ({ snap: tapeSnap(secsLeft), chair: tapeChair(lean, vs), call_log: [], selective: { policy: "ENTRY_OWNER_ROLLBACK_V1", audit: tapeAudit(lean), daily: { tightened: false } } });
+
+test("decision tape E1 paper: checkpoint receipts copy actual published outputs without changing decisions or sampling", async () => {
+  const calls = [];
+  const sql = async (strings, ...values) => { calls.push({ text: strings.join("?"), values }); return [{ ok: 1 }]; };
+  let frame = { ...tapeFrame(610), votes: [{ seat: "STRIKE", paper: [{ id: "STRIKE.itm_time", lean: "UP", confidence: 61, status: "SHADOW" }] }] };
+  const pure = loader()("src/lib/desk/research-factory-tape.ts");
+  const input = () => ({ snap: frame.snap, chair: frame.chair, audit: frame.selective.audit, daily: frame.selective.daily, call_log: frame.call_log });
+  assert.equal(JSON.stringify(pure.classifyTape({ ...input(), votes: frame.votes })), JSON.stringify(pure.classifyTape({ ...input(), votes: frame.votes.map((v) => ({ ...v, paper: [] })) })), "published papers cannot alter classification bytes");
+  const mod = loader({ "@/lib/db": { getSql: async () => sql }, "./server-engine": { getServerFrame: async () => frame } }, { RENDER_GIT_COMMIT: "paper-observation-build" })(TAPE);
+  const before = JSON.stringify(frame);
+  await mod.decisionTapeTick(frame.snap.as_of);
+  assert.equal(JSON.stringify(frame), before);
+  assert.equal(JSON.parse(calls[0].values[11]).e1_paper, undefined, "change-only record has no papers");
+  frame = { ...frame, snap: tapeSnap(598) };
+  const rec = await mod.decisionTapeTick(frame.snap.as_of);
+  const row = calls[1];
+  const payload = JSON.parse(row.values[11]);
+  assert.equal(row.values[4], 600);
+  assert.equal(row.values[0], frame.snap.ticker);
+  assert.equal(row.values[1], new Date(frame.snap.close_time).toISOString());
+  assert.equal(row.values[2], new Date(frame.snap.as_of).toISOString());
+  assert.equal(row.values[12], "paper-observation-build");
+  assert.deepEqual(payload.e1_paper.outputs, [{ kind: "PAPER_EVALUATED", card_id: "STRIKE.itm_time", seat: "STRIKE", lean: "UP", conf: 61, status: "SHADOW" }]);
+  assert.equal(payload.e1_paper.authority, "NONE");
+  assert.equal(payload.e1_paper.qualification, "UNKNOWN");
+  assert.equal(payload.e1_paper.missing.length, 5);
+  delete payload.e1_paper; delete payload.seats;
+  assert.equal(JSON.stringify(payload), JSON.stringify(rec), "supplemental field cannot alter decision payload");
+  frame = { ...frame, snap: tapeSnap(590), votes: [{ seat: "STRIKE", paper: [{ id: "STRIKE.itm_time", lean: "DOWN", confidence: 99, status: "LIVE" }] }] };
+  await mod.decisionTapeTick(frame.snap.as_of);
+  assert.equal(calls.length, 2, "paper changes alone cannot trigger inserts");
+  assert.equal(pure.MAX_EVENTS_PER_WINDOW, 80);
+  assert.equal(pure.CHECKPOINTS.length, 7);
+});
+
+test("decision tape E1 paper: missing source, wrong owner/card, malformed and duplicate receipts stay explicitly unavailable", () => {
+  const { observeE1Paper } = loader()("src/lib/desk/research-factory-tape.ts");
+  const plain = (v) => JSON.parse(JSON.stringify(v));
+  assert.equal(observeE1Paper(undefined).missing.length, 6);
+  assert.ok(observeE1Paper(undefined).missing.every((r) => r.reason === "PAPER_SOURCE_MISSING"));
+  const empty = observeE1Paper([{ seat: "STRIKE", paper: [] }]);
+  assert.equal(empty.missing.find((r) => r.card_id === "STRIKE.itm_time").reason, "CARD_NOT_PRESENT");
+  const selected = observeE1Paper([{ seat: "STRIKE", skill_used: "STRIKE.itm_time", paper: [] }]);
+  assert.equal(selected.missing.find((r) => r.card_id === "STRIKE.itm_time").reason, "ACTIVE_SELECTION_NOT_IN_PAPER", "selected output is separate and never synthesized into papers");
+  const down = observeE1Paper([{ seat: "STRIKE", skill_used: "SIT", health: "DOWN", paper: [] }]);
+  assert.equal(down.outputs.length, 0);
+  assert.equal(down.qualification, "UNKNOWN", "feed-down empty papers cannot establish a qualifying read");
+  const wrong = observeE1Paper([{ seat: "CHAIN", paper: [{ id: "STRIKE.itm_time", lean: "UP", confidence: 60, status: "LIVE" }, { id: "CHAIN.unknown", lean: "UP", confidence: 60, status: "LIVE" }] }]);
+  assert.equal(wrong.outputs.length, 0);
+  const receipt = { id: "STRIKE.itm_time", lean: "UP", confidence: 60, status: "BENCH" };
+  for (const bad of [{ lean: "ADD" }, { confidence: NaN }, { confidence: 101 }, { status: "SIT" }]) {
+    const result = observeE1Paper([{ seat: "STRIKE", paper: [{ ...receipt, ...bad }] }]);
+    assert.equal(result.outputs.length, 0);
+    assert.equal(result.missing.find((r) => r.card_id === receipt.id).reason, "MALFORMED_RECEIPT");
+  }
+  const duplicate = observeE1Paper([{ seat: "STRIKE", paper: [receipt, receipt] }]);
+  assert.equal(duplicate.outputs.length, 0);
+  assert.equal(duplicate.missing.find((r) => r.card_id === receipt.id).reason, "DUPLICATE_RECEIPT");
+  assert.equal(plain(observeE1Paper([{ seat: "STRIKE", paper: [receipt] }])).outputs[0].status, "BENCH", "bench/exploit-rejected output is observed without promotion");
+});
 
 test("decision tape: env-gated on a literal flag; records checkpoints and changes only; marks the window open at boot partial; never mutates the frame", async () => {
   const off = loader({ "@/lib/db": { getSql: async () => { throw new Error("must not be called"); } } })(TAPE);
@@ -437,6 +661,7 @@ test("decision tape: env-gated on a literal flag; records checkpoints and change
   frame = tapeFrame(500, "UP", 0.6); await mod.decisionTapeTick(tapeClose - 500_000); // the Chair turns directional: a change
   const rows = inserts();
   assert.deepEqual(rows.map((r) => [r.secs, r.checkpoint, r.label]), [[610, null, "DIRECTION_BELOW_BAR"], [598, 600, "DIRECTION_BELOW_BAR"], [500, null, "CONFIRMATION_INCOMPLETE"]]);
+  assert.ok(rows.every((r) => r.record.raw.policy === frame.selective.policy), "the actual production entry policy survives the observer adapter and durable payload");
   assert.ok(rows.every((r) => r.partial === true), "this window was already open when the observer started");
   assert.ok(rows.find((r) => r.checkpoint === 600).record.seats?.length === 2, "seat reads ride on checkpoint briefs");
   assert.equal(rows.find((r) => r.checkpoint == null).record.seats, undefined, "change events stay compact");

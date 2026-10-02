@@ -29,6 +29,7 @@ import { lookupOneWindow, payloadKey } from "./replay-lookup";
 import { measureWindowPath, type WindowPathStats } from "./window-path";
 import type { ChairResult, Snapshot, Vote } from "./types";
 import { SEAT_IDS } from "./types";
+import { replayJournal, replayRow } from "./replay-journal.server";
 
 async function sql() {
   const { getSql } = await import("@/lib/db");
@@ -156,6 +157,7 @@ export function noteReplay(snap: Snapshot, votes: Vote[], chair: ChairResult, bo
       c.seats[id].push(v ? leanCode(v) : 0);
     }
     noteShadow(c, snap.ticker);
+    replayJournal.note(replayRow(snap.ticker, snap.close_time, slot.series.strike, c));
   } catch {
     /* a replay must never cost a tick */
   }
@@ -217,6 +219,9 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
   // One operation: it cannot read one window and delete another.
   const s = series.take(ticker, closeMs);
   if (!s) return;
+  // Restore earlier samples from this exact window after a process restart.
+  // Journal failure falls back to the in-memory segment; nothing affects decisions.
+  s.cols = await replayJournal.restore(ticker, closeMs, s.cols);
   if (s.cols.t.length < 3) return;
   const partial = s.cols.t0 - (s.close_time - WINDOW_MS) > 60_000;
   const pathStats = measureWindowPath({
@@ -239,6 +244,7 @@ export async function recordReplay(ticker: string, closeMs: number, winner: "UP"
 export async function pruneReplays(): Promise<void> {
   const db = await sql();
   await db`delete from desk_replay where close_time < now() - (${KEEP_DAYS} || ' days')::interval`;
+  await replayJournal.prune(Date.now());
 }
 
 export type Replay = {
@@ -253,7 +259,7 @@ export type Replay = {
   /** Measurement-only spot-path summary computed after grade. */
   path: WindowPathStats | null;
   official: number | null;
-  call: { entry: number; settle: number | null; ev: number | null } | null;
+  call: { entry: number; settle: number | null; ev: number | null; source: "RECOVERY_FAV85_V1" | null } | null;
 };
 
 const TICKER_RE = /^[A-Z0-9-]{6,40}$/;
@@ -331,9 +337,10 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         entry_cents: number | null;
         settle_cents: number | null;
         ev_cents: number | null;
+        entry_source: string | null;
       }>`
         select r.ticker, r.close_time, r.strike, r.winner, r.n, r.step_ms, r.partial, r.cols, r.path_stats,
-               l.official_value, l.entry_cents, l.settle_cents, l.ev_cents
+               l.official_value, l.entry_cents, l.settle_cents, l.ev_cents, l.entry_source
         from desk_replay r
         left join desk_ledger l on l.ticker = r.ticker and l.close_time = r.close_time
         where r.ticker = ${t} and r.close_time = ${closeIso}
@@ -352,7 +359,8 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
         cols: r.cols,
         path: r.path_stats,
         official: r.official_value,
-        call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents } : null,
+        call: r.entry_cents != null ? { entry: r.entry_cents, settle: r.settle_cents, ev: r.ev_cents,
+          source: r.entry_source === "RECOVERY_FAV85_V1" ? "RECOVERY_FAV85_V1" : null } : null,
       } satisfies Replay;
     },
   );
@@ -360,4 +368,3 @@ export async function replayFor(tickerRaw: unknown): Promise<Replay | null> {
 
 const isoOf = (v: Date | string): string =>
   v instanceof Date ? v.toISOString() : new Date(v).toISOString();
-

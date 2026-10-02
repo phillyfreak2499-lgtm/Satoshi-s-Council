@@ -66,29 +66,25 @@ const msExpr = (v: number | string | null | undefined): string | null => {
 async function computeLabRegistrySnapshot(): Promise<PublicLabRegistrySnapshot> {
   const db = await getSql();
   const core = await db<StatRow>`
-    with replay_stats as materialized (
+    with replay_rows as materialized (
+      select
+        created_at,
+        jsonb_path_exists(cols, '$.imb[*] ? (@ != null)') as has_imb,
+        jsonb_path_exists(cols, '$.resid[*] ? (@ != null)') as has_resid,
+        jsonb_path_exists(cols, '$.fair[*] ? (@ != null)') as has_fair
+      from desk_replay
+    ),
+    replay_stats as materialized (
       select
         count(*)::int as n,
         max(extract(epoch from created_at) * 1000)::bigint as last_ms,
-        count(*) filter (
-          where jsonb_path_exists(cols, '$.imb[*] ? (@ != null)')
-        )::int as tape_n,
-        max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_path_exists(cols, '$.imb[*] ? (@ != null)')
-        )::bigint as tape_last_ms,
-        count(*) filter (
-          where jsonb_path_exists(cols, '$.resid[*] ? (@ != null)')
-        )::int as vel_n,
-        max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_path_exists(cols, '$.resid[*] ? (@ != null)')
-        )::bigint as vel_last_ms,
-        count(*) filter (
-          where jsonb_path_exists(cols, '$.fair[*] ? (@ != null)')
-        )::int as fair_n,
-        max(extract(epoch from created_at) * 1000) filter (
-          where jsonb_path_exists(cols, '$.fair[*] ? (@ != null)')
-        )::bigint as fair_last_ms
-      from desk_replay
+        count(*) filter (where has_imb)::int as tape_n,
+        max(extract(epoch from created_at) * 1000) filter (where has_imb)::bigint as tape_last_ms,
+        count(*) filter (where has_resid)::int as vel_n,
+        max(extract(epoch from created_at) * 1000) filter (where has_resid)::bigint as vel_last_ms,
+        count(*) filter (where has_fair)::int as fair_n,
+        max(extract(epoch from created_at) * 1000) filter (where has_fair)::bigint as fair_last_ms
+      from replay_rows
     ),
     decision_stats as materialized (
       select

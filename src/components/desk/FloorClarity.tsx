@@ -145,9 +145,15 @@ export function WhyBlock({ why, chair }: { why: WhyFacts; chair: ChairResult }) 
   const conf = chairConfidenceLabel(chair);
   const waitLine =
     why.wait_reason === "feed-condition"
-      ? `The data cannot be trusted right now: ${why.feed_gates.map((g) => `${g.label} (${g.value})`).join(", ")}. Until the inputs are believable the vote does not mean anything, so the desk does not call. This is a feed condition, not a read on the market.`
+      ? `The data cannot be trusted right now: ${why.feed_gates.map((g) => `${g.label} (${g.value})`).join(", ")}. Until the inputs are believable the vote does not mean anything, so the desk does not call. This is a feed condition, not a read on the market.${
+          why.failed_hard.some((g) => !why.feed_gates.includes(g))
+            ? ` Also blocking: ${why.failed_hard.filter((g) => !why.feed_gates.includes(g)).map((g) => `${g.label} (${g.value})`).join(", ")}.`
+            : ""
+        }`
       : why.wait_reason === "hard-gate"
-      ? why.failed_hard.length === 1 && !why.more_than_one_thing_missing
+      ? why.failed_hard.some((g) => g.id === "chalk") && why.failed_hard.length === 1
+        ? `The book is chalk: ${why.failed_hard[0]!.value}. There is no qualifying entry at this price; the feeds may still be healthy. Clearing chalk alone does not guarantee a call${Math.abs(chair.score) < chair.bar ? " — the vote is also under the bar" : ""}.`
+      : why.failed_hard.length === 1 && !why.more_than_one_thing_missing
         ? `A hard gate is failing: ${why.failed_hard[0]!.label} (${why.failed_hard[0]!.value}). Clearing it is necessary, not sufficient — the score still has to beat the bar.`
         : `More than one thing is missing: ${why.failed_hard.map((g) => `${g.label} (${g.value})`).join(", ")}${why.failed_hard.length && Math.abs(chair.score) < chair.bar ? ", and the score is under the bar" : ""}.`
       : why.wait_reason === "under-bar"
@@ -163,7 +169,7 @@ export function WhyBlock({ why, chair }: { why: WhyFacts; chair: ChairResult }) 
         ) : null}
         {waitLine ? <p className="max-w-[68ch] font-sans text-ui leading-snug text-wait">{waitLine}</p> : null}
         {why.wait_note ? (
-          <p className="max-w-[68ch] font-mono text-micro leading-relaxed text-muted">{why.wait_note}</p>
+          <p className="max-w-[68ch] font-sans text-micro leading-relaxed text-muted">{why.wait_note}</p>
         ) : null}
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-micro text-subtle">
           <span>
@@ -195,7 +201,7 @@ export function EvidenceBlock({ why }: { why: WhyFacts }) {
   return (
     <Pane title={<Tip k="pane.gates">evidence · counterargument</Tip>} className="min-w-0">
       {nothing ? (
-        <p className="font-mono text-micro text-subtle">
+        <p className="font-sans text-micro text-subtle">
           Nothing recorded for this window yet.
         </p>
       ) : (
@@ -211,16 +217,16 @@ export function EvidenceBlock({ why }: { why: WhyFacts }) {
                 ))}
               </ul>
             ) : (
-              <p className="mt-1 font-mono text-micro text-subtle">none recorded</p>
+              <p className="mt-1 font-sans text-micro text-subtle">none recorded</p>
             )}
           </div>
           <div className="min-w-0">
             <div className="font-mono text-micro uppercase tracking-wider text-subtle">against</div>
-            <p className="mt-1 font-mono text-micro leading-relaxed text-fg">
+            <p className="mt-1 font-sans text-micro leading-relaxed text-fg">
               {why.counter || <span className="text-subtle">none recorded</span>}
             </p>
             {invalid ? (
-              <p className="mt-2 font-mono text-micro leading-relaxed text-wait">
+              <p className="mt-2 font-sans text-micro leading-relaxed text-wait">
                 {/*
                   invalidateLine only ever phrases this as what ENDS the read. It is
                   not an entry trigger and must never be presented as one.
@@ -279,7 +285,7 @@ export function LastReplayCard({
           </a>
         </div>
       ) : (
-        <p className="font-mono text-micro text-subtle">No settled window recorded yet.</p>
+        <p className="font-sans text-micro text-subtle">No settled window recorded yet.</p>
       )}
     </Pane>
   );
