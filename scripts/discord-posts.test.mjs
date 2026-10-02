@@ -35,14 +35,15 @@ const paper = lib.webhookTarget(url("111111111111111111"));
 const read = lib.webhookTarget(url("222222222222222222"));
 const accepted = { ok: true, status: 200, retryMs: 0, terminal: false, message: "fake-message", code: "accepted" };
 const migration = readFileSync("migrations/0070_discord_outbox.sql", "utf8");
+const releaseMigration = readFileSync("migrations/0072_discord_release.sql", "utf8");
 async function fixture(t) {
   const pg = new PGlite(); t.after(() => pg.close());
-  await pg.exec(migration);
-  await pg.exec(`create table desk_alert_rollout(build_sha text primary key,released_at timestamptz);
-    create table desk_ledger(ticker text,close_time timestamptz,entry_lean text,entry_source text,winner text,ev_cents double precision,graded_at timestamptz,research_quality text,entry_cents double precision default 83);
+  await pg.exec(migration); await pg.exec(releaseMigration);
+  await pg.exec(`create table desk_ledger(ticker text,close_time timestamptz,entry_lean text,entry_source text,winner text,ev_cents double precision,graded_at timestamptz,research_quality text,entry_cents double precision default 83);
     create view desk_ledger_research as select * from desk_ledger where research_quality='valid';`);
   let now = Date.now() + 10000;
-  await pg.query("insert into desk_alert_rollout values ($1,$2)", [build, new Date(now-1000)]);
+  // Owner-set durable Discord release (not per build). No desk_alert_rollout table exists here.
+  await pg.query("insert into desk_discord_release(id,released,released_at) values (1,true,$1)", [new Date(now-1000)]);
   const db = async (parts, ...args) => (await pg.query(parts.reduce((s,p,i) => s+p+(i<args.length ? `$${i+1}` : ""), ""), args)).rows;
   db.query = async (sql,args=[]) => (await pg.query(sql,args)).rows;
   let released = true;
@@ -53,6 +54,7 @@ async function fixture(t) {
   return { pg,db,outbox,event,calls,logs,config,time:()=>now,advance:(ms)=>now+=ms,release:(v)=>released=v,
     rows:()=>db.query("select * from desk_discord_outbox order by event_key") };
 }
+const leanOf=(seat,score,ticker,close,at,extra={})=>({seat,score,direction:score>50?"BULLISH":score<50?"BEARISH":"NEUTRAL",window:{ticker,close_time:close,as_of:at},statusPlain:"Research only",stale:false,...extra});
 test("secrets stay in server config, URLs are allowlisted, wait=true and no redirects", async () => {
   assert.ok(paper.url.endsWith("?wait=true"));
   assert.equal(paper.hash.includes("fake-token"),false);
@@ -68,23 +70,25 @@ test("secrets stay in server config, URLs are allowlisted, wait=true and no redi
 });
 test("embeds keep booked position, research lean, and after-fee settlement distinct", () => {
   const now=Date.now(); const p=lib.paperEvent("DOWN",81,now+60000,now,"X",null,build,paper.hash);
-  const l={seat:"DRIFT",score:35,direction:"BEARISH",window:{ticker:"X",close_time:now+60000,as_of:now},statusPlain:"Research only — SATOSHI did not hear this vote."};
-  const r=lib.readEvent(l,build,read.hash), s=lib.settlementEvent(p,"DOWN",17,now+60000,build);
+  const l=leanOf("DRIFT",35,"X",now+60000,now);
+  const r=lib.readSummaryEvent([l],"WAIT",l.window,build,read.hash), s=lib.settlementEvent(p,"DOWN",17,now+60000,build);
   assert.match(p.payload.embeds[0].title,/■ PAPER POSITION BOOKED/);
-  assert.match(r.payload.embeds[0].title,/◇ RESEARCH LEAN · DRIFT · DOWN/);
-  assert.match(r.payload.embeds[0].description,/Research only.*Not a SATOSHI call or a paper position/);
+  assert.match(r.payload.embeds[0].title,/◇ RESEARCH OUTLOOK · SEAT LEANS/);
+  assert.match(r.payload.embeds[0].description,/Research only.*Not a SATOSHI call and not a paper position/);
   assert.notEqual(p.payload.embeds[0].color,r.payload.embeds[0].color);
-  assert.ok(r.payload.embeds[0].fields.some(f=>f.value==="35 · Bearish"));
+  assert.ok(r.payload.embeds[0].fields.some(f=>f.value==="DRIFT 35 · Bearish"));
   assert.ok(s.payload.embeds[0].fields.some(f=>f.value==="+17.0¢"));
   assert.match(s.payload.embeds[0].title,/WIN/);
   assert.match(lib.settlementEvent(p,"UP",-83,now,build).payload.embeds[0].title,/LOSS/);
-  assert.equal(lib.readEvent({...l,direction:"NEUTRAL",score:50},build,read.hash),null);
+  assert.equal(lib.readSummaryEvent([{...l,direction:"NEUTRAL",score:50}],"WAIT",l.window,build,read.hash),null);
 });
 test("hold suppresses all posts, no late held replay, missing build fails closed", async(t)=>{
   const f=await fixture(t); f.release(false);await f.outbox.enqueue(f.event());await f.outbox.drain();
   assert.equal(f.calls.length,0); assert.equal((await f.rows())[0].state,"held");
+  // Draining alone never replays held rows; only the owner release action settles the backlog.
   f.release(true); await f.outbox.drain();assert.equal(f.calls.length,0);
-  const later={...f.event(),key:"captured-before-release",observed:f.time()-5000};await f.outbox.enqueue(later);
+  const n=f.time(), l=leanOf("DRIFT",35,"X",n+300000,n-5000);
+  const later=lib.readSummaryEvent([l],"WAIT",l.window,build,read.hash);await f.outbox.enqueue(later);
   assert.equal((await f.rows()).find(r=>r.event_key===later.key).state,"held");
   const invalid=new DiscordOutbox(f.db,{...f.config,build:""},async()=>true, f.time,async()=>{throw Error("must not send")});
   await invalid.enqueue({...f.event(),key:"invalid",build:""});await invalid.drain();assert.equal(f.calls.length,0);
@@ -96,18 +100,18 @@ test("paper queue is idempotent across restart and routes to paper endpoint",asy
   await restarted.enqueue(e);await restarted.drain();assert.equal((await f.rows()).length,1);
   assert.equal((await f.rows())[0].state,"sent");
 });
-test("read cursor survives restart, neutral reset permits a new lean, timestamp is retained",async(t)=>{
+test("window summary dedupes across restart, keeps its timestamp, drops superseded per-seat reads",async(t)=>{
   const f=await fixture(t),n=f.time();
-  const lean=(at)=>({seat:"DRIFT",score:35,direction:"BEARISH",window:{ticker:"X",close_time:n+60000,as_of:at},statusPlain:"Research only"});
-  const e=lib.readEvent(lean(n),build,read.hash);await f.outbox.enqueue(e);await f.outbox.drain();
-  await f.outbox.enqueue(lib.readEvent(lean(n+1000),build,read.hash));await f.outbox.drain();assert.equal(f.calls.length,1);
-  await f.outbox.enqueue({...e,key:"quiet",quiet:true,signature:"NEUTRAL|50",observed:n+2000});
-  await f.outbox.enqueue(lib.readEvent(lean(n+3000),build,read.hash));await f.outbox.drain();
-  assert.equal(f.calls.length,2); assert.ok(f.calls.every(c=>c.u===read.url));
-  assert.equal(f.calls[1].p.embeds[0].timestamp,new Date(n+3000).toISOString());
-  // A delayed earlier journal observation cannot rewind the cursor.
-  await f.outbox.enqueue({...e,key:"late-quiet",quiet:true,signature:"NEUTRAL|50",observed:n+1500});
-  assert.equal((await f.db.query("select signature from desk_discord_read_state"))[0].signature,"BEARISH|35");
+  const sum=(at,score)=>{const l=leanOf("DRIFT",score,"X",n+300000,at);return lib.readSummaryEvent([l],"WAIT",l.window,build,read.hash);};
+  await f.outbox.enqueue(sum(n,35));await f.outbox.drain();
+  await f.outbox.enqueue(sum(n+1000,20));await f.outbox.drain();assert.equal(f.calls.length,1);
+  const restarted=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async()=>{throw Error("duplicate")});
+  await restarted.enqueue(sum(n+2000,70));await restarted.drain();
+  assert.equal(f.calls.length,1); assert.equal(f.calls[0].u,read.url);
+  assert.equal(f.calls[0].p.embeds[0].timestamp,new Date(n).toISOString());
+  // A pre-summary per-seat read still sitting in the disk journal is dropped, not replayed.
+  await f.outbox.enqueue({...sum(n+3000,35),key:"read|X|old-per-seat-format"});
+  assert.equal((await f.rows()).filter(r=>r.kind==="read").length,1);
 });
 test("settlement follows a delivered fill only, exact window/source and stored after-fee P&L",async(t)=>{
   const f=await fixture(t);const e=f.event();await f.outbox.enqueue(e);await f.outbox.drain();
@@ -130,16 +134,20 @@ test("429 and network/5xx back off; invalid endpoints stop; errors never expose 
   const ok=await lib.postDiscord(paper.url,p,0,async()=>new Response('{"id":"1"}',{status:200,headers:{"X-RateLimit-Remaining":"0","X-RateLimit-Reset-After":"0.5"}}));
   assert.equal(ok.retryMs,500);
 });
-test("durable cooldown, retry, expiry, rekey and build hold are enforced by real SQL",async(t)=>{
+test("durable cooldown, retry, expiry and rekey hold are enforced by real SQL; a deploy alone does not hold",async(t)=>{
   const f=await fixture(t);let attempts=0;
   const retry=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async()=>++attempts===1?{...accepted,ok:false,status:429,code:"rate_limited",retryMs:12000}:accepted);
   await retry.enqueue(f.event());await retry.drain();await retry.drain();assert.equal(attempts,1);
   f.advance(13000);await retry.drain();assert.equal(attempts,2);
   const expired={...f.event(),key:"expired",expires:f.time()-1};await retry.enqueue(expired);await retry.drain();
   assert.equal((await f.rows()).find(r=>r.event_key==='expired').state,'expired');
+  // A new deploy alone no longer holds Discord (owner release is durable); a rotated destination still does.
   await retry.enqueue({...f.event(),key:"oldbuild"});
-  const next=new DiscordOutbox(f.db,{...f.config,build:'b'.repeat(40)},async()=>true,f.time,async()=>{throw Error('must hold')});await next.drain();
-  assert.equal((await f.rows()).find(r=>r.event_key==='oldbuild').state,'held');
+  const next=new DiscordOutbox(f.db,{...f.config,build:'b'.repeat(40)},async()=>true,f.time,async()=>accepted);await next.drain();
+  assert.equal((await f.rows()).find(r=>r.event_key==='oldbuild').state,'sent');
+  await retry.enqueue({...f.event(),key:"rekeyed"});
+  const rotated=new DiscordOutbox(f.db,{...f.config,paper:lib.webhookTarget(url("333333333333333333"))},async()=>true,f.time,async()=>{throw Error('must hold')});await rotated.drain();
+  assert.equal((await f.rows()).find(r=>r.event_key==='rekeyed').state,'held');
 });
 test("0070 is new tables only; failure rolls back and repeated apply preserves existing rows",async(t)=>{
   assert.doesNotMatch(migration,/\balter\b|\bdrop\b|\bupdate\b|\bdelete\b|\binsert\b/i);
@@ -209,25 +217,28 @@ function stripQuiet(src) {
   s = s.split(" runQuietReview(e); }").join(" }");
   return s;
 }
-test("full production engine and push source differ only by the two outbound publication hooks (and the enumerated quiet-ledger taps)",()=>{
+test("engine and push source differ only by publication hooks and the reviewed settlement release guard",()=>{
+  const settlementGate="      if (!(await subscriberAlertsReleased())) {\n        lastLog = \"settlement alert held: owner two-tier verification required for this build\";\n        return;\n      }\n";
+  assert.equal(readFileSync('src/lib/desk/push.server.ts','utf8').split(settlementGate).length,2);
   const crypto=require('node:crypto');
   const engine=stripQuiet(readFileSync('src/lib/desk/server-engine.ts','utf8'))
     .replace('import { publishDiscordLeans } from "./discord-events.server";\n','')
     .replace('    // Outbound publication only: this frame is now the public getServerFrame result.\n    publishDiscordLeans(snap, votes, chair, e.learner.knobs);\n','');
   const push=readFileSync('src/lib/desk/push.server.ts','utf8')
     .replace('import { publishDiscordPaper } from "./discord-events.server";\n','')
-    .replace('  publishDiscordPaper(lean, cents, ticker, closeTime, source);\n','');
+    .replace('  publishDiscordPaper(lean, cents, ticker, closeTime, source);\n','')
+    .replace(settlementGate,'');
   assert.equal(crypto.createHash('sha256').update(engine).digest('hex'),'ac58ed7e3d21f99198457f0327a8d1978222f44112c6c290f77581d81e90317b');
   assert.equal(crypto.createHash('sha256').update(push).digest('hex'),'80615c0209a2a0435329ac934849df2d206d0238e9d7486145b49a766ddc0be2');
 });
 
- test("settlement scoreboard matches Books all-time totals, includes current fill, survives retry without double counting", async(t)=>{
+ test("settlement scoreboard excludes pending and breakeven calls, matches Books, and survives retry", async(t)=>{
   const f=await fixture(t), e=f.event(); await f.outbox.enqueue(e); await f.outbox.drain();
   await f.db.query("insert into desk_ledger(ticker,close_time,entry_lean,entry_source,winner,ev_cents,graded_at,research_quality) values ($1,$2,'UP',null,'UP',17,$3,'valid')",[e.ticker,new Date(e.close),new Date(f.time())]);
-  await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
+  await f.pg.exec("insert into desk_ledger(ticker,ev_cents,research_quality) values ('older-win',14,'valid'),('older-loss',-85,'valid'),('pending',null,'valid'),('breakeven',0,'valid'),('excluded',999,'excluded'); insert into desk_ledger(ticker,ev_cents,research_quality,entry_cents) values ('wait',null,'valid',null)");
   let attempts=0;const posted=[];
   const retry=new DiscordOutbox(f.db,f.config,async()=>true,f.time,async(u,p)=>{
-    posted.push(p);return ++attempts===1?{...accepted,ok:false,status:503,retryMs:1000,code:'provider_or_receipt_failure'}:accepted;
+    posted.push(p);return ++attempts===1?{...accepted,ok:false,status:429,retryMs:1000,code:'rate_limited'}:accepted;
   });
   await retry.drain();f.advance(1001);await retry.drain();await retry.drain();
   assert.equal(posted.length,2);assert.deepEqual(posted[0],posted[1]);
@@ -237,7 +248,9 @@ test("full production engine and push source differ only by the two outbound pub
   // Pin arithmetic against the actual site's query, including its historical
   // positive-net definition of wins (not an invented alternate win measure).
   const books=readFileSync('src/lib/desk/books.server.ts','utf8');
-  for(const expression of ['(count(*) filter (where entry_cents is not null))::int','(count(*) filter (where entry_cents is not null and ev_cents > 0))::int','coalesce(sum(ev_cents), 0)::float','from desk_ledger_research']) {
+  assert.ok(books.includes('(count(*) filter (where ev_cents < 0))::int as losses'));
+  assert.ok(readFileSync('src/lib/desk/discord-outbox.server.ts','utf8').includes('(count(*) filter (where entry_cents is not null and ev_cents < 0))::int as scoreboard_losses'));
+  for(const expression of ['(count(*) filter (where entry_cents is not null and ev_cents > 0))::int','coalesce(sum(ev_cents), 0)::float','from desk_ledger_research']) {
     assert.ok(books.includes(expression));assert.ok(readFileSync('src/lib/desk/discord-outbox.server.ts','utf8').includes(expression));
   }
 });

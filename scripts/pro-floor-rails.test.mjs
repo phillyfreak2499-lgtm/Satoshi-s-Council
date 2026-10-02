@@ -21,6 +21,7 @@ const READ_MODEL = "src/lib/desk/pro-floor.ts";
 const COMPONENTS = [
   "src/components/desk/ProFloor/ProOverview.tsx",
   "src/components/desk/ProFloor/ProDecisionStrip.tsx",
+  "src/components/desk/ProFloor/StickyDecisionHeader.tsx",
   "src/components/desk/ProFloor/ProChairCard.tsx",
   "src/components/desk/ProFloor/ProScoreBar.tsx",
   "src/components/desk/ProFloor/MarketModelCard.tsx",
@@ -114,8 +115,9 @@ test("gate confidence is labelled as a gate number and never rendered as a perce
   const card = read("src/components/desk/ProFloor/ProChairCard.tsx");
   assert.match(card, /gate confidence \{conclusion\.confidence\.value\}/);
   assert.match(card, /\{conclusion\.confidence\.gloss\}/, "the gloss is printed beside it");
-  const strip = read("src/components/desk/ProFloor/ProDecisionStrip.tsx");
-  assert.match(strip, /gate confidence \{conclusion\.confidence\.value\}/);
+  const sticky = read("src/components/desk/ProFloor/StickyDecisionHeader.tsx");
+  assert.match(sticky, /gate confidence \{facts\.conclusion\.confidence\.value\}/,
+    "the compact operator status carries the gate number once the market strip stops duplicating SATOSHI");
   for (const rel of COMPONENTS) {
     assert.doesNotMatch(read(rel), /confidence[^\n]*\}%/, `${rel} must not suffix a confidence with %`);
   }

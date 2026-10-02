@@ -76,9 +76,9 @@ test("V4 observer writes only its isolated shadow ledger", () => {
   }
 });
 
-test("V4 is booted beside the brain and the brain never imports it", () => {
-  assert.match(health, /forced-v4\.server/);
-  assert.match(health, /ensureForcedV4Observer/);
+test("V4 stays retired and the brain never imports it", () => {
+  assert.doesNotMatch(health, /forced-v4\.server/);
+  assert.doesNotMatch(health, /ensureForcedV4Observer/, "retired observer must not start on health checks");
   for (const path of [
     "src/lib/desk/server-engine.ts",
     "src/lib/desk/chair.ts",

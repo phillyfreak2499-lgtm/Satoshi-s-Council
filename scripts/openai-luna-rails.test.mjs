@@ -56,9 +56,9 @@ test("Luna comparison joins the Terra study after forecasts are stored", () => {
   assert.match(server, /terra_hits/);
 });
 
-test("Luna boots beside research observers and is public aggregate-only", () => {
-  assert.match(health, /openai-luna\.server/);
-  assert.match(health, /ensureOpenAILunaObserver/);
+test("Luna stays retired and is public aggregate-only", () => {
+  assert.doesNotMatch(health, /openai-luna\.server/);
+  assert.doesNotMatch(health, /ensureOpenAILunaObserver/, "retired observer must not start on health checks");
   assert.match(pub, /openAILunaSnapshot\(\)\.catch\(\(\) => null\)/);
   assert.match(pub, /openai_luna: OpenAILunaSnapshot \| null/);
   assert.match(room, /OpenAI Luna benchmark/);

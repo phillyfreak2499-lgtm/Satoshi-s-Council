@@ -461,6 +461,10 @@ export function notifySettle(
 ): void {
   void (async () => {
     try {
+      if (!(await subscriberAlertsReleased())) {
+        lastLog = "settlement alert held: owner two-tier verification required for this build";
+        return;
+      }
       const subs = await subsFor("settle");
       if (!subs.length) return;
       // Only windows that mattered to this browser: its own lock, or a chair call. Quiet windows stay quiet.

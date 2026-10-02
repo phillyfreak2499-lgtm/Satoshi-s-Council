@@ -125,7 +125,7 @@ test('three decision layers keep distinct permanent labels and surface ownership
 
 test('compact Pro status keeps a directional opinion separate from the actual book',()=>{
  const {StickyDecisionHeader}=load('src/components/desk/ProFloor/StickyDecisionHeader.tsx');
- const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP'},paper:{held:false}};
+ const facts={market:{close_time:window.close_time,secs_left:360},conclusion:{lean:'UP',confidence:{value:79}},health:{all_clear:true,blockers:[]},paper:{held:false}};
  const sticky=render(StickyDecisionHeader,{facts});
  assert.match(sticky,/data-decision-layer="decision"/);
  assert.match(sticky,/data-decision-layer="position"/);

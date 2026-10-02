@@ -544,3 +544,21 @@ test("outage trigger and delivery semantics are unchanged from pre-PR production
   assert.match(ownerHtml, /Test both tiers on this owner device/);
   assert.match(ownerHtml, /filled BOOKED square versus hollow READ ONLY diamond/);
 });
+
+test("subscriber settlements require exact-build owner device verification, fail closed and stop after rekey", async()=>{
+ const old=process.env.RENDER_GIT_COMMIT;process.env.RENDER_GIT_COMMIT=build;const {pg,db}=await fixture();
+ try{
+  await pg.exec(migration);await pg.exec("insert into desk_push_keys(id,public_key,private_key) values('vapid','fixture-public','fixture-private')");
+  const sends=[];const overrides={"@/lib/db":{getSql:async()=>db},"web-push":{default:{sendNotification:async(sub,payload)=>{sends.push({endpoint:sub.endpoint,payload:JSON.parse(payload)});return{statusCode:201};}}}};
+  const push=loader(overrides)("src/lib/desk/push.server.ts");const flush=()=>new Promise(r=>setTimeout(r,50));const chair={entry:83,settle:100,ev:15};
+  push.notifySettle("held-settle","UP",chair,new Map());await flush();assert.equal(sends.length,0);
+  const attempt=await push.ownerAlertVerification(ownerInput("verify",{confirm_test_fixtures:true}));assert.equal(sends.length,2);
+  push.notifySettle("unconfirmed-settle","UP",chair,new Map());await flush();assert.equal(sends.length,2);
+  await push.ownerAlertVerification(ownerInput("release",{verification_id:attempt.verification_id,confirm_device_display:true}));
+  push.notifySettle("verified-settle","UP",chair,new Map());await flush();assert.equal(sends.filter(s=>s.payload.tag==="settle-verified-settle").length,3);
+  assert.equal((await pg.query("select count(*)::int n from desk_push_delivery_receipts where event_kind='settle'")).rows[0].n,3);
+  process.env.RENDER_GIT_COMMIT=nextBuild;const next=loader(overrides)("src/lib/desk/push.server.ts");const before=sends.length;next.notifySettle("next-build-held","UP",chair,new Map());await flush();assert.equal(sends.length,before);
+  await pg.exec("update desk_push_subs set p256dh='rekeyed-device' where endpoint='https://push.invalid/owner'");push.notifySettle("rekey-held","UP",chair,new Map());await flush();assert.equal(sends.length,before);
+  const broken=loader({...overrides,"@/lib/db":{getSql:async()=>{throw Error("SQL unavailable");}}})("src/lib/desk/push.server.ts");broken.notifySettle("sql-held","UP",chair,new Map());await flush();assert.equal(sends.length,before);
+ }finally{await pg.close();if(old===undefined)delete process.env.RENDER_GIT_COMMIT;else process.env.RENDER_GIT_COMMIT=old;}
+});

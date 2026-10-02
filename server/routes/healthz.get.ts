@@ -4,6 +4,10 @@
  *  into it. Every kick is fire-and-forget — health stays instant and cannot be
  *  failed by feeds, research, or the database. */
 export default function healthz() {
+  // Owner-requested execution experiments. Separate paper-only collector, default OFF.
+  void import("../../src/lib/desk/execution-lab.server")
+    .then((m) => m.ensureExecutionLab())
+    .catch(() => {});
   void import("../../src/lib/desk/server-engine")
     .then((m) => m.ensureServerEngine())
     .catch(() => {});
@@ -13,20 +17,8 @@ export default function healthz() {
   void import("../../src/lib/desk/call-quality.server")
     .then((m) => m.ensureCallQualityObserver())
     .catch(() => {});
-  void import("../../src/lib/desk/forced-v4.server")
-    .then((m) => m.ensureForcedV4Observer())
-    .catch(() => {});
   void import("../../src/lib/desk/ask-lead.server")
     .then((m) => m.ensureAskLeadObserver())
-    .catch(() => {});
-  void import("../../src/lib/desk/openai-shadow.server")
-    .then((m) => m.ensureOpenAIShadowObserver())
-    .catch(() => {});
-  void import("../../src/lib/desk/openai-blind.server")
-    .then((m) => m.ensureOpenAIBlindObserver())
-    .catch(() => {});
-  void import("../../src/lib/desk/openai-luna.server")
-    .then((m) => m.ensureOpenAILunaObserver())
     .catch(() => {});
   void import("../../src/lib/desk/chair-ablation.server")
     .then((m) => m.ensureChairAblationObserver())

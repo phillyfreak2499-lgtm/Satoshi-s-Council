@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { LeanChip, Pane } from "./bits";
 import { Tip } from "./Tip";
 import { BG, DOWN, FG, FONT_SM, GRID, INK, LINE, UP, WAIT, fillRound, useDraw } from "./canvas";
+import { replayCoverage, replayRuns } from "@/lib/desk/replay-coverage";
 
 const WINDOW_S = 900;
 const DOMAIN_S = WINDOW_S + 20;
@@ -83,6 +84,25 @@ function cursorLine(ctx: CanvasRenderingContext2D, x: number, top: number, botto
   ctx.restore();
 }
 
+function drawCoverage(ctx: CanvasRenderingContext2D, w: number, top: number, bottom: number, r: Replay) {
+  const x = xScale(w);
+  const coverage = replayCoverage(r.cols.t0, r.cols.t, Date.parse(r.close_time), r.step_ms);
+  ctx.save();
+  for (const gap of coverage.gaps) {
+    ctx.fillStyle = WAIT;
+    ctx.globalAlpha = 0.08;
+    ctx.fillRect(x(gap.from), top, x(gap.to) - x(gap.from), bottom - top);
+    if (x(gap.to) - x(gap.from) > 80) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = FG;
+      ctx.font = FONT_SM;
+      ctx.textAlign = "center";
+      ctx.fillText("not recorded", (x(gap.from) + x(gap.to)) / 2, (top + bottom) / 2);
+    }
+  }
+  ctx.restore();
+}
+
 function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay, cursor: number) {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, w, h);
@@ -101,6 +121,7 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
   const lo = lo0 - pad;
   const y = (v: number) => plotT + ((hi - v) / (hi - lo)) * (plotB - plotT);
   const xs = c.t.map((_, i) => x(secsFromOpen(r, i)));
+  drawCoverage(ctx, w, plotT, plotB, r);
 
   // final minute
   ctx.fillStyle = GRID;
@@ -130,12 +151,14 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
       ctx.clip();
       ctx.globalAlpha = 0.16;
       ctx.fillStyle = above ? UP : DOWN;
-      ctx.beginPath();
-      ctx.moveTo(xs[0], y(strike));
-      c.spot.forEach((v, i) => ctx.lineTo(xs[i], y(v)));
-      ctx.lineTo(xs[xs.length - 1], y(strike));
-      ctx.closePath();
-      ctx.fill();
+      for (const run of replayRuns(c.t, r.step_ms)) {
+        ctx.beginPath();
+        ctx.moveTo(xs[run[0]], y(strike));
+        run.forEach(i => ctx.lineTo(xs[i], y(c.spot[i])));
+        ctx.lineTo(xs[run[run.length - 1]], y(strike));
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.restore();
     };
     area(true);
@@ -155,7 +178,8 @@ function drawPrice(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  c.spot.forEach((v, i) => (i ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
+  c.spot.forEach((v, i) => (i && (c.t[i] - c.t[i - 1]) * 1000 <= Math.max(12_000, r.step_ms * 3)
+    ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
   ctx.stroke();
   // Settlement marker. The window grades on the final-minute index average, which
   // can land the OTHER side of the strike from where spot's last tick shows — so
@@ -227,6 +251,7 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
   const plotB = h - bandH - 8;
   const y = (v: number) => plotT + (1 - Math.max(0, Math.min(100, v)) / 100) * (plotB - plotT);
   const xs = c.t.map((_, i) => x(secsFromOpen(r, i)));
+  drawCoverage(ctx, w, plotT, plotB, r);
   ctx.strokeStyle = GRID;
   ctx.lineWidth = 1;
   ctx.font = FONT_SM;
@@ -250,7 +275,7 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
       pen = false;
       return;
     }
-    if (pen) ctx.lineTo(xs[i], y(v));
+    if (pen && (c.t[i] - c.t[i - 1]) * 1000 <= Math.max(12_000, r.step_ms * 3)) ctx.lineTo(xs[i], y(v));
     else ctx.moveTo(xs[i], y(v));
     pen = true;
   });
@@ -259,7 +284,8 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  c.yes_ask.forEach((v, i) => (i ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
+  c.yes_ask.forEach((v, i) => (i && (c.t[i] - c.t[i - 1]) * 1000 <= Math.max(12_000, r.step_ms * 3)
+    ? ctx.lineTo(xs[i], y(v)) : ctx.moveTo(xs[i], y(v))));
   ctx.stroke();
   // legend
   ctx.textAlign = "left";
@@ -274,7 +300,7 @@ function drawMind(ctx: CanvasRenderingContext2D, w: number, h: number, r: Replay
   const bandT = plotB + 4;
   for (let i = 0; i < xs.length; i++) {
     const x0 = xs[i];
-    const x1 = i + 1 < xs.length ? xs[i + 1] : x0 + 3;
+    const x1 = i + 1 < xs.length ? x(Math.min(secsFromOpen(r, i + 1), secsFromOpen(r, i) + r.step_ms / 1000)) : x0 + 3;
     const lean = c.lean[i];
     if (!lean) {
       ctx.fillStyle = GRID;
@@ -331,6 +357,7 @@ function drawLanes(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
   if (!ids.length) return;
   const rowH = (h - 4) / ids.length;
   const xs = c.t.map((_, i) => x(secsFromOpen(r, i)));
+  drawCoverage(ctx, w, 2, h - 2, r);
   ctx.font = FONT_SM;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
@@ -348,7 +375,7 @@ function drawLanes(ctx: CanvasRenderingContext2D, w: number, h: number, r: Repla
       const v = lane[i] ?? 0;
       if (!v) continue;
       const x0 = xs[i];
-      const x1 = i + 1 < xs.length ? xs[i + 1] : x0 + 3;
+      const x1 = i + 1 < xs.length ? x(Math.min(secsFromOpen(r, i + 1), secsFromOpen(r, i) + r.step_ms / 1000)) : x0 + 3;
       ctx.fillStyle = v > 0 ? UP : DOWN;
       ctx.globalAlpha = Math.abs(v) >= 2 ? 0.95 : 0.3;
       ctx.fillRect(x0, top + 1, Math.max(1, x1 - x0), Math.max(1, rowH - 2));
@@ -450,6 +477,7 @@ export function ReplayPane({
   const n = c.t.length;
   const i = Math.max(0, Math.min(n - 1, cursor));
   const closeMs = Date.parse(r.close_time);
+  const coverage = replayCoverage(c.t0, c.t, closeMs, r.step_ms);
   const left = (closeMs - (c.t0 + (c.t[i] ?? 0) * 1000)) / 1000;
   const spot = c.spot[i];
   const dist = r.strike ? spot - r.strike : null;
@@ -512,7 +540,7 @@ export function ReplayPane({
       </div>
       {r.partial || onClose ? (
         <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-micro">
-          {r.partial ? <span className="text-wait">partial: the recorder joined this window late</span> : null}
+          {r.partial ? <span className="text-wait">Partial recording: first sample {coverage.startSeconds == null ? "unavailable" : `${fmtLeft(coverage.startSeconds)} after open`}. Shaded intervals were not recorded; earlier prices and seat reads are unavailable.</span> : null}
           {onClose ? (
             <>
               <a href={pageHref} target="_blank" rel="noopener" className="btn btn-secondary btn-sm ml-auto">
@@ -526,6 +554,7 @@ export function ReplayPane({
         </div>
       ) : null}
       <PriceChart r={r} cursor={i} />
+      <p className="mt-1 font-mono text-micro text-subtle">BTC is the recorded spot feed, not the BRTI settlement index. Points after close are post-close observations.</p>
       <div className="mt-1">
         <MindChart r={r} cursor={i} />
       </div>

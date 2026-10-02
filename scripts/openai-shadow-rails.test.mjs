@@ -71,9 +71,9 @@ test("retired OpenAI shadow requires explicit opt-in before starting API spend",
   assert.match(observer, /process\.env\[OPENAI_SHADOW_ENV_FLAG\]\s*!==\s*"true"/);
 });
 
-test("OpenAI shadow boots beside the brain and brain does not import it", () => {
-  assert.match(health, /openai-shadow\.server/);
-  assert.match(health, /ensureOpenAIShadowObserver/);
+test("OpenAI shadow stays retired and brain does not import it", () => {
+  assert.doesNotMatch(health, /openai-shadow\.server/);
+  assert.doesNotMatch(health, /ensureOpenAIShadowObserver/, "retired observer must not start on health checks");
   for (const path of [
     "src/lib/desk/server-engine.ts",
     "src/lib/desk/chair.ts",
