@@ -3,6 +3,7 @@ import { takerOutcomeSide } from "./kalshi-wire";
 import { selectOpenKalshiMarket } from "./kalshi-market";
 import { asMs, uniqueByT, valuesOf, type HistPoint } from "./hist";
 import { exactKalshiCents, interpretKalshiBook, readSeq } from "./kalshi-book";
+import { collectSettles, type KalshiMarketRow } from "./kalshi-settle";
 import { candleTs, emptyTally, tally } from "./candle-time";
 import { applyInstrument, funding8h, notionalUsd, pickPrimaryVenue, specTag, volumeUsd } from "./units";
 import type { PathPoint } from "./path-time";
@@ -120,55 +121,6 @@ function quoteUpdateTs(
     bookClock.changedAt = seenAt;
   }
   return Math.max(trade_ts, bookClock.changedAt);
-}
-
-type KalshiMarketRow = {
-  ticker?: string;
-  result?: string;
-  settlement_value?: string | number;
-  settlement_ts?: string;
-  close_time?: string;
-  expiration_time?: string;
-  expiration_value?: string | number;
-};
-
-function parseKalshiResult(row: KalshiMarketRow): "UP" | "DOWN" | null {
-  const r = String(row.result ?? "").toLowerCase();
-  if (r === "yes") return "UP";
-  if (r === "no") return "DOWN";
-  const v = Number(row.settlement_value);
-  if (v === 1) return "UP";
-  if (v === 0) return "DOWN";
-  return null;
-}
-
-function collectSettles(
-  rows: KalshiMarketRow[] | undefined,
-  receipt_ts: number,
-  host: string,
-  into: OfficialSettle[],
-) {
-  if (!rows) return;
-  const seen = new Set(into.map((s) => s.ticker));
-  for (const row of rows) {
-    const lean = parseKalshiResult(row);
-    if (!lean) continue;
-    const ticker = String(row.ticker ?? "");
-    if (!ticker || seen.has(ticker)) continue;
-    seen.add(ticker);
-    const closeTs = Date.parse(String(row.close_time ?? row.expiration_time ?? "")) || 0;
-    const settledAt = Date.parse(String(row.settlement_ts ?? "")) || closeTs;
-    const value = Number(row.expiration_value);
-    into.push({
-      ticker,
-      close_time: closeTs,
-      lean,
-      provider_ts: settledAt,
-      receipt_ts,
-      source: host,
-      ...(Number.isFinite(value) && value > 0 ? { value } : {}),
-    });
-  }
 }
 
 async function binanceKlines(interval: string, limit: number): Promise<{ candles: Candle[]; source: string }> {
