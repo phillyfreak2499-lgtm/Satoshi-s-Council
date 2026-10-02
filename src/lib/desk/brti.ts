@@ -21,8 +21,8 @@
  * locked prints dominate and the uncertainty collapses — arithmetic a book
  * still pricing "the last tick decides" can miss. Pure module.
  */
-import { clamp } from "./math";
-import { normCdf } from "./clock";
+import { clamp } from "./math.ts";
+import { normCdf } from "./clock.ts";
 
 export const SETTLE_WINDOW_S = 60;
 export const QUARTER_MS = 15 * 60_000;
