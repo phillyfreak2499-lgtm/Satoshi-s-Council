@@ -153,10 +153,12 @@ import {
   recordKill,
   sanitizeQuietBook,
   sanitizeQuietCaptures,
+  sanitizeQuietWrites,
   QUIET_CAPTURE_CAP,
   type QuietBook,
   type QuietCapture,
   type QuietGradeInput,
+  type QuietWrite,
 } from "./quiet-call";
 import { runQuietKill, writeQuietCapture, writeQuietGrade, writeQuietMissed } from "./quiet-call.server";
 import { takerEvCents, takerSignal } from "./taker";
@@ -312,6 +314,9 @@ type Eng = {
   quietBook: QuietBook;
   /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, pending cap plus active. */
   quietCaptures: Record<string, QuietCapture>;
+  /** Durable research audit outbox; acknowledgement guards removal. */
+  quietWrites: Record<string, QuietWrite>;
+  quietWriting: Set<string>;
   /** Process-local guard so one due kill evaluation runs once. Never persisted. */
   quietKillRunning: boolean;
 };
@@ -474,6 +479,8 @@ function freshEng(): Eng {
     producerAlertAt: 0,
     quietBook: freshQuietBook(),
     quietCaptures: {},
+    quietWrites: {},
+    quietWriting: new Set(),
     quietKillRunning: false,
   };
 }
@@ -531,6 +538,7 @@ async function loadState(e: Eng) {
           graded_keys?: unknown;
           quiet_book?: unknown;
           quiet_captures?: unknown;
+          quiet_writes?: unknown;
           active_window?: unknown;
           risk_calls?: unknown;
           risk_history_valid?: boolean;
@@ -589,6 +597,7 @@ async function loadState(e: Eng) {
     // QUIET_CALL_V1: malformed or absent → an empty, never-activated book. Never throws.
     e.quietBook = sanitizeQuietBook(raw.quiet_book);
     e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);
+    e.quietWrites = sanitizeQuietWrites(raw.quiet_writes);
     e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
@@ -674,6 +683,7 @@ async function persistState(e: Eng, force = false) {
       // QUIET_CALL_V1 (research only): same durability boundary as the learner, its own key.
       quiet_book: e.quietBook,
       quiet_captures: e.quietCaptures,
+      quiet_writes: e.quietWrites,
       // A restart can straddle close BEFORE the pending-settlement list exists.
       // Persist the observed grading input while the window is still open.
       active_window: checkpointActiveWindow(
@@ -1428,6 +1438,7 @@ async function applyGrade(
 
 /** Read-only tap on the tick: capture each seat's quiet call once per window. */
 function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): boolean {
+  flushQuietWrites(e);
   if (!quietCallEnabled()) return false;
   try {
     // First enabled tick arms the ledger: capture starts with the NEXT window.
@@ -1466,13 +1477,11 @@ function settleQuiet(e: Eng, snap: Snapshot, quiet: QuietGradeInput, countable: 
       const status = !countable ? "SKIPPED_UNCOUNTABLE"
         : r?.status === "GRADED" || r?.status === "SKIPPED_CHALK" || r?.status === "SKIPPED_IDENTITY" ? r.status : null;
       if (status) {
-        void writeQuietGrade(capture, status, r?.rows ?? [], Date.now())
-          .catch((err: unknown) => noteErr(e, "quiet", `grade ${key}: ${err instanceof Error ? err.message : String(err)}`));
+        queueQuietWrite(e,key,{kind:"GRADE",capture,status,rows:r?.rows ?? [],graded_at:Date.now()});
       }
     } else if (quietWindowArmed(e.quietBook, snap.close_time) && !e.quietBook.graded_keys.includes(key)) {
-      noteQuietMissed(e.quietBook);
-      void writeQuietMissed(snap.ticker, snap.close_time)
-        .catch((err: unknown) => noteErr(e, "quiet", `missed ${key}: ${err instanceof Error ? err.message : String(err)}`));
+      noteQuietMissed(e.quietBook,snap.ticker,snap.close_time);
+      queueQuietWrite(e,key,{kind:"MISSED",ticker:snap.ticker,close_time:snap.close_time});
     }
   } catch (err) {
     noteErr(e, "quiet", `settle: ${err instanceof Error ? err.message : String(err)}`);
@@ -1487,17 +1496,36 @@ function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
     if(!capture) {
       if(quietWindowArmed(e.quietBook,close) && !e.quietBook.graded_keys.includes(key)) {
         noteQuietMissed(e.quietBook,ticker,close);
-        void writeQuietMissed(ticker,close)
-          .catch((err:unknown)=>noteErr(e,"quiet",`identity missed ${key}: ${err instanceof Error?err.message:String(err)}`));
+        queueQuietWrite(e,key,{kind:"MISSED",ticker,close_time:close});
       }
       return;
     }
     const {[key]:_done,...rest}=e.quietCaptures;e.quietCaptures=rest;
     if(markQuietIdentity(e.quietBook,ticker,close)) {
-      void writeQuietGrade(capture,"SKIPPED_IDENTITY",[],Date.now())
-        .catch((err:unknown)=>noteErr(e,"quiet",`identity ${key}: ${err instanceof Error?err.message:String(err)}`));
+      queueQuietWrite(e,key,{kind:"GRADE",capture,status:"SKIPPED_IDENTITY",rows:[],graded_at:Date.now()});
     }
   } catch(err) {noteErr(e,"quiet",`identity: ${err instanceof Error?err.message:String(err)}`);}
+}
+
+/** Keep a full audit receipt in desk_state until every table write is acknowledged. */
+function queueQuietWrite(e:Eng,key:string,receipt:QuietWrite):void {
+  e.quietWrites[key]=structuredClone(receipt);
+  flushQuietWrites(e);
+}
+function flushQuietWrites(e:Eng):void {
+  for(const [key,receipt] of Object.entries(e.quietWrites)) {
+    if(e.quietWriting.has(key)) continue;
+    e.quietWriting.add(key);
+    const pending=receipt.kind==="GRADE"
+      ?writeQuietGrade(receipt.capture,receipt.status,receipt.rows,receipt.graded_at)
+      :writeQuietMissed(receipt.ticker,receipt.close_time);
+    void pending.then(()=>{
+      // The normal ordered state save retires the acknowledged receipt. A crash
+      // before that save replays an idempotent table upsert, never book credit.
+      if(e.quietWrites[key]===receipt) delete e.quietWrites[key];
+    }).catch((err:unknown)=>noteErr(e,"quiet",`outbox ${key}: ${err instanceof Error?err.message:String(err)}`))
+      .finally(()=>e.quietWriting.delete(key));
+  }
 }
 
 /** Runs right after runHuddle at its call sites. Diagnose only; may start the one-shot kill check. */
@@ -1525,7 +1553,7 @@ export function quietLedgerSnapshot(): { enabled: boolean; book: QuietBook; pend
 }
 
 /** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
-export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded };
+export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites };
 
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);

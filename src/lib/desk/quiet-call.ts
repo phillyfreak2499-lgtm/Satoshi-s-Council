@@ -1017,3 +1017,26 @@ export function sanitizeQuietCaptures(raw: unknown): Record<string, QuietCapture
 export function quietCaptureKey(ticker: string, closeTime: number): string {
   return keyOf(ticker, closeTime);
 }
+
+/** Durable audit receipts: retry persistence without teaching a window twice. */
+export type QuietWrite =
+  | { kind: "GRADE"; capture: QuietCapture; status: "GRADED" | "SKIPPED_CHALK" | "SKIPPED_UNCOUNTABLE" | "SKIPPED_IDENTITY"; rows: QuietGradeRow[]; graded_at: number }
+  | { kind: "MISSED"; ticker: string; close_time: number };
+export function sanitizeQuietWrites(raw: unknown): Record<string, QuietWrite> {
+  if (!isObj(raw)) return {};
+  const out: Record<string, QuietWrite> = {};
+  for (const [key, x] of Object.entries(raw)) {
+    if (!isObj(x)) continue;
+    if (x.kind === "MISSED" && typeof x.ticker === "string" && Number.isFinite(x.close_time) && key === keyOf(x.ticker, Number(x.close_time))) {
+      out[key] = { kind: "MISSED", ticker: x.ticker, close_time: Number(x.close_time) };
+    } else if (x.kind === "GRADE" && validCapture(x.capture) && key === keyOf(x.capture.ticker, x.capture.close_time) &&
+      ["GRADED", "SKIPPED_CHALK", "SKIPPED_UNCOUNTABLE", "SKIPPED_IDENTITY"].includes(String(x.status)) && Number.isFinite(x.graded_at) &&
+      Array.isArray(x.rows) && x.rows.every(r => isObj(r) && typeof r.seat === "string" && (r.finish === "UP" || r.finish === "DOWN") &&
+        (r.hit === 0 || r.hit === 1) && Number.isFinite(r.cents) && Number.isFinite(r.coin_cents)) &&
+      (x.status !== "GRADED" || (x.rows.length === x.capture.calls.length && new Set(x.rows.map(r => r.seat)).size === x.rows.length &&
+        x.capture.calls.every(c => (x.rows as QuietGradeRow[]).some(r => r.seat === c.seat))))) {
+      out[key] = JSON.parse(JSON.stringify(x)) as QuietWrite;
+    }
+  }
+  return out;
+}
