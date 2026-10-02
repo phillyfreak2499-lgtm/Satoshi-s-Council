@@ -49,18 +49,39 @@ async function initialize(st: State) {
   st.start = Number(r.start_ms); st.end = Number(r.end_ms);
 }
 
+async function excludeWindow(st: State, reason: string) {
+  st.skips++;
+  if (st.active) st.active.capture.invalid = reason;
+  if (st.start == null || st.end == null) return;
+  // The UTC close identifies even a fully skipped window with no captured ticker.
+  const closes = [...new Set([nextWindow(Date.now()), ...(st.active ? [st.active.close] : [])])]
+    .filter(close => close-900_000 >= st.start! && close-900_000 < st.end!);
+  const sql = await getSql();
+  for (const close of closes) {
+    await sql`with excluded as (
+      insert into desk_execution_lab_exclusions (experiment,close_ms,reason)
+      values (${EXECUTION_LAB_ID},${close},${reason})
+      on conflict (experiment,close_ms) do update set reason=desk_execution_lab_exclusions.reason
+      returning experiment,close_ms,reason
+    ) update desk_execution_lab_windows w set results=null,exclusion_reason=x.reason from excluded x
+      where w.experiment=x.experiment and w.close_ms=x.close_ms`;
+  }
+  // A concurrent grade is retried as invalid; capture upserts never clear exclusions.
+}
+
 /** Only our own captures, joined on BOTH exact window keys to the existing
  * research-qualified official winner. No spot-derived grades or history edits. */
 async function gradePending() {
   const sql = await getSql();
-  const rows = await sql<{ ticker: string; close_ms: string; capture: Capture; winner: Side }>`
-    select e.ticker,e.close_ms,e.capture,l.winner from desk_execution_lab_windows e
+  const rows = await sql<{ ticker: string; close_ms: string; capture: Capture; winner: Side; exclusion_reason: string | null; capture_exclusion: string | null }>`
+    select e.ticker,e.close_ms,e.capture,x.reason as exclusion_reason,e.exclusion_reason as capture_exclusion,l.winner from desk_execution_lab_windows e
+    left join desk_execution_lab_exclusions x on x.experiment=e.experiment and x.close_ms=e.close_ms
     join desk_ledger_research l on l.ticker=e.ticker and l.close_time=to_timestamp(e.close_ms/1000.0)
     where e.experiment=${EXECUTION_LAB_ID} and e.results is null and l.winner in ('UP','DOWN') and l.source='kalshi-result'
     order by e.close_ms limit 24`;
   for (const r of rows) {
     const close = Number(r.close_ms), c = r.capture;
-    const wholeWindowInvalid=c.invalid || (!c.path.length || c.path[0]!.t>close-900_000+8_000 ||
+    const wholeWindowInvalid=r.exclusion_reason || r.capture_exclusion || c.invalid || (!c.path.length || c.path[0]!.t>close-900_000+8_000 ||
       c.path[c.path.length-1]!.t<close-10_000 ? "incomplete window capture" : null);
     const results = ["HOLD", ...EXECUTION_ARMS.map(a=>a.id)].map(arm => {
       const a = arm as ExecutionResult["arm"];
@@ -80,7 +101,10 @@ async function gradePending() {
       late.delta_cents=Math.round((late.net_cents-baseline)*10)/10;
     }
     await sql`update desk_execution_lab_windows set results=${JSON.stringify(results)}::jsonb
-      where experiment=${EXECUTION_LAB_ID} and ticker=${r.ticker} and close_ms=${close} and results is null`;
+      where experiment=${EXECUTION_LAB_ID} and ticker=${r.ticker} and close_ms=${close} and results is null
+        and exclusion_reason is not distinct from ${r.capture_exclusion}
+        and (select reason from desk_execution_lab_exclusions
+          where experiment=${EXECUTION_LAB_ID} and close_ms=${close}) is not distinct from ${r.exclusion_reason}`;
   }
 }
 
@@ -104,11 +128,15 @@ async function ownLateCalls(): Promise<CallLogRow[]> {
 export async function executionLabTick(): Promise<void> {
   if (!executionLabEnabled()) return;
   const st = state();
-  if (st.busy) { st.skips++; if(st.active) st.active.capture.invalid = "busy observation skip"; return; }
+  if (st.busy) {
+    try { await excludeWindow(st, "busy observation skip"); }
+    catch(error) { st.error=error instanceof Error?error.message:String(error); }
+    return;
+  }
   st.busy = true;
   try {
     if (!resourcesPermit()) {
-      st.skips++; if(st.active) st.active.capture.invalid = "resource governor skip"; return;
+      await excludeWindow(st, "resource governor skip"); return;
     }
     if (st.start == null) await initialize(st);
     if (Date.now()-st.lastGrade >= 30_000) { await gradePending(); st.lastGrade=Date.now(); }
@@ -129,7 +157,7 @@ export async function executionLabTick(): Promise<void> {
     if(w.last && snap.as_of-w.last>10_000) w.capture.invalid="observation gap exceeds 10 seconds";
     w.last=snap.as_of;
     if(w.capture.path.length===0 && snap.as_of-open>8_000) w.capture.invalid="opening capture missed";
-    const primary=frame.call_log.find(c=>c.ticker===snap.ticker && c.close_time===snap.close_time && c.t>=open);
+    const primary=frame.call_log.find(c=>!c.source && c.ticker===snap.ticker && c.close_time===snap.close_time && c.t>=open);
     if(primary && !w.capture.entry) {
       w.capture.entry={side:primary.lean,cents:primary.cents,t:primary.t};
       if(snap.as_of-primary.t>8_000) w.capture.invalid="primary entry was not witnessed promptly";

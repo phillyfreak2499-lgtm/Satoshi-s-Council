@@ -28,6 +28,7 @@ test('collector persists once per frame, fails closed on resource skips and skip
   const m=await setup(),db=new PGlite();
   try {
     await db.exec(readFileSync('migrations/0073_desk_execution_lab.sql','utf8'));
+    await db.exec(readFileSync('migrations/0074_desk_execution_lab_exclusions.sql','utf8'));
     await db.exec('create table desk_ledger_research(ticker text,close_time timestamptz,winner text,source text)');
     const sql=async(strings,...values)=>{let q=strings[0];for(let i=0;i<values.length;i++)q+=`$${i+1}`+strings[i+1];return(await db.query(q,values)).rows;};
     let now=close-901_000,allow=true,reads=0;
@@ -47,6 +48,107 @@ test('collector persists once per frame, fails closed on resource skips and skip
     assert.equal((await db.query('select capture from desk_execution_lab_windows')).rows[0].capture.path.length,2);
   } finally {await db.close();}
 });
+async function collectorHarness() {
+  const m=await setup(),db=new PGlite();
+  await db.exec(readFileSync('migrations/0073_desk_execution_lab.sql','utf8'));
+  await db.exec(readFileSync('migrations/0074_desk_execution_lab_exclusions.sql','utf8'));
+  await db.exec('create table desk_ledger_research(ticker text,close_time timestamptz,winner text,source text)');
+  let beforeGrade=null;
+  const sql=async(strings,...values)=>{let q=strings[0];for(let i=0;i<values.length;i++)q+=`$${i+1}`+strings[i+1];if(q.startsWith('update desk_execution_lab_windows set results=') && beforeGrade){const run=beforeGrade;beforeGrade=null;await run();}return(await db.query(q,values)).rows;};
+  const h={db,now:close-901_000,allow:true,globals:{},frame:{snap:{as_of:close-900_000,close_time:close,ticker:'test',demo:false,yes_bid:81,yes_ask:82},chair:{},selective:{ready:true,policy:'ENTRY_OWNER_ROLLBACK_V1'},call_log:[]}};
+  class Clock extends Date { static now(){return h.now;} }
+  const code=ts.transpileModule(readFileSync('src/lib/desk/execution-lab.server.ts','utf8')+'\nexport const harness={gradePending};',{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  h.restart=()=>{
+    h.globals={};const exp={};
+    vm.runInNewContext(code,{exports:exp,require:key=>key==='@/lib/db'?{getSql:async()=>sql,dbPoolStats:()=>null}:key==='./execution-lab.ts'?m['execution-lab']:key==='./execution-lab-entry'?m['execution-lab-entry']:key==='./server-engine'?{getServerFrame:async()=>h.frame}:key==='./resource-governor-witness.ts'?{readResourceGovernorWitness:()=>({measured_at_ms:h.now,sample:{},thresholds:{}})}:key==='./resource-governor.ts'?{governorDecision:()=>({run:h.allow})}:key==='./window-identity.ts'?{onGrid:()=>true,tickerAgrees:()=>true}:assert.fail(key),process:{env:{EXECUTION_LAB_V1_ENABLED:'true',RENDER_GIT_COMMIT:'build'},memoryUsage:()=>({rss:0})},Date:Clock,JSON,Object,Number,Math,Array,Error,globalThis:h.globals});
+    h.exp=exp;
+  };
+  h.beforeGrade=run=>{beforeGrade=run;};
+  h.restart();await h.exp.executionLabTick();h.now=close-900_000;
+  return h;
+}
+
+test('primary lookup ignores a preceding recovery pilot and accepts only absent, null or empty source',async()=>{
+  const h=await collectorHarness();
+  try {
+    for(const source of [undefined,null,'']) {
+      h.frame.call_log=[{ticker:'test',close_time:close,t:h.now,lean:'DOWN',cents:85,source:'RECOVERY_FAV85_V1'},
+        {ticker:'test',close_time:close,t:h.now,lean:'UP',cents:82,source}];
+      await h.exp.executionLabTick();
+      const {capture}=(await h.db.query('select capture from desk_execution_lab_windows')).rows[0];
+      assert.deepEqual(capture.entry,{side:'UP',cents:82,t:h.now});
+      h.globals.__executionLabV1.active.capture.entry=null;
+      h.now+=4_000;h.frame.snap.as_of=h.now;
+    }
+    h.globals.__executionLabV1.active.capture.entry=null;
+    h.frame.call_log=h.frame.call_log.slice(0,1);
+    await h.exp.executionLabTick();
+    assert.equal((await h.db.query('select capture from desk_execution_lab_windows')).rows[0].capture.entry,null);
+  } finally {await h.db.close();}
+});
+
+for(const reason of ['busy observation skip','resource governor skip']) {
+  for(const transition of ['restart','rollover']) {
+    test(`${reason} remains excluded after ${transition} even with an otherwise complete capture`,async()=>{
+      const h=await collectorHarness();
+      try {
+        await h.exp.executionLabTick();
+        const capture={entry,late:null,path:Array.from({length:225},(_,i)=>point(close-900_000+i*4_000,81)),invalid:null};
+        await h.db.query('update desk_execution_lab_windows set capture=$1',[JSON.stringify(capture)]);
+        if(reason==='busy observation skip')h.globals.__executionLabV1.busy=true;
+        else h.allow=false;
+        await h.exp.executionLabTick();
+        const skipped=(await h.db.query('select w.capture,x.reason as exclusion_reason from desk_execution_lab_windows w join desk_execution_lab_exclusions x using(experiment,close_ms)')).rows[0];
+        assert.equal(skipped.exclusion_reason,reason);
+        assert.equal(skipped.capture.invalid,null,'exclusion is independent of the last persisted capture');
+        h.allow=true;h.globals.__executionLabV1.busy=false;
+        // A later capture upsert must not erase the durable exclusion.
+        h.now+=4_000;h.frame.snap.as_of=h.now;
+        await h.exp.executionLabTick();
+        await h.db.query('update desk_execution_lab_windows set capture=$1',[JSON.stringify(capture)]);
+        h.now=close;h.frame.snap={...h.frame.snap,as_of:close,close_time:close+900_000,ticker:'next'};
+        if(transition==='restart')h.restart();
+        await h.exp.executionLabTick();
+        assert.notEqual(h.globals.__executionLabV1.active?.ticker,'test');
+        await h.db.query('insert into desk_ledger_research values($1,$2,$3,$4)',['test',new Date(close).toISOString(),'UP','kalshi-result']);
+        await h.exp.harness.gradePending();
+        const {results}=(await h.db.query("select results from desk_execution_lab_windows where ticker='test'")).rows[0];
+        assert.equal(results.length,8);
+        for(const r of results) {
+          assert.equal(r.status,'DATA_INVALID');assert.equal(r.reason,reason);
+          assert.equal(r.net_cents,null);assert.equal(r.hold_cents,null);assert.equal(r.delta_cents,null);
+        }
+      } finally {await h.db.close();}
+    });
+  }
+}
+
+test('a fully skipped window has a durable exclusion even before its first capture',async()=>{
+  const h=await collectorHarness();
+  try {
+    h.allow=false;await h.exp.executionLabTick();
+    assert.equal((await h.db.query('select count(*)::int as n from desk_execution_lab_windows')).rows[0].n,0);
+    h.restart();
+    const row=(await h.db.query('select close_ms,reason from desk_execution_lab_exclusions')).rows[0];
+    assert.equal(Number(row.close_ms),close);assert.equal(row.reason,'resource governor skip');
+  } finally {await h.db.close();}
+});
+
+test('a skip racing with grading cannot save a valid result',async()=>{
+  const h=await collectorHarness();
+  try {
+    await h.exp.executionLabTick();
+    const capture={entry,late:null,path:Array.from({length:225},(_,i)=>point(close-900_000+i*4_000,81)),invalid:null};
+    await h.db.query('update desk_execution_lab_windows set capture=$1',[JSON.stringify(capture)]);
+    await h.db.query('insert into desk_ledger_research values($1,$2,$3,$4)',['test',new Date(close).toISOString(),'UP','kalshi-result']);
+    h.beforeGrade(async()=>{h.globals.__executionLabV1.busy=true;await h.exp.executionLabTick();h.globals.__executionLabV1.busy=false;});
+    await h.exp.harness.gradePending();
+    assert.equal((await h.db.query('select results from desk_execution_lab_windows')).rows[0].results,null);
+    await h.exp.harness.gradePending();
+    assert.ok((await h.db.query('select results from desk_execution_lab_windows')).rows[0].results.every(r=>r.status==='DATA_INVALID'));
+  } finally {await h.db.close();}
+});
+
 test('net +10 is distinct from gross +10; an unreachable target holds',async()=>{
   const p=[point(entry.t,92),point(entry.t+4_000,95)];
   const r=await sim('NET10',p);assert.equal(r.exit_cents,95);assert.equal(r.net_cents,10);
@@ -140,7 +242,9 @@ test('real migration, durable boundary, official-only grading, paired late contr
   const m=await setup();const db=new PGlite();
   try {
     await db.exec(readFileSync('migrations/0073_desk_execution_lab.sql','utf8'));
+    await db.exec(readFileSync('migrations/0074_desk_execution_lab_exclusions.sql','utf8'));
     await db.exec(readFileSync('migrations/0073_desk_execution_lab.sql','utf8'));
+    await db.exec(readFileSync('migrations/0074_desk_execution_lab_exclusions.sql','utf8'));
     await db.exec('create table desk_ledger_research(ticker text,close_time timestamptz,winner text,source text)');
     const sql=async(strings,...values)=>{let q=strings[0];for(let i=0;i<values.length;i++)q+=`$${i+1}`+strings[i+1];return (await db.query(q,values)).rows;};
     const exp={};const code=ts.transpileModule(readFileSync('src/lib/desk/execution-lab.server.ts','utf8')+'\nexport const harness={initialize,gradePending,ownLateCalls};', {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
