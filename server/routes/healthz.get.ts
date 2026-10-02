@@ -4,6 +4,10 @@
  *  into it. Every kick is fire-and-forget — health stays instant and cannot be
  *  failed by feeds, research, or the database. */
 export default function healthz() {
+  // Owner-requested execution experiments. Separate paper-only collector, default OFF.
+  void import("../../src/lib/desk/execution-lab.server")
+    .then((m) => m.ensureExecutionLab())
+    .catch(() => {});
   void import("../../src/lib/desk/server-engine")
     .then((m) => m.ensureServerEngine())
     .catch(() => {});
