@@ -155,6 +155,7 @@ import {
   sanitizeQuietCaptures,
   sanitizeQuietWrites,
   QUIET_CAPTURE_CAP,
+  QUIET_OUTBOX_CAP,
   type QuietBook,
   type QuietCapture,
   type QuietGradeInput,
@@ -317,6 +318,7 @@ type Eng = {
   /** Durable research audit outbox; acknowledgement guards removal. */
   quietWrites: Record<string, QuietWrite>;
   quietWriting: Set<string>;
+  quietRetryAfter: number;
   /** Process-local guard so one due kill evaluation runs once. Never persisted. */
   quietKillRunning: boolean;
 };
@@ -481,6 +483,7 @@ function freshEng(): Eng {
     quietCaptures: {},
     quietWrites: {},
     quietWriting: new Set(),
+    quietRetryAfter: 0,
     quietKillRunning: false,
   };
 }
@@ -598,6 +601,9 @@ async function loadState(e: Eng) {
     e.quietBook = sanitizeQuietBook(raw.quiet_book);
     e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);
     e.quietWrites = sanitizeQuietWrites(raw.quiet_writes);
+    if(raw.quiet_writes && typeof raw.quiet_writes === "object") {
+      e.quietBook.audit_loss += Math.max(0,Object.keys(raw.quiet_writes).length-Object.keys(e.quietWrites).length);
+    }
     e.recoveredWindow = restoreActiveWindow(raw.active_window, e.gradedKeys);
     if (typeof raw.ledger_recon_baseline === "number") e.reconBaseline = raw.ledger_recon_baseline;
     e.readinessAlerted = raw.readiness_alerted === true;
@@ -1440,6 +1446,7 @@ async function applyGrade(
 function noteQuietCapture(e: Eng, snap: Snapshot, votes: Vote[]): boolean {
   flushQuietWrites(e);
   if (!quietCallEnabled()) return false;
+  if(e.quietBook.audit_loss>0 || Object.keys(e.quietWrites).length>=QUIET_OUTBOX_CAP-QUIET_CAPTURE_CAP) return false;
   try {
     // First enabled tick arms the ledger: capture starts with the NEXT window.
     armQuiet(e.quietBook, snap, Date.now());
@@ -1509,10 +1516,19 @@ function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
 
 /** Keep a full audit receipt in desk_state until every table write is acknowledged. */
 function queueQuietWrite(e:Eng,key:string,receipt:QuietWrite):void {
+  const queued=Object.keys(e.quietWrites).length;
+  // Reserve a receipt slot for every already captured window. Never evict a grade.
+  if(!e.quietWrites[key] && (queued>=QUIET_OUTBOX_CAP ||
+    (receipt.kind==="MISSED" && queued+Object.keys(e.quietCaptures).length>=QUIET_OUTBOX_CAP))) {
+    e.quietBook.audit_loss+=1;
+    noteErr(e,"quiet",`audit capacity loss ${key}; study INVALID, new captures paused`);
+    return;
+  }
   e.quietWrites[key]=structuredClone(receipt);
   flushQuietWrites(e);
 }
 function flushQuietWrites(e:Eng):void {
+  if(e.quietWriting.size>0 || Date.now()<e.quietRetryAfter) return;
   for(const [key,receipt] of Object.entries(e.quietWrites)) {
     if(e.quietWriting.has(key)) continue;
     e.quietWriting.add(key);
@@ -1523,8 +1539,11 @@ function flushQuietWrites(e:Eng):void {
       // The normal ordered state save retires the acknowledged receipt. A crash
       // before that save replays an idempotent table upsert, never book credit.
       if(e.quietWrites[key]===receipt) delete e.quietWrites[key];
-    }).catch((err:unknown)=>noteErr(e,"quiet",`outbox ${key}: ${err instanceof Error?err.message:String(err)}`))
-      .finally(()=>e.quietWriting.delete(key));
+    }).catch((err:unknown)=>{
+      e.quietRetryAfter=Date.now()+60_000;
+      noteErr(e,"quiet",`outbox ${key}: ${err instanceof Error?err.message:String(err)}`);
+    }).finally(()=>e.quietWriting.delete(key));
+    return; // One receipt in flight; a failed DB gets at most one retry per minute.
   }
 }
 
@@ -1559,7 +1578,7 @@ async function quietReportAfterReady(e:Eng):ReturnType<typeof quietReport> {
 }
 
 /** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
-export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites, quietReportAfterReady };
+export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites, quietReportAfterReady, queueQuietWrite };
 
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);

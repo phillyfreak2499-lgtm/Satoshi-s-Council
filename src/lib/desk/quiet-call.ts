@@ -147,6 +147,7 @@ export type QuietBook = {
   armed_after_close: number;
   graded_windows: number;
   missed_windows: number;
+  audit_loss: number;
   skipped: { chalk: number; uncountable: number; identity: number };
   graded_keys: string[];
   seats: Record<string, QuietRecord>;
@@ -387,6 +388,7 @@ export function freshQuietBook(activatedAt = 0): QuietBook {
     armed_after_close: 0,
     graded_windows: 0,
     missed_windows: 0,
+    audit_loss: 0,
     skipped: { chalk: 0, uncountable: 0, identity: 0 },
     graded_keys: [],
     seats,
@@ -648,10 +650,11 @@ export type QuietBoardRow = {
 
 export type QuietBoard = {
   v: typeof QUIET_CALL_VERSION;
-  trust: "WARMING" | "TRUSTWORTHY";
+  trust: "WARMING" | "TRUSTWORTHY" | "INVALID";
   activated_at: number;
   graded_windows: number;
   missed_windows: number;
+  audit_loss: number;
   skipped: QuietBook["skipped"];
   luck_band: Record<"L20" | "L50" | "ALL", { n: number; lo: number; hi: number }>;
   seats: QuietBoardRow[];
@@ -693,10 +696,11 @@ export function quietBoard(book: QuietBook): QuietBoard {
   const g = book.graded_windows;
   return {
     v: QUIET_CALL_VERSION,
-    trust: g >= QUIET_WARMUP ? "TRUSTWORTHY" : "WARMING",
+    trust: book.audit_loss > 0 ? "INVALID" : g >= QUIET_WARMUP ? "TRUSTWORTHY" : "WARMING",
     activated_at: book.activated_at,
     graded_windows: g,
     missed_windows: book.missed_windows,
+    audit_loss: book.audit_loss,
     skipped: { ...book.skipped },
     luck_band: { L20: band(Math.min(20, g)), L50: band(Math.min(QUIET_ROLL, g)), ALL: band(g) },
     seats: rows,
@@ -852,6 +856,7 @@ export function evaluateKill(rows: readonly QuietRow[], book: QuietBook, now = 0
   const g = graded(rows);
   // K0 — integrity (extends, never retires).
   const reasons: string[] = [];
+  if (book.audit_loss > 0) reasons.push("AUDIT_PERSISTENCE_LOSS");
   const capturedWindows = book.graded_windows + book.skipped.chalk + book.skipped.uncountable + book.skipped.identity;
   const eligibleWindows = capturedWindows + book.missed_windows;
   const coverage = eligibleWindows ? capturedWindows / eligibleWindows : 0;
@@ -983,6 +988,7 @@ export function sanitizeQuietBook(raw: unknown): QuietBook {
     book.armed_after_close = num(raw.armed_after_close);
     book.graded_windows = num(raw.graded_windows);
     book.missed_windows = num(raw.missed_windows);
+    book.audit_loss = num(raw.audit_loss);
     if (isObj(raw.skipped)) book.skipped = { chalk: num(raw.skipped.chalk), uncountable: num(raw.skipped.uncountable), identity: num(raw.skipped.identity) };
     book.graded_keys = Array.isArray(raw.graded_keys) ? raw.graded_keys.filter((k): k is string => typeof k === "string").slice(-QUIET_GRADED_KEY_CAP) : [];
     const seats = isObj(raw.seats) ? raw.seats : {};
@@ -1018,6 +1024,8 @@ export function quietCaptureKey(ticker: string, closeTime: number): string {
   return keyOf(ticker, closeTime);
 }
 
+export const QUIET_OUTBOX_CAP = 64;
+
 /** Durable audit receipts: retry persistence without teaching a window twice. */
 export type QuietWrite =
   | { kind: "GRADE"; capture: QuietCapture; status: "GRADED" | "SKIPPED_CHALK" | "SKIPPED_UNCOUNTABLE" | "SKIPPED_IDENTITY"; rows: QuietGradeRow[]; graded_at: number }
@@ -1038,5 +1046,5 @@ export function sanitizeQuietWrites(raw: unknown): Record<string, QuietWrite> {
       out[key] = JSON.parse(JSON.stringify(x)) as QuietWrite;
     }
   }
-  return out;
+  return Object.fromEntries(Object.entries(out).slice(0,QUIET_OUTBOX_CAP));
 }
