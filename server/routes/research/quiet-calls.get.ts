@@ -15,10 +15,8 @@ export default async function quietCallsResearch(event: { req: { headers: Header
     const { adminKeyOk } = await import("../../../src/lib/desk/admin.server");
     const key = event.req.headers.get("x-desk-admin") ?? "";
     if (!adminKeyOk(key)) return new Response("not found", { status: 404 });
-    const { quietLedgerSnapshot } = await import("../../../src/lib/desk/server-engine");
-    const { quietReport } = await import("../../../src/lib/desk/quiet-call.server");
-    const snap = await quietLedgerSnapshot();
-    return json(await quietReport(snap.book, snap.enabled, snap.pending_captures));
+    const { quietLedgerReport } = await import("../../../src/lib/desk/server-engine");
+    return json(await quietLedgerReport());
   } catch (err) {
     return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
   }

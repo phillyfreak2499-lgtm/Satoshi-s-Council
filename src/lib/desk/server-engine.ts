@@ -160,7 +160,7 @@ import {
   type QuietGradeInput,
   type QuietWrite,
 } from "./quiet-call";
-import { runQuietKill, writeQuietCapture, writeQuietGrade, writeQuietMissed } from "./quiet-call.server";
+import { quietReport, runQuietKill, writeQuietCapture, writeQuietGrade, writeQuietMissed } from "./quiet-call.server";
 import { takerEvCents, takerSignal } from "./taker";
 import {
   addKeyed,
@@ -1547,17 +1547,19 @@ function runQuietReview(e: Eng): void {
 }
 
 /** Admin research route only (header-authenticated). A deep copy: callers cannot mutate the engine. */
-export async function quietLedgerSnapshot(): Promise<{ enabled: boolean; book: QuietBook; pending_captures: number }> {
+export async function quietLedgerReport(): ReturnType<typeof quietReport> {
   ensureServerEngine();
-  return quietSnapshotAfterReady(eng());
+  return quietReportAfterReady(eng());
 }
-async function quietSnapshotAfterReady(e:Eng):Promise<{ enabled:boolean;book:QuietBook;pending_captures:number }> {
+async function quietReportAfterReady(e:Eng):ReturnType<typeof quietReport> {
   if(e.ready) await e.ready;
-  return { enabled: quietCallEnabled(), book: structuredClone(e.quietBook), pending_captures: Object.keys(e.quietCaptures).length };
+  // Freeze the book and enqueue its table read in this same continuation:
+  // no async snapshot handoff can let another grade overtake the cohort.
+  return quietReport(e.quietBook,quietCallEnabled(),Object.keys(e.quietCaptures).length);
 }
 
 /** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
-export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites, quietSnapshotAfterReady };
+export const __quietIntegration = { freshEng, loadState, persistState, applyGrade, noteQuietCapture, runQuietReview, settleIfNeeded, flushQuietWrites, quietReportAfterReady };
 
 function markPending(e: Eng, snap: Snapshot) {
   const hhmm = new Date(snap.close_time).toISOString().slice(11, 16);
