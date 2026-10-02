@@ -142,6 +142,7 @@ import {
   armQuiet,
   buildCapture,
   freshQuietBook,
+  markQuietIdentity,
   markQuietUncountable,
   noteQuietMissed,
   quietCallEnabled,
@@ -309,7 +310,7 @@ type Eng = {
   producerAlertAt: number;
   /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */
   quietBook: QuietBook;
-  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, at most 8. */
+  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, pending cap plus active. */
   quietCaptures: Record<string, QuietCapture>;
   /** Process-local guard so one due kill evaluation runs once. Never persisted. */
   quietKillRunning: boolean;
@@ -1475,6 +1476,20 @@ function settleQuiet(e: Eng, snap: Snapshot, quiet: QuietGradeInput, countable: 
   }
 }
 
+/** Retire an exact identity fault without grading or teaching the learner. */
+function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
+  if(!quietCallEnabled()) return;
+  try {
+    const key=quietCaptureKey(ticker,close),capture=e.quietCaptures[key];
+    if(!capture) return;
+    const {[key]:_done,...rest}=e.quietCaptures;e.quietCaptures=rest;
+    if(markQuietIdentity(e.quietBook,ticker,close)) {
+      void writeQuietGrade(capture,"SKIPPED_IDENTITY",[],Date.now())
+        .catch((err:unknown)=>noteErr(e,"quiet",`identity ${key}: ${err instanceof Error?err.message:String(err)}`));
+    }
+  } catch(err) {noteErr(e,"quiet",`identity: ${err instanceof Error?err.message:String(err)}`);}
+}
+
 /** Runs right after runHuddle at its call sites. Diagnose only; may start the one-shot kill check. */
 function runQuietReview(e: Eng): void {
   if (!quietCallEnabled() || !(e.quietBook.activated_at > 0)) return;
@@ -1528,6 +1543,7 @@ async function resolvePending(e: Eng, snap: Snapshot): Promise<void> {
       (f) => f.ticker === p.ticker && f.close_time === p.close_time && isInconsistent(f.fault),
     );
     if (identityFault) {
+      retireQuietIdentity(e,p.ticker,p.close_time);
       retired += 1;
       continue;
     }
@@ -1639,6 +1655,7 @@ async function settleIfNeeded(
     (f) => f.ticker === w.ticker && f.close_time === w.close_time && isInconsistent(f.fault),
   );
   if (identityFault) {
+    retireQuietIdentity(e,w.ticker,w.close_time);
     e.pending = removeKeyed(e.pending, w.ticker, w.close_time);
     await persistState(e, true);
     return;

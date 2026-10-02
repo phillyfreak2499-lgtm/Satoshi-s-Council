@@ -28,6 +28,7 @@
  * rethink preconditions); the book passed in is the only thing mutated.
  */
 import { CLOSED_DIRECTIONAL_CARDS } from "./council-authority";
+import { PENDING_CAP } from "./reliability";
 import { RETIRED_SEATS } from "./crew";
 import { centsOf, normCdf, readClock } from "./clock";
 import { readCarry, readCascade, readChain, readVolt } from "./derivs";
@@ -60,7 +61,7 @@ export const QUIET_WARMUP = 200;
 export const QUIET_KILL_AT = 500;
 export const QUIET_ROLL = 50;
 export const QUIET_FLAG_CAP = 3;
-export const QUIET_CAPTURE_CAP = 8;
+export const QUIET_CAPTURE_CAP = PENDING_CAP + 1; // Pending settlements plus the active window.
 export const QUIET_GRADED_KEY_CAP = 256;
 export const QUIET_REVIEW_LOG_CAP = 40;
 const B_STREAK = 3;
@@ -461,6 +462,15 @@ export function markQuietUncountable(book: QuietBook): void {
 
 export function noteQuietMissed(book: QuietBook): void {
   book.missed_windows += 1;
+}
+
+/** An engine identity fault is retired once, without teaching or outcome credit. */
+export function markQuietIdentity(book:QuietBook,ticker:string,close:number):boolean {
+  const key=keyOf(ticker,close);
+  if(book.graded_keys.includes(key)) return false;
+  book.graded_keys=[...book.graded_keys,key].slice(-QUIET_GRADED_KEY_CAP);
+  book.skipped.identity+=1;
+  return true;
 }
 
 // ---------------------------------------------------------------- statistics
@@ -990,7 +1000,7 @@ function validCapture(c: unknown): c is QuietCapture {
       Number.isFinite(x.p) && typeof x.source === "string");
 }
 
-/** Pending captures keyed by `${ticker}:${close_time}`; at most 8, newest kept. */
+/** Pending captures plus one active window, bounded with the settlement queue. */
 export function sanitizeQuietCaptures(raw: unknown): Record<string, QuietCapture> {
   if (!isObj(raw)) return {};
   const ok = Object.entries(raw).filter((e): e is [string, QuietCapture] => validCapture(e[1]) && e[0] === keyOf(e[1].ticker, e[1].close_time));

@@ -201,7 +201,7 @@ function stripQuiet(src) {
   const cut = (s, from, to) => { const i = s.indexOf(from), j = s.indexOf(to); if (i < 0 || j < i) throw new Error(`quiet block missing: ${from.slice(0, 60)}`); return s.slice(0, i) + s.slice(j); };
   let s = src;
   s = cut(s, "import {\n  armQuiet,\n", "import { takerEvCents, takerSignal }");
-  s = once(s, "  /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */\n  quietBook: QuietBook;\n  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, at most 8. */\n  quietCaptures: Record<string, QuietCapture>;\n  /** Process-local guard so one due kill evaluation runs once. Never persisted. */\n  quietKillRunning: boolean;\n");
+  s = once(s, "  /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */\n  quietBook: QuietBook;\n  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, pending cap plus active. */\n  quietCaptures: Record<string, QuietCapture>;\n  /** Process-local guard so one due kill evaluation runs once. Never persisted. */\n  quietKillRunning: boolean;\n");
   s = once(s, "    quietBook: freshQuietBook(),\n    quietCaptures: {},\n    quietKillRunning: false,\n");
   s = once(s, "          quiet_book?: unknown;\n          quiet_captures?: unknown;\n");
   s = once(s, "    // QUIET_CALL_V1: malformed or absent → an empty, never-activated book. Never throws.\n    e.quietBook = sanitizeQuietBook(raw.quiet_book);\n    e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);\n");
@@ -212,6 +212,8 @@ function stripQuiet(src) {
   s = once(s, "  if (quiet) settleQuiet(e, snap, quiet, isCountable(snap.close_time));\n");
   s = cut(s, "// ---------------------------------------------------------------- QUIET_CALL_V1\n", "function markPending(e: Eng, snap: Snapshot) {");
   s = once(s, "    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.\n    noteQuietCapture(e, snap, votes);\n");
+  s = once(s, "      retireQuietIdentity(e,p.ticker,p.close_time);\n");
+  s = once(s, "    retireQuietIdentity(e,w.ticker,w.close_time);\n");
   const hooks = s.split(" runQuietReview(e); }").length - 1;
   if (hooks !== 3) throw new Error(`expected 3 huddle hooks, found ${hooks}`);
   s = s.split(" runQuietReview(e); }").join(" }");

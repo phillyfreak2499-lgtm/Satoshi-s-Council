@@ -661,7 +661,7 @@ test("#25 kill is one-shot: due once at ≥ 500; a final verdict is never re-eva
 
 // ---------------------------------------------------------------- persistence helpers
 
-test("#26 sanitize: garbage → fresh book, no throw; valid round-trips; captures trimmed oldest-first to 8", async () => {
+test("#26 sanitize: garbage → fresh book, no throw; valid round-trips; captures trimmed oldest-first with settlement capacity", async () => {
   const m = await load();
   for (const junk of [null, undefined, 42, "x", [], { v: "OTHER" }, { v: "QUIET_CALL_V1", graded_windows: -4 }, { v: "QUIET_CALL_V1", seats: 7 }]) {
     const b = m.q.sanitizeQuietBook(junk);
@@ -672,11 +672,11 @@ test("#26 sanitize: garbage → fresh book, no throw; valid round-trips; capture
   m.q.quietHuddleReview(book, L0(m), 1);
   assert.deepEqual(m.q.sanitizeQuietBook(JSON.parse(JSON.stringify(book))), JSON.parse(JSON.stringify(book)));
   const caps = {};
-  for (let i = 0; i < 11; i++) caps[`KX-${i}:${CLOSE + i}`] = capWith(m, [call("DRIFT", "UP")], { ticker: `KX-${i}`, close_time: CLOSE + i });
+  for (let i = 0; i < m.q.QUIET_CAPTURE_CAP+3; i++) caps[`KX-${i}:${CLOSE + i}`] = capWith(m, [call("DRIFT", "UP")], { ticker: `KX-${i}`, close_time: CLOSE + i });
   caps.bad = { v: "nope" };
   const kept = m.q.sanitizeQuietCaptures(caps);
-  assert.equal(Object.keys(kept).length, 8);
-  assert.ok(!("KX-0:" + CLOSE in kept) && `KX-10:${CLOSE + 10}` in kept);
+  assert.equal(Object.keys(kept).length, m.q.QUIET_CAPTURE_CAP);
+  assert.ok(!("KX-0:" + CLOSE in kept) && `KX-${m.q.QUIET_CAPTURE_CAP+2}:${CLOSE+m.q.QUIET_CAPTURE_CAP+2}` in kept);
   assert.deepEqual(m.q.sanitizeQuietCaptures("junk"), {});
 });
 

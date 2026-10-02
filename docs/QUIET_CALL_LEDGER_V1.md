@@ -390,7 +390,7 @@ ORBIT never enters K1 or K2. It contributes only to K0.
 23. **Kill K2.** Novel subset at coin with RAW strong → RETIRE (signal is already carded). Novel subset strong → continue. Window clustering is verified by duplicating seats on one window, which must not shrink the CI.
 24. **Kill K0.** 85% coverage → EXTEND, not RETIRE. Drift > 0 → EXTEND. ORBIT at 290/500 (rejects 0.5) → EXTEND with reason `CONTROL_DRIFT`.
 25. **Kill one-shot.** The evaluation runs exactly once at ≥ 500. Later huddles do not re-evaluate or overwrite `book.kill`.
-26. **Sanitize.** Garbage, partial, wrong-version, or negative-count input → fresh book with no throw. A valid book survives a round-trip unchanged. Captures beyond the cap of 8 are trimmed oldest-first.
+26. **Sanitize.** Garbage, partial, wrong-version, or negative-count input → fresh book with no throw. A valid book survives a round-trip unchanged. Captures beyond the settlement pending cap plus one active window (currently 33) are trimmed oldest-first.
 27. **Rebuild.** `rebuildBookFromRows(rows)` equals the incrementally built book for the same 300-window synthetic stream.
 
 ### Integration tests (`scripts/quiet-call-integration.test.mjs`)
@@ -428,3 +428,8 @@ ORBIT never enters K1 or K2. It contributes only to K0.
 ## October 2 lead review — ordered kill snapshot
 
 The kill evaluator now queues its audit-table read behind already-issued capture/grade writes and evaluates against a deep copy of the book taken at invocation. This prevents a pending grade from producing false BOOK_DRIFT and prevents later live book mutation from changing the evaluated cohort. Regression #47b issues a grade and kill without awaiting the write, mutates the caller book during the read, and requires reconciliation against the original book. This is persistence isolation only: no capture policy, statistical threshold, learner or production decision changes. Collection remains OFF pending independent review and owner activation.
+
+
+### Review correction — pending retention and identity retirement
+
+Quiet captures retain `PENDING_CAP + 1`: every retained pending settlement plus the currently active window. Sanitization and tick capture share that bound. Official identity faults in both immediate settlement and pending recovery retire the exact capture as SKIPPED_IDENTITY, increment its isolated skip count once and persist the research state without grading or teaching. The original engine hash remains unchanged after stripping these enumerated research taps.
