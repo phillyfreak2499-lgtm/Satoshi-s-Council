@@ -139,8 +139,11 @@ export async function loadQuietRows(activatedAt: number): Promise<QuietRow[]> {
 
 /** The pre-registered §9 evaluation, run once when the huddle review says it is due. */
 export async function runQuietKill(book: QuietBook, now: number): Promise<KillVerdict> {
-  const rows = await loadQuietRows(book.activated_at);
-  return evaluateKill(rows, book, now);
+  const frozen = structuredClone(book);
+  return serial(async () => {
+    const rows = await loadQuietRows(frozen.activated_at);
+    return evaluateKill(rows, frozen, now);
+  });
 }
 
 /** Admin-only research report: the leaderboard plus table↔book reconciliation. */

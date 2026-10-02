@@ -579,3 +579,22 @@ test("#47a write ordering: a grade issued before (or without) its capture insert
   await srv.writeQuietGrade(c2, "SKIPPED_CHALK", [], Date.now());
   assert.equal((await rowsOf(m, w2.ticker)).filter((x) => x.grade_status === "GRADED").length, 20);
 });
+
+
+test("#47b kill evaluation waits for issued grades and freezes the matching book", async () => {
+  const m = await load();
+  const srv = await vite.ssrLoadModule("/src/lib/desk/quiet-call.server.ts");
+  const L = m.skills.freshLearner(), w = win();
+  const capture = captureFor(m, w, L);
+  const book = m.q.freshQuietBook(capture.as_of);
+  const r = m.q.gradeQuiet({ book, capture }, snap(w, 0.05), "UP", "GRADE", m.learner.creditDirectional);
+  const pending = srv.writeQuietGrade(capture, "GRADED", r.rows, Date.now());
+  const result = srv.runQuietKill(book, Date.now());
+  // Caller keeps processing ticks while the ordered read waits for DB writes.
+  book.graded_windows += 1;
+  for (const seat of m.q.QUIET_SEATS) book.seats[seat].all.n += 1;
+  const verdict = await result;
+  await pending;
+  assert.deepEqual(verdict.k0.drift_seats, [], "issued grades and frozen book agree");
+  assert.equal(verdict.k0.coverage, 1);
+});

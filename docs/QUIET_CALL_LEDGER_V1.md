@@ -423,3 +423,8 @@ ORBIT never enters K1 or K2. It contributes only to K0.
 **2026-10-01, rev 2:** D1 (first usable tick under 12 min); D10 (ship dark, activate at a clean Monday open, effective at the next window boundary); D14 (EXHAUST fades, FADE fades, CARRY mirrors `readCarry`); retired seats confirmed in the 21 (D12).
 
 **2026-10-01, rev 3:** control group = ORBIT only. VOLT and PULSE are judged seats; their TILT mirrors their readers (D15). Judged k = 20 (Holm z = 3.02, χ² df 19). Tier 4 = tagged coin for any judged seat that exhausts tiers 1–3. **Spec approved to build.**
+
+
+## October 2 lead review — ordered kill snapshot
+
+The kill evaluator now queues its audit-table read behind already-issued capture/grade writes and evaluates against a deep copy of the book taken at invocation. This prevents a pending grade from producing false BOOK_DRIFT and prevents later live book mutation from changing the evaluated cohort. Regression #47b issues a grade and kill without awaiting the write, mutates the caller book during the read, and requires reconciliation against the original book. This is persistence isolation only: no capture policy, statistical threshold, learner or production decision changes. Collection remains OFF pending independent review and owner activation.
