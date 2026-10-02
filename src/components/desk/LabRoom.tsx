@@ -1,4 +1,5 @@
 import { RegretLedger } from "./RegretLedger";
+import { ExecutionLab } from "./ExecutionLab";
 import { sampleRate, DISPLAY_SAMPLE_MIN } from "@/lib/desk/display-evidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
 import { useEffect, useState } from "react";
@@ -1023,6 +1024,7 @@ export function LabRoom({ initial }: { initial?: PublicLabSnapshot | null }) {
             <DisagreementEdgeStudy data={data.disagreement_edge} />
             <AstraDirectorStudy data={data.astra_director} />
             <LabSummary data={data} />
+            <ExecutionLab data={data.execution_lab} />
 
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
               <div>
