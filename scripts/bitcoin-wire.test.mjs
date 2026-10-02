@@ -3,6 +3,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 test("Bitcoin Wire database, filter, feed and endpoint contracts", () => {
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "src/lib/news/news.test.ts"], { encoding: "utf8", timeout: 60000 });
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "src/lib/news/news.test.ts"], { encoding: "utf8", timeout: 60000, env });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /tests 9\b/, "the nested runner must actually execute all nine contracts");
 });
