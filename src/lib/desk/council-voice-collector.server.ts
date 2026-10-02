@@ -144,13 +144,14 @@ export async function gradeVoiceCapture(sql:Sql,now:number) {
       [JSON.stringify(current),id,Number(meta.revision),JSON.stringify(outcome),grade.close,r.invalid]);
     if(wrote.length!==1) throw Error("voice grade conflict");
   }
-  const [summary]=await sql<{valid:number;invalid:number;delta:number}>`
-    select count(*) filter(where invalid is null and result->>'valid'='true')::int as valid,
+  const [summary]=await sql<{valid:number;invalid:number;observed:number;delta:number}>`
+    select count(*)::int as observed,
+      count(*) filter(where invalid is null and result->>'valid'='true')::int as valid,
       count(*) filter(where invalid is not null)::int as invalid,
       coalesce(sum((result->>'delta')::numeric) filter(where invalid is null and result->>'valid'='true'),0)::float8 as delta
     from desk_voice_windows where experiment=${id} and close_ms<=${now}`;
   const verdict=voiceKillDecision({validWindows:Number(summary?.valid??0),invalidWindows:Number(summary?.invalid??0),
-    pairedDelta:Number(summary?.delta??0),integrityViolations:0});
+    observedWindows:Number(summary?.observed??0),pairedDelta:Number(summary?.delta??0),integrityViolations:0});
   if(verdict!=="CONTINUE_SHADOW") await sql`update desk_voice_meta set status=${verdict},reason=${verdict} where experiment=${id} and status='SHADOW'`;
   return verdict;
 }
@@ -216,6 +217,9 @@ export async function voiceCaptureReport() {
   const sql=await getSql();
   const [meta]=await sql<Meta>`select * from desk_voice_meta where experiment=${id}`;
   const [counts]=await sql`select count(*)::int as expected_windows,
+    count(*) filter(where close_ms<=${Date.now()})::int as observed_windows,
+    count(*) filter(where close_ms<=${Date.now()} and invalid is null and checkpoint is not null
+      and first_ms<=close_ms-892000 and last_ms>=close_ms-8000)::int as complete_valid_captures,
     count(*) filter(where first_ms is not null)::int as captured_windows,
     count(*) filter(where invalid is not null)::int as invalid_windows,
     count(*) filter(where result->>'valid'='true' and invalid is null)::int as valid_paired_windows,

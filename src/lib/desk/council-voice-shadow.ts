@@ -15,11 +15,13 @@ export const VOICE_PROTOCOL = Object.freeze({
 });
 
 /** Frozen research-only kill decision, with no actuator or promotion path. */
-export function voiceKillDecision(s:{validWindows:number;invalidWindows:number;pairedDelta:number;integrityViolations:number}) {
+export function voiceKillDecision(s:{validWindows:number;invalidWindows:number;pairedDelta:number;integrityViolations:number;observedWindows?:number}) {
   if(!Object.values(s).every(Number.isFinite) || Object.entries(s).some(([key,value])=>key!=="pairedDelta" && value<0))
     return "PAUSE_INVALID_SUMMARY" as const;
   if(s.integrityViolations>0) return "KILL_INTEGRITY" as const;
-  if(s.validWindows+s.invalidWindows>=20 && s.invalidWindows/(s.validWindows+s.invalidWindows)>.05)
+  const observed=s.observedWindows??s.validWindows+s.invalidWindows;
+  if(observed<s.validWindows+s.invalidWindows) return "PAUSE_INVALID_SUMMARY" as const;
+  if(observed>=20 && s.invalidWindows/observed>.05)
     return "PAUSE_CAPTURE" as const;
   if(s.validWindows>=20 && s.pairedDelta<=-100) return "KILL_ECONOMICS" as const;
   return "CONTINUE_SHADOW" as const;
