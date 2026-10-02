@@ -1,11 +1,11 @@
 /** Default-OFF observer. Separate books/tables; no notifications or production writes. */
 import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
-import { getSql, dbPoolStats, type Sql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
 import { freshVoiceBooks, stepVoiceBooks, gradeVoiceBooks, type VoiceBookState, type VoiceBookInput } from "./council-voice-book";
 import { VOICE_PROTOCOL, voiceKillDecision } from "./council-voice-shadow";
 import { SELECTIVE_ENTRY_ID, SELECTIVE_PARAMS, chicagoDay } from "./selective-entry.ts";
-import { readResourceGovernorWitness } from "./resource-governor-witness.ts";
+import { sampleVoiceResources } from "./council-voice-resources.server";
 import { governorDecision } from "./resource-governor.ts";
 import { voiceReplayDelta } from "./council-voice-replay";
 
@@ -17,6 +17,7 @@ export const VOICE_CAPTURE_PROTOCOL = Object.freeze({
   fills:"observed ask model; no claim of IOC fillability", policy:SELECTIVE_ENTRY_ID, selective:SELECTIVE_PARAMS,
   incomplete_risk:"exclude capture and settlement Chicago days; no guessed daily risk",
   replay:"exact JSON deltas against immutable per-window baseline; full pre-frame book included",
+  governor:"own process CPU, event-loop delay, RSS, cgroup limit and DB sample; warm up before initialization",
 });
 type Meta = {fingerprint:string;build_sha:string;start_ms:string;end_ms:string;revision:string;bytes_used:string;state:VoiceBookState;status:string};
 const next=(t:number)=>(Math.floor(t/900000)+1)*900000;
@@ -161,18 +162,18 @@ export async function voiceCaptureTick() {
   const st=runtime(), now=Date.now();
   if(st.busy) {st.busySkips=[...new Set([...(st.busySkips??[]),next(now)])];return;}
   st.busy=true;
+  let failedClose=next(now);
   try {
     const sql=await getSql();
+    const witness=await sampleVoiceResources(sql), measuredNow=Date.now();
+    if(!witness || witness.measured_at_ms>measuredNow || measuredNow-witness.measured_at_ms>60000 ||
+        !governorDecision(witness.sample,witness.thresholds).run) {
+      await excludeVoiceWindow(sql,next(measuredNow),"resource governor skip");return;
+    }
     if(!st.initialized) {
-      const meta=await initializeVoiceCapture(sql,now,String(process.env.RENDER_GIT_COMMIT??""));
+      const meta=await initializeVoiceCapture(sql,measuredNow,String(process.env.RENDER_GIT_COMMIT??""));
       if(Number(meta.start_ms)<next(st.boot)) await excludeVoiceWindow(sql,next(st.boot),"restart in open window");
       st.initialized=true;
-    }
-    const witness=readResourceGovernorWitness(), pool=dbPoolStats();
-    if(!witness || witness.measured_at_ms>now || now-witness.measured_at_ms>60000 || !governorDecision({...witness.sample,
-      rss_mb:process.memoryUsage().rss/1048576,db_waiting:pool?.waiting??witness.sample.db_waiting,
-      db_in_use:pool?pool.total-pool.idle:witness.sample.db_in_use},witness.thresholds).run) {
-      await excludeVoiceWindow(sql,next(now),"resource governor skip");return;
     }
     if(now-st.lastGrade>=30000) {await gradeVoiceCapture(sql,now);st.lastGrade=now;}
     const [meta]=await sql<Meta>`select * from desk_voice_meta where experiment=${id}`;
@@ -184,13 +185,15 @@ export async function voiceCaptureTick() {
       return;
     }
     if(!frame.snap || frame.snap.as_of===meta.state.last) return;
+    failedClose=frame.snap.close_time;
+    if(Date.now()>=frame.snap.close_time) return; // Prior-window rollover is not a new-window failure.
     const input:VoiceBookInput={snap:structuredClone(frame.snap),votes:structuredClone(frame.votes),learner:structuredClone(frame.learner),
       settings:{...frame.settings,poll_ms:4000,source:"live",show_faded:false,show_shadow:false,tz:"America/Chicago"},now:Date.now(),ready:frame.selective.ready};
     if(input.snap.close_time-900000<next(st.boot)) return;
     await captureVoiceFrame(sql,input,Date.now);
   } catch(error) {
     st.error=error instanceof Error?error.message:String(error);
-    try {await excludeVoiceWindow(await getSql(),next(now),st.error);} catch { /* No local advance on a failed durable write. */ }
+    try {await excludeVoiceWindow(await getSql(),failedClose,st.error);} catch { /* No local advance on a failed durable write. */ }
   } finally {
     try {
       while(st.busySkips?.length) {
