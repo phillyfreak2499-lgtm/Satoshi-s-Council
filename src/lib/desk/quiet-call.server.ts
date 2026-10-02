@@ -152,12 +152,14 @@ export async function runQuietKill(book: QuietBook, now: number): Promise<KillVe
 }
 
 /** Admin-only research report: the leaderboard plus table↔book reconciliation. */
-export function quietReport(input: QuietBook, enabled: boolean, pendingCaptures: number) {
+export function quietReport(input: QuietBook, enabled: boolean, pendingCaptures: number, pendingWrites = 0) {
   const book = structuredClone(input);
   return serial(async () => {
   const board = quietBoard(book);
-  let reconciliation: { ok: boolean; drift_seats: string[]; table_windows: number; error?: string } | null = null;
-  if (book.activated_at > 0) {
+  let reconciliation: { ok: boolean; drift_seats: string[]; table_windows: number | null; error?: string } | null = null;
+  if (pendingWrites > 0) {
+    reconciliation = {ok:false,drift_seats:[],table_windows:null,error:"Audit receipts pending; reconciliation deferred."};
+  } else if (book.activated_at > 0) {
     try {
       const rows = await loadQuietRows(book.activated_at);
       const rebuilt = rebuildBookFromRows(rows, creditDirectional, book.activated_at);
@@ -175,6 +177,7 @@ export function quietReport(input: QuietBook, enabled: boolean, pendingCaptures:
     experiment: "QUIET_CALL_LEDGER_V1",
     enabled,
     pending_captures: pendingCaptures,
+    pending_audit_writes: pendingWrites,
     board,
     reconciliation,
     authority: { production_authority: "NONE", promotes_nothing: true, books_nothing: true, paper_only: true, simulated_only: true },

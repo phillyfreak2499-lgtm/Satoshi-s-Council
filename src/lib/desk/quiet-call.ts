@@ -458,7 +458,12 @@ export function gradeQuiet(
   return done({ status: "GRADED", rows });
 }
 
-export function markQuietUncountable(book: QuietBook): void {
+export function markQuietUncountable(book: QuietBook, ticker?:string, close?:number): void {
+  if(ticker!==undefined && close!==undefined) {
+    const key=keyOf(ticker,close);
+    if(book.graded_keys.includes(key)) return;
+    book.graded_keys=[...book.graded_keys,key].slice(-QUIET_GRADED_KEY_CAP);
+  }
   book.skipped.uncountable += 1;
 }
 

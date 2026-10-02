@@ -1514,6 +1514,22 @@ function retireQuietIdentity(e:Eng,ticker:string,close:number):void {
   } catch(err) {noteErr(e,"quiet",`identity: ${err instanceof Error?err.message:String(err)}`);}
 }
 
+/** Preserve coverage when canonical pre-close grading input did not survive. */
+function retireQuietNoInput(e:Eng,ticker:string,close:number):void {
+  try {
+  const key=quietCaptureKey(ticker,close),capture=e.quietCaptures[key];
+  if((!quietCallEnabled() && !capture) || e.quietBook.graded_keys.includes(key)) return;
+  if(capture) {
+    markQuietUncountable(e.quietBook,ticker,close);
+    delete e.quietCaptures[key];
+    queueQuietWrite(e,key,{kind:"GRADE",capture,status:"SKIPPED_UNCOUNTABLE",rows:[],graded_at:Date.now()});
+  } else if(quietWindowArmed(e.quietBook,close)) {
+    noteQuietMissed(e.quietBook,ticker,close);
+    queueQuietWrite(e,key,{kind:"MISSED",ticker,close_time:close});
+  }
+  } catch(err) {noteErr(e,"quiet",`missing input: ${err instanceof Error?err.message:String(err)}`);}
+}
+
 /** Keep a full audit receipt in desk_state until every table write is acknowledged. */
 function queueQuietWrite(e:Eng,key:string,receipt:QuietWrite):void {
   const queued=Object.keys(e.quietWrites).length;
@@ -1552,7 +1568,7 @@ function runQuietReview(e: Eng): void {
   if (!quietCallEnabled() || !(e.quietBook.activated_at > 0)) return;
   try {
     const r = quietHuddleReview(e.quietBook, e.learner, Date.now());
-    if (r.kill_due && !e.quietKillRunning) {
+    if (r.kill_due && Object.keys(e.quietWrites).length===0 && !e.quietKillRunning) {
       e.quietKillRunning = true;
       const book = e.quietBook;
       void runQuietKill(book, Date.now())
@@ -1574,7 +1590,7 @@ async function quietReportAfterReady(e:Eng):ReturnType<typeof quietReport> {
   if(e.ready) await e.ready;
   // Freeze the book and enqueue its table read in this same continuation:
   // no async snapshot handoff can let another grade overtake the cohort.
-  return quietReport(e.quietBook,quietCallEnabled(),Object.keys(e.quietCaptures).length);
+  return quietReport(e.quietBook,quietCallEnabled(),Object.keys(e.quietCaptures).length,Object.keys(e.quietWrites).length);
 }
 
 /** QUIET_CALL_V1 harness access (scripts/quiet-call-integration.test.mjs) on disposable PGlite. */
@@ -1696,6 +1712,7 @@ async function settleIfNeeded(
         ? { snap: prev.snap, votes: prev.votes, chair: prev.chair }
         : null;
     if (!frozen) {
+      retireQuietNoInput(e,w.ticker,w.close_time);
       noteErr(e, "settlement evidence", `${w.ticker}:${w.close_time} has no retained pre-close grading input; not graded`);
       await persistState(e, true);
       return;
