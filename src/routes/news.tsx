@@ -21,16 +21,30 @@ function BitcoinWire() {
   const feed: FeedTag = search.feed === "ai" ? "ai" : "btc";
   const positions = useRef<Record<FeedTag, number>>({ btc: 0, ai: 0 });
   const tabs = useRef<HTMLButtonElement[]>([]);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useLayoutEffect(() => {
+    const header = document.querySelector(".council-site-header");
+    if (!header) return;
+    const measure = () => setHeaderHeight(header.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const saved = positions.current;
-    window.scrollTo({ top: saved[feed], behavior: "instant" });
+    const target = saved[feed];
     const remember = () => { saved[feed] = window.scrollY; };
-    window.addEventListener("scroll", remember, { passive: true });
-    return () => window.removeEventListener("scroll", remember);
+    // Restore after the router's rendered-location scroll handling, then track
+    // user scrolling. Router resets must not overwrite a tab's saved position.
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: target, behavior: "instant" });
+      window.addEventListener("scroll", remember, { passive: true });
+    });
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", remember); };
   }, [feed]);
   const select = (next: FeedTag) => {
     if (next === feed) return;
-    positions.current[feed] = window.scrollY;
     void navigate({ search: { feed: next === "ai" ? "ai" : undefined }, resetScroll: false });
   };
   const [items, setItems] = useState<NewsItem[] | null>(null);
@@ -62,15 +76,16 @@ function BitcoinWire() {
   const visible = items?.filter(item => item.feed === feed);
   const name = feed === "ai" ? "AI" : "Bitcoin";
   return <Page title={`${name} Wire`} lede="News context — not research, not a SATOSHI call.">
-    <div className="sticky top-0 z-20 bg-bg py-2">
+    <div style={{ top: headerHeight }} className="sticky z-20 bg-bg py-2">
     <div role="tablist" aria-label="Wire feed" className="mb-2 inline-flex rounded-md border border-border bg-surface p-1">
       {(["btc", "ai"] as const).map((tag, index) => <button key={tag} ref={el => { if (el) tabs.current[index] = el; }}
         type="button" role="tab" id={`wire-tab-${tag}`} aria-controls="wire-headlines" aria-selected={feed === tag} tabIndex={feed === tag ? 0 : -1}
+        onPointerDown={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); }}
         onClick={() => select(tag)} onKeyDown={event => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
           event.preventDefault();
           const target = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
-          tabs.current[target]?.focus(); select(target === 0 ? "btc" : "ai");
+          tabs.current[target]?.focus({ preventScroll: true }); select(target === 0 ? "btc" : "ai");
         }} className={`rounded-sm px-4 py-2 font-mono text-ui focus-visible:outline focus-visible:outline-2 ${feed === tag ? "bg-fg text-bg" : "text-muted hover:text-fg"}`}>
         {tag === "btc" ? "Bitcoin" : "AI"}
       </button>)}
