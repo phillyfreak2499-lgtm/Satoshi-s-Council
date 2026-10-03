@@ -1,7 +1,7 @@
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { RosterEvidence } from "./RosterEvidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
@@ -11,6 +11,7 @@ import { LAYER_LABEL, REFUSAL_LABEL, COUNCIL_ROOM_SCHEMA_VERSION } from "@/lib/d
 import {
   createPoller,
   feedPhase,
+  type Poller,
   initialFeed,
   FEED_INTERVAL_MS,
   PHASE_LABEL,
@@ -458,6 +459,10 @@ function ageText(fromMs: number | null, nowMs: number | null): string {
  * the tab is hidden or the browser is offline, replay after any gap. The
  * allowlisted current-state snapshot (Phase 2 room and roster) is read once in
  * the same cycle, right after the event read; it never feeds the event list.
+ *
+ * The viewer can pause live updates (§9.7). While paused, and until the resume
+ * cycle settles, status phases are computed from the moment of the pause
+ * (`hold`), so the 36 s staleness clock cannot change what is announced.
  */
 function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
   const [seed] = useState<ChamberStatement[]>(initial);
@@ -465,6 +470,10 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
   const [snapshot, setSnapshot] = useState<SnapshotState>(emptySnapshotState);
   const [env, setEnv] = useState({ hidden: false, online: true });
   const [now, setNow] = useState<number | null>(null);
+  const [userPaused, setUserPaused] = useState(false);
+  const [hold, setHold] = useState<{ at: number; attempt: number | null } | null>(null);
+  const pollerRef = useRef<Poller | null>(null);
+  const pausedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -488,6 +497,7 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
       poller.setHidden(next.hidden);
       poller.setOnline(next.online);
     };
+    pollerRef.current = poller;
     sync();
     poller.start();
     document.addEventListener("visibilitychange", sync);
@@ -495,6 +505,7 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
     window.addEventListener("offline", sync);
     return () => {
       alive = false;
+      pollerRef.current = null;
       poller.stop();
       document.removeEventListener("visibilitychange", sync);
       window.removeEventListener("online", sync);
@@ -502,9 +513,9 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
     };
   }, []);
 
-  // Display clock for ages only. No network; paused while hidden.
+  // Display clock for ages only. No network; paused while hidden or viewer-paused.
   useEffect(() => {
-    if (env.hidden) return;
+    if (env.hidden || userPaused) return;
     let handle = 0;
     const tick = () => {
       setNow(Date.now());
@@ -512,9 +523,23 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
     };
     tick();
     return () => window.clearTimeout(handle);
-  }, [env.hidden, feed.last_attempt_ms]);
+  }, [env.hidden, userPaused, feed.last_attempt_ms]);
 
-  return { feed, snapshot, env, now };
+  const attempt = feed.last_attempt_ms;
+  const togglePause = useCallback(() => {
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    pollerRef.current?.setPaused(next);
+    setUserPaused(next);
+    if (next) setHold((h) => h ?? { at: Date.now(), attempt });
+  }, [attempt]);
+
+  // Release the frozen status clock once the resume cycle has settled.
+  useEffect(() => {
+    if (!userPaused && hold && attempt !== hold.attempt) setHold(null);
+  }, [userPaused, hold, attempt]);
+
+  return { feed, snapshot, env, now, userPaused, phaseNow: hold ? hold.at : now, togglePause };
 }
 
 /**
@@ -522,8 +547,21 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
  * withheld-record counts. Read times and ages change every few seconds, so they
  * render outside it and are never announced.
  */
-export function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden: boolean; online: boolean }; now: number | null }) {
-  const phase = feedPhase(feed, now, env);
+export function FeedStatus({
+  feed,
+  env,
+  now,
+  phaseNow = now,
+  userPaused = false,
+}: {
+  feed: FeedState;
+  env: { hidden: boolean; online: boolean };
+  now: number | null;
+  /** Clock for the phase only; held at the moment of a viewer pause (§9.7). */
+  phaseNow?: number | null;
+  userPaused?: boolean;
+}) {
+  const phase = feedPhase(feed, phaseNow, env);
   const newest = feed.events[0] ?? null;
   const refusedByReason = new Map<string, number>();
   for (const r of feed.refused) refusedByReason.set(REFUSAL_LABEL[r.reason], (refusedByReason.get(REFUSAL_LABEL[r.reason]) ?? 0) + 1);
@@ -544,19 +582,24 @@ export function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden:
           Newest recorded event: {newest ? <>{utcStamp(newest.recorded_at)} · {ageText(newest.recorded_ms, now)}</> : "none"}
         </div>
       </div>
-      <div>Reads every {FEED_INTERVAL_MS / 1000}s while this tab is visible. Rows loaded with the page or after a gap are marked History.</div>
+      {userPaused ? (
+        <div data-feed-paused="">
+          Live updates paused by you{phaseNow != null ? <> at {utcStamp(new Date(phaseNow).toISOString())}</> : null}. Status above is as of then; nothing new is read until you resume.
+        </div>
+      ) : null}
+      <div>Reads every {FEED_INTERVAL_MS / 1000}s while this tab is visible, unless you pause live updates. Rows loaded with the page or after a gap are marked History.</div>
     </div>
   );
 }
 
 export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberStatement[]; receivedMs: number }) {
-  const { feed, snapshot, env, now } = useChamberFeed(initial, receivedMs);
+  const { feed, snapshot, env, now, userPaused, phaseNow, togglePause } = useChamberFeed(initial, receivedMs);
   const loaded = feed.last_success_ms != null || feed.events.length > 0 || feed.failures > 0;
 
   const rows = feed.events;
   const exchanges = useMemo(() => compactRepeatedWaits(groupExchanges(rows)), [rows]);
   const quietFloor = exchanges.length > 0 && waitFingerprint(exchanges[0]) !== null;
-  const room = useMemo(() => buildRoomModel(snapshot, feed, now, env), [snapshot, feed, now, env]);
+  const room = useMemo(() => buildRoomModel(snapshot, feed, phaseNow, { ...env, userPaused }), [snapshot, feed, phaseNow, env, userPaused]);
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -580,7 +623,7 @@ export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberSta
         </section>
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={feed.events[0]?.statement ?? null} loaded={loaded} /> : null}
-        <CouncilRoomLite model={room} />
+        <CouncilRoomLite model={room} paused={userPaused} onTogglePause={togglePause} />
         {quietFloor ? <ChamberRoster rows={snapshot.value?.rows ?? []} asOf={snapshot.last_success_ms != null ? (snapshot.value?.as_of ?? null) : null} pending={snapshot.last_attempt_ms == null} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -591,7 +634,7 @@ export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberSta
                 <h2 id="exchange-heading" className="mt-1 font-sans text-title font-medium">Recorded exchanges</h2>
               </div>
             </div>
-            <FeedStatus feed={feed} env={env} now={now} />
+            <FeedStatus feed={feed} env={env} now={now} phaseNow={phaseNow} userPaused={userPaused} />
 
             {!loaded ? (
               <div className="rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">Reading recorded events…</div>

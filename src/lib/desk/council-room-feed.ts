@@ -139,6 +139,8 @@ export type Poller = {
   stop(): void;
   setHidden(hidden: boolean): void;
   setOnline(online: boolean): void;
+  /** Viewer pause (§9.7): schedules nothing; an in-flight result is discarded; resume runs one cycle. */
+  setPaused(paused: boolean): void;
   /** Exposed for tests: run one read now if none is in flight. */
   pullNow(): Promise<void>;
 };
@@ -159,39 +161,52 @@ export type PollerDeps = {
  * settles, so requests never overlap and can never complete out of order. A
  * hidden tab or offline browser schedules nothing; returning triggers one read
  * whose rows are treated as replay. A result that lands after stop() is dropped.
+ *
+ * A viewer pause schedules nothing either. A read already in flight when the
+ * viewer pauses is left to settle and its result is discarded, so nothing on
+ * the page changes after the pause. Resume runs exactly one read, right away or
+ * as soon as the discarded read settles, then returns to the normal cadence.
  */
 export function createPoller(deps: PollerDeps): Poller {
   const interval = deps.intervalMs ?? FEED_INTERVAL_MS;
   let running = false;
   let hidden = false;
   let online = true;
+  let paused = false;
+  /** Bumped on every viewer pause; a read that saw a pause during flight is discarded. */
+  let pauseEpoch = 0;
   let inFlight = false;
   let generation = 0;
   let timer: unknown = null;
 
+  const active = () => running && !hidden && online && !paused;
   const clear = () => {
     if (timer != null) deps.clearTimer(timer);
     timer = null;
   };
   const schedule = () => {
     clear();
-    if (running && !hidden && online) timer = deps.setTimer(() => void pull(), interval);
+    if (active()) timer = deps.setTimer(() => void pull(), interval);
   };
   const pull = async () => {
-    if (!running || hidden || !online || inFlight) return;
+    if (!active() || inFlight) return;
     inFlight = true;
     clear();
     const mine = generation;
+    const epoch = pauseEpoch;
     try {
       const rows = await deps.read();
-      if (mine === generation && running) deps.onDelivery(Array.isArray(rows) ? rows : [], deps.now());
+      if (mine === generation && running && epoch === pauseEpoch) deps.onDelivery(Array.isArray(rows) ? rows : [], deps.now());
     } catch (error) {
-      if (mine === generation && running) deps.onFailure(error, deps.now());
+      if (mine === generation && running && epoch === pauseEpoch) deps.onFailure(error, deps.now());
     } finally {
       // A read abandoned by stop() must not clear the flag of a newer generation.
       if (mine === generation) {
         inFlight = false;
-        schedule();
+        // Paused and resumed while this read was in flight: its result was
+        // discarded, so the resume cycle runs now instead of after an interval.
+        if (epoch !== pauseEpoch && active()) void pull();
+        else schedule();
       }
     }
   };
@@ -221,6 +236,15 @@ export function createPoller(deps: PollerDeps): Poller {
       if (next === online) return;
       online = next;
       if (!online) {
+        clear();
+        deps.onGap();
+      } else void pull();
+    },
+    setPaused(next) {
+      if (next === paused) return;
+      paused = next;
+      if (paused) {
+        pauseEpoch += 1;
         clear();
         deps.onGap();
       } else void pull();

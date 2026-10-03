@@ -83,3 +83,16 @@ test("phase, error and withheld-record transitions are announced", () => {
   const offline = liveRegion(renderToStaticMarkup(React.createElement(FeedStatus, { feed: ok, env: { hidden: false, online: false }, now: T })));
   assert.match(offline, /Disconnected/);
 });
+
+test("CR-CLAUDE-003: while viewer-paused the feed status is frozen at the pause and says so outside the live region", () => {
+  const ok = feedModule.applyDelivery(feedModule.initialFeed([], T), [], T);
+  const atPause = liveRegion(renderToStaticMarkup(React.createElement(FeedStatus, { feed: ok, env, now: T + 1_000 })));
+  const later = renderToStaticMarkup(React.createElement(FeedStatus, { feed: ok, env, now: T + 10 * feedModule.STALE_AFTER_MS, phaseNow: T + 1_000, userPaused: true }));
+  assert.equal(liveRegion(later), atPause, "nothing new is announced while paused, however long");
+  assert.doesNotMatch(liveRegion(later), /Stale/);
+  assert.match(later, /data-feed-paused="">Live updates paused by you at /);
+  assert.ok(later.indexOf("data-feed-paused") > later.indexOf("data-feed-clock"), "the paused note is outside the live region");
+  assert.equal((later.match(/aria-live=/g) ?? []).length, 1);
+  const running = renderToStaticMarkup(React.createElement(FeedStatus, { feed: ok, env, now: T + 1_000 }));
+  assert.doesNotMatch(running, /data-feed-paused/);
+});

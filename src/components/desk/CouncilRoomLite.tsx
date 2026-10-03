@@ -3,7 +3,8 @@
  *
  * Presentation only. It renders buildRoomModel: current snapshot state and the
  * newest recorded events, each labelled as what it is. The Phase 1 text feed
- * below it stays the canonical record. No controls, no idle animation, no voice.
+ * below it stays the canonical record. One control: pause/resume live updates
+ * (§9.7). No idle animation, no voice.
  */
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { LAYER_LABEL } from "@/lib/desk/council-room-narration";
@@ -57,7 +58,15 @@ function RecordedLine({ tile, none }: { tile: RoomTile; none: string }) {
   );
 }
 
-export function CouncilRoomLite({ model }: { model: RoomModel }) {
+export const PAUSE_LABEL = "Pause live updates";
+export const RESUME_LABEL = "Resume live updates";
+
+/**
+ * paused / onTogglePause drive the one control. The button is the same element in
+ * both states, so keyboard focus stays on it; its visible text is its name. Its
+ * state change is announced once, through the existing status line above it.
+ */
+export function CouncilRoomLite({ model, paused = false, onTogglePause }: { model: RoomModel; paused?: boolean; onTogglePause?: () => void }) {
   const usable = model.snapshotReadMs != null;
   return (
     <section className="room-lite" aria-labelledby="room-lite-title" data-snapshot={model.snapshot}>
@@ -81,6 +90,11 @@ export function CouncilRoomLite({ model }: { model: RoomModel }) {
             "No snapshot values shown."
           )}
         </p>
+        {onTogglePause ? (
+          <button type="button" className="room-lite-pause" data-paused={paused ? "true" : undefined} onClick={onTogglePause}>
+            {paused ? RESUME_LABEL : PAUSE_LABEL}
+          </button>
+        ) : null}
       </div>
 
       <div className="room-lite-tiles">
