@@ -71,3 +71,29 @@ test("the CSP permits the injected Grok extension without widening defaults", ()
   assert.match(security, /https:\/\/\*\.grok\.com/);
   assert.match(security, /default-src 'self'/);
 });
+
+test("the CSP permits GA4 collect endpoints used by gtag", () => {
+  const directive = (name) =>
+    security.match(new RegExp(`"${name} ([^"]*)"`))?.[1]?.split(" ") ?? [];
+  const connect = directive("connect-src");
+  for (const host of [
+    "https://www.google-analytics.com",
+    "https://*.google-analytics.com",
+    "https://analytics.google.com",
+    "https://*.analytics.google.com",
+    "https://www.google.com",
+    "https://*.g.doubleclick.net",
+  ]) {
+    assert.ok(connect.includes(host), `connect-src should include ${host}`);
+  }
+  const img = directive("img-src");
+  for (const host of [
+    "https://www.google-analytics.com",
+    "https://*.google-analytics.com",
+    "https://www.google.com",
+    "https://*.g.doubleclick.net",
+  ]) {
+    assert.ok(img.includes(host), `img-src should include ${host}`);
+  }
+  assert.doesNotMatch(directive("script-src").join(" "), /doubleclick|googleadservices/);
+});
