@@ -20,6 +20,7 @@ import {
   skillScore,
 } from "./skills";
 import { nudgeThresh, recordThresh, retuneThresholds } from "./thresholds";
+import { gradeQuiet, type QuietGradeInput } from "./quiet-call";
 import type {
   CandidateCard,
   ChairResult,
@@ -28,6 +29,7 @@ import type {
   PaperLean,
   SeatId,
   SkillCard,
+  SkillStats,
   Snapshot,
   ThreshUse,
   Vote,
@@ -38,8 +40,10 @@ function push20(arr: number[], v: number): number[] {
   return next.slice(-20);
 }
 
-function creditDirectional(
-  card: SkillCard,
+/** Exported (type-widened to SkillStats) so the QUIET_CALL_V1 ledger reuses the
+ *  exact card arithmetic. Runtime is unchanged for every SkillCard caller. */
+export function creditDirectional(
+  card: SkillStats,
   hit: number,
   confidence: number,
   pocketKey: string,
@@ -151,6 +155,9 @@ export function gradeWindow(
   votes: Vote[],
   chair: ChairResult,
   finish: "UP" | "DOWN",
+  /** QUIET_CALL_V1 (research, authority NONE). Absent → byte-identical grading.
+   *  It only ever mutates `quiet.book`; never the learner, line or settle_tape. */
+  quiet?: QuietGradeInput,
 ): { learner: Learner; line: string } {
   const wasLocked =
     learner.lockdown ||
@@ -162,6 +169,7 @@ export function gradeWindow(
   const chalk = snap.chalk || snap.leftover_cents > 12;
   const dualDown = snap.health.spot === "DOWN" && snap.health.kalshi === "DOWN";
   if (chalk || dualDown) {
+    if (quiet) gradeQuiet(quiet, snap, finish, "SKIPPED_CHALK", creditDirectional);
     if (wasLocked) consumeLock(learner);
     const line = `SETTLE ${new Date(snap.close_time).toISOString().slice(11, 16)} ${finish} · skipped credit (chalk/phantom leftover/feeds)`;
     learner.settle_tape = [line, ...learner.settle_tape].slice(0, 40);
@@ -169,6 +177,8 @@ export function gradeWindow(
     updateStreak(learner, finish);
     return { learner, line };
   }
+
+  if (quiet) gradeQuiet(quiet, snap, finish, "GRADE", creditDirectional);
 
   const bits: string[] = [];
   const pocketKey = snap.regime_key;

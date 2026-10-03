@@ -516,6 +516,13 @@ export type SkillCard = {
   held_why?: string;
 };
 
+/** The graded-stat subset of a SkillCard. Type-only: lets the QUIET_CALL_V1
+ *  ledger reuse creditDirectional / refreshDerived without being a card. */
+export type SkillStats = Pick<
+  SkillCard,
+  "n" | "hits" | "wilson" | "brier_sum" | "brier_n" | "brier" | "ev_sum" | "ev_n" | "ev" | "streak_wrong" | "last20" | "pocket"
+>;
+
 export type ConfBin = { n: number; hits: number };
 
 export type PatternStat = {

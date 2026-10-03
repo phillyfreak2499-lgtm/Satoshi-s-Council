@@ -193,11 +193,39 @@ test("permanent 404 disables only its destination and DB failure never rejects t
 });
 
 
+// QUIET_CALL_LEDGER_V1 (research only, authority NONE) adds enumerated read-only taps to the
+// engine. Each hunk is removed by exact match (a count mismatch throws), and the remainder must
+// still hash to the ORIGINAL pinned value below — proof the engine is otherwise byte-identical.
+function stripQuiet(src) {
+  const once = (s, a, b = "") => { const n = s.split(a).length - 1; if (n !== 1) throw new Error(`quiet hunk count ${n}: ${a.slice(0, 70)}`); return s.replace(a, b); };
+  const cut = (s, from, to) => { const i = s.indexOf(from), j = s.indexOf(to); if (i < 0 || j < i) throw new Error(`quiet block missing: ${from.slice(0, 60)}`); return s.slice(0, i) + s.slice(j); };
+  let s = src;
+  s = cut(s, "import {\n  armQuiet,\n", "import { takerEvCents, takerSignal }");
+  s = once(s, "  /** QUIET_CALL_V1 (research, authority NONE). Never on Learner, Vote or /frame. Persisted under its own key. */\n  quietBook: QuietBook;\n  /** Captured-but-unsettled quiet calls, keyed `${ticker}:${close_time}`. Persisted, pending cap plus active. */\n  quietCaptures: Record<string, QuietCapture>;\n  /** Durable research audit outbox; acknowledgement guards removal. */\n  quietWrites: Record<string, QuietWrite>;\n  quietWriting: Set<string>;\n  quietRetryAfter: number;\n  /** Process-local guard so one due kill evaluation runs once. Never persisted. */\n  quietKillRunning: boolean;\n");
+  s = once(s, "    quietBook: freshQuietBook(),\n    quietCaptures: {},\n    quietWrites: {},\n    quietWriting: new Set(),\n    quietRetryAfter: 0,\n    quietKillRunning: false,\n");
+  s = once(s, "          quiet_book?: unknown;\n          quiet_captures?: unknown;\n          quiet_writes?: unknown;\n");
+  s = once(s, "    // QUIET_CALL_V1: malformed or absent → an empty, never-activated book. Never throws.\n    e.quietBook = sanitizeQuietBook(raw.quiet_book);\n    e.quietCaptures = sanitizeQuietCaptures(raw.quiet_captures);\n    e.quietWrites = sanitizeQuietWrites(raw.quiet_writes);\n    if(raw.quiet_writes && typeof raw.quiet_writes === \"object\") {\n      e.quietBook.audit_loss += Math.max(0,Object.keys(raw.quiet_writes).length-Object.keys(e.quietWrites).length);\n    }\n");
+  s = once(s, "      // QUIET_CALL_V1 (research only): same durability boundary as the learner, its own key.\n      quiet_book: e.quietBook,\n      quiet_captures: e.quietCaptures,\n      quiet_writes: e.quietWrites,\n");
+  s = once(s, "  // QUIET_CALL_V1 (research, authority NONE): undefined while dark, so gradeWindow is\n  // called exactly as before. Enabled, it carries this window's capture (or null).\n  const quiet = quietGradeInput(e, snap);\n");
+  s = once(s, "gradeWindow(e.learner, snap, votes, chair, finish, quiet);", "gradeWindow(e.learner, snap, votes, chair, finish);");
+  s = once(s, "    if (quiet?.capture) markQuietUncountable(quiet.book);\n");
+  s = once(s, "  if (quiet) settleQuiet(e, snap, quiet, isCountable(snap.close_time));\n");
+  s = cut(s, "// ---------------------------------------------------------------- QUIET_CALL_V1\n", "function markPending(e: Eng, snap: Snapshot) {");
+  s = once(s, "    // QUIET_CALL_V1 — read-only tap after the Chair has decided. Dark unless enabled.\n    const quietCaptured = noteQuietCapture(e, snap, votes);\n");
+  s = once(s, "      retireQuietIdentity(e,p.ticker,p.close_time);\n");
+  s = once(s, "    retireQuietIdentity(e,w.ticker,w.close_time);\n");
+  s = once(s, "      retireQuietNoInput(e,w.ticker,w.close_time);\n");
+  s = once(s, "    await persistState(e, quietCaptured);\n", "    await persistState(e);\n");
+  const hooks = s.split(" runQuietReview(e); }").length - 1;
+  if (hooks !== 3) throw new Error(`expected 3 huddle hooks, found ${hooks}`);
+  s = s.split(" runQuietReview(e); }").join(" }");
+  return s;
+}
 test("engine and push source differ only by publication hooks and the reviewed settlement release guard",()=>{
   const settlementGate="      if (!(await subscriberAlertsReleased())) {\n        lastLog = \"settlement alert held: owner two-tier verification required for this build\";\n        return;\n      }\n";
   assert.equal(readFileSync('src/lib/desk/push.server.ts','utf8').split(settlementGate).length,2);
   const crypto=require('node:crypto');
-  const engine=readFileSync('src/lib/desk/server-engine.ts','utf8')
+  const engine=stripQuiet(readFileSync('src/lib/desk/server-engine.ts','utf8'))
     .replace('import { publishDiscordLeans } from "./discord-events.server";\n','')
     .replace('    // Outbound publication only: this frame is now the public getServerFrame result.\n    publishDiscordLeans(snap, votes, chair, e.learner.knobs);\n','');
   const push=readFileSync('src/lib/desk/push.server.ts','utf8')
@@ -237,4 +265,3 @@ test("losing settlement scoreboard includes the current loss and stored fees",as
   await f.outbox.drain();
   assert.equal(f.calls[1].p.embeds[0].fields.find(x=>x.name==='Paper scoreboard · all-time').value,'0W–1L · -85.0¢ net after fees');
 });
-
