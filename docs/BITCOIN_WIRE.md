@@ -47,3 +47,19 @@ Also run `npm run typecheck`, targeted ESLint, migration apply/idempotency tests
 - Initial `npm test` script phase: 1,135 passed, four failed, four skipped. The navigation expectation was updated for the new destination. The two concurrent Vite-backed suites passed when rerun serially. The root-tree check passed separately (3/3) after local smoke/test artifacts were cleared. The serial affected-suite run had 71 passes and only that root-artifact failure before cleanup. No claim is made that the full suite was rerun clean from end to end.
 - A content comparison confirmed all 419 tracked desk/runtime files except the navigation destination file are unchanged. Every pre-existing dependency-lock entry is preserved.
 - Browser visual/interaction testing was unavailable because the Chromium download failed in this environment; build/SSR and API checks succeeded.
+
+## Bitcoin / AI sub-tabs (2026-10-03)
+
+The existing `/news` view defaults to Bitcoin and accepts `/news?feed=ai`. Its segmented Bitcoin / AI control switches the cached list client-side without a reload or request and remembers each tab's document scroll position. The exact boundary line is: **News context, not desk research. Not a trading signal.** Publisher links, five-minute refresh, one-minute relative clock, seven-day retention, failure/empty states, and Bitcoin keyword eligibility remain unchanged.
+
+Migration `0077_wire_feed_groups.sql` adds the required `feed: 'btc' | 'ai'` tag to `news_items`; existing records default to `btc`. A database constraint enforces publisher/tag agreement. Legacy Reuters records remain valid history, but Reuters is never polled. `/api/news` still returns the newest 30 Bitcoin items by default. `?feed=ai` returns the newest 30 AI items; `?feed=all` returns both independently capped lists for client-side filtering.
+
+Only two AI category feeds are allowlisted:
+- TechCrunch AI: `https://techcrunch.com/category/artificial-intelligence/feed/`
+- MIT Tech Review AI: `https://www.technologyreview.com/topic/artificial-intelligence/feed/`
+
+These category feeds use the same URL, date, age, redirect, XML and response-size validation as Bitcoin. Their category membership supplies topic eligibility; requiring a Bitcoin or literal AI keyword would incorrectly discard AI headlines. VentureBeat is excluded after the owner's 429 probe. There is no aggregator or scraping fallback.
+
+The existing wire cron runs both groups concurrently with independent bounded Postgres connections and advisory locks. Publisher failures do not stop subsequent sources; a failed or pending group cannot prevent the peer from collecting or pruning. Pruning is group-scoped. The overall cron still exits nonzero for partial failures so coverage gaps remain visible, with group/source-tagged logs. No new service or infrastructure is introduced; the cron's existing manual-deploy policy remains unchanged.
+
+Release order: merge and allow the web build's normal migration path to apply 0077, confirm site deploy/migration success, then manually redeploy the existing `satoshi-bitcoin-wire` cron. The older cron remains compatible with the migrated schema because existing Bitcoin inserts default to `btc`. Do not claim live AI items until the updated cron has collected them and both tabs have been verified in production.

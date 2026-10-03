@@ -1,14 +1,18 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export type FeedTag = 'btc' | 'ai';
 export const FEEDS = Object.freeze([
-  { source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", hosts: ["coindesk.com", "www.coindesk.com"] },
-  { source: "The Block", url: "https://www.theblock.co/rss.xml", hosts: ["theblock.co", "www.theblock.co"] },
-  { source: "Decrypt", url: "https://decrypt.co/feed", hosts: ["decrypt.co", "www.decrypt.co"] },
-  { source: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed", hosts: ["bitcoinmagazine.com", "www.bitcoinmagazine.com"] },
+  { feed: "btc" as const, source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", hosts: ["coindesk.com", "www.coindesk.com"] },
+  { feed: "btc" as const, source: "The Block", url: "https://www.theblock.co/rss.xml", hosts: ["theblock.co", "www.theblock.co"] },
+  { feed: "btc" as const, source: "Decrypt", url: "https://decrypt.co/feed", hosts: ["decrypt.co", "www.decrypt.co"] },
+  { feed: "btc" as const, source: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed", hosts: ["bitcoinmagazine.com", "www.bitcoinmagazine.com"] },
+  { feed: "ai" as const, source: "TechCrunch AI", url: "https://techcrunch.com/category/artificial-intelligence/feed/", hosts: ["techcrunch.com", "www.techcrunch.com"] },
+  { feed: "ai" as const, source: "MIT Tech Review AI", url: "https://www.technologyreview.com/topic/artificial-intelligence/feed/", hosts: ["technologyreview.com", "www.technologyreview.com"] },
 ].map(feed => Object.freeze({ ...feed, hosts: Object.freeze(feed.hosts) })));
 
 export interface NewsItem {
+  feed: FeedTag;
   id: string;
   title: string;
   source: string;
@@ -41,7 +45,8 @@ function plain(value: unknown): string {
 export function normalizeItem(source: string, candidate: Candidate, now = new Date()): Candidate | null {
   if (!allowedUrl(source, candidate.url)) return null;
   const title = plain(candidate.title);
-  if (!title || !/\b(?:bitcoin|btc)\b/i.test(`${title} ${plain(candidate.description)}`)) return null;
+  const feed = FEEDS.find(feed => feed.source === source)!;
+  if (!title || (feed.feed === "btc" && !/\b(?:bitcoin|btc)\b/i.test(`${title} ${plain(candidate.description)}`))) return null;
   const published = Date.parse(candidate.published_at);
   if (!Number.isFinite(published) || published > now.getTime() || published < now.getTime() - RETENTION_MS) return null;
   const url = new URL(candidate.url);
@@ -71,32 +76,34 @@ export function parseFeed(xml: string): Candidate[] {
 }
 
 export async function ingestItems(db: NewsDb, source: string, candidates: Candidate[], now = new Date()): Promise<number> {
-  if (!FEEDS.some(feed => feed.source === source)) throw new Error("non-allowlisted news source");
+  const feed = FEEDS.find(feed => feed.source === source);
+  if (!feed) throw new Error("non-allowlisted news source");
   let inserted = 0;
   for (const candidate of candidates) {
     const item = normalizeItem(source, candidate, now);
     if (!item) continue;
     const result = await db.query(
-      "insert into news_items (title, source, url, published_at, fetched_at) values ($1, $2, $3, $4, $5) on conflict (url) do nothing returning id",
-      [item.title, source, item.url, item.published_at, now.toISOString()],
+      "insert into news_items (title, source, url, published_at, fetched_at, feed) values ($1, $2, $3, $4, $5, $6) on conflict (url) do nothing returning id",
+      [item.title, source, item.url, item.published_at, now.toISOString(), feed.feed],
     );
     inserted += result.rows.length;
   }
   return inserted;
 }
-export async function pruneItems(db: NewsDb, now = new Date()): Promise<void> {
-  await db.query("delete from news_items where published_at < $1", [new Date(now.getTime() - RETENTION_MS).toISOString()]);
+export async function pruneItems(db: NewsDb, now = new Date(), feed?: FeedTag): Promise<void> {
+  await db.query("delete from news_items where published_at < $1" + (feed ? " and feed = $2" : ""), [new Date(now.getTime() - RETENTION_MS).toISOString(), ...(feed ? [feed] : [])]);
 }
-export async function latestNews(db: NewsDb, now = new Date()): Promise<NewsItem[]> {
+export async function latestNews(db: NewsDb, now = new Date(), feed: FeedTag = "btc"): Promise<NewsItem[]> {
   const result = await db.query(
-    "select id::text, title, source, url, published_at, fetched_at from news_items where published_at >= $1 and published_at <= $2 order by published_at desc, id desc limit 30",
-    [new Date(now.getTime() - RETENTION_MS).toISOString(), now.toISOString()],
+    "select id::text, title, source, url, published_at, fetched_at, feed from news_items where published_at >= $1 and published_at <= $2 and feed = $3 order by published_at desc, id desc limit 30",
+    [new Date(now.getTime() - RETENTION_MS).toISOString(), now.toISOString(), feed],
   );
   return result.rows.map(row => ({
-    id: String(row.id), title: String(row.title), source: String(row.source), url: String(row.url),
+    feed: row.feed as FeedTag, id: String(row.id), title: String(row.title), source: String(row.source), url: String(row.url),
     published_at: new Date(row.published_at as string).toISOString(), fetched_at: new Date(row.fetched_at as string).toISOString(),
   }));
 }
-export async function newsResponse(db: NewsDb, now = new Date()): Promise<Response> {
-  return Response.json(await latestNews(db, now), { headers: { "cache-control": "no-store" } });
+export async function newsResponse(db: NewsDb, now = new Date(), feed: FeedTag | "all" = "btc"): Promise<Response> {
+  const items = feed === "all" ? [...await latestNews(db, now, "btc"), ...await latestNews(db, now, "ai")] : await latestNews(db, now, feed);
+  return Response.json(items, { headers: { "cache-control": "no-store" } });
 }

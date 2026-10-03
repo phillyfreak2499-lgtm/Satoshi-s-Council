@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { allowedUrl, FEEDS, ingestItems, latestNews, newsResponse, normalizeItem, parseFeed, pruneItems, type NewsDb } from "./news.ts";
+import { collectGroup } from "./collect.ts";
 import { fetchFeed } from "./fetch.ts";
 
 const now = new Date("2026-10-02T22:00:00Z");
@@ -10,6 +11,7 @@ const item = { title: "Bitcoin market update", url: "https://www.coindesk.com/ma
 async function database() {
   const db = new PGlite();
   await db.exec(await readFile(new URL("../../../migrations/0076_bitcoin_wire.sql", import.meta.url), "utf8"));
+  await db.exec(await readFile(new URL("../../../migrations/0077_wire_feed_groups.sql", import.meta.url), "utf8"));
   return db;
 }
 const sql = (db: PGlite): NewsDb => ({ query: (text, params) => db.query<Record<string, unknown>>(text, params) });
@@ -44,7 +46,7 @@ test("non-BTC item dropped, title or description accepts Bitcoin/BTC case-insens
 test("source spoofing, lookalike domains and unsafe protocols are rejected", () => {
   for (const url of ["https://coindesk.com.evil.test/btc", "https://evil.test/btc", "javascript:alert(1)", "http://www.coindesk.com/btc", "https://user:pass@www.coindesk.com/btc", "https://www.coindesk.com:123/btc"]) assert.equal(allowedUrl("CoinDesk", url), false);
   assert.equal(allowedUrl("Decrypt", item.url), false);
-  assert.deepEqual(FEEDS.map(feed => feed.source), ["CoinDesk", "The Block", "Decrypt", "Bitcoin Magazine"]);
+  assert.deepEqual(FEEDS.filter(feed => feed.feed === "btc").map(feed => feed.source), ["CoinDesk", "The Block", "Decrypt", "Bitcoin Magazine"]);
 });
 test("endpoint JSON returns latest 30 newest-first, stable ties, no expired/future items", async () => {
   const db = await database();
@@ -96,4 +98,70 @@ test("feed redirects cannot leave publisher allowlist", async () => {
 test("feed errors and oversize XML fail explicitly", async () => {
   await assert.rejects(fetchFeed(FEEDS[0], async () => new Response("unavailable", { status: 404 })), /HTTP 404/);
   await assert.rejects(fetchFeed(FEEDS[0], async () => new Response("x".repeat(2 * 1024 * 1024 + 1))), /exceeds/);
+});
+
+test("AI category sources accept dated headlines without Bitcoin keywords and enforce their hosts", () => {
+  const candidate = { ...item, title: "A new model evaluates reasoning", url: "https://techcrunch.com/2026/10/02/model/" };
+  assert.ok(normalizeItem("TechCrunch AI", candidate, now));
+  assert.equal(normalizeItem("CoinDesk", candidate, now), null);
+  assert.equal(normalizeItem("MIT Tech Review AI", candidate, now), null);
+  assert.equal(normalizeItem("TechCrunch AI", { ...candidate, published_at: "invalid" }, now), null);
+  assert.deepEqual(FEEDS.filter(feed => feed.feed === "ai").map(feed => feed.source), ["TechCrunch AI", "MIT Tech Review AI"]);
+  assert.ok(!FEEDS.some(feed => /Reuters|VentureBeat/.test(feed.source)));
+});
+test("feed migration preserves existing Bitcoin rows and is idempotent; mismatched tags are rejected", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(await readFile(new URL("../../../migrations/0076_bitcoin_wire.sql", import.meta.url), "utf8"));
+    await db.query("insert into news_items(title, source, url, published_at) values($1, 'CoinDesk', $2, $3)", [item.title, item.url, item.published_at]);
+    const migration = await readFile(new URL("../../../migrations/0077_wire_feed_groups.sql", import.meta.url), "utf8");
+    await db.exec(migration); await db.exec(migration);
+    assert.equal((await latestNews(sql(db), now))[0].feed, "btc");
+    await assert.rejects(db.query("insert into news_items(title, source, url, published_at, feed) values('model', 'TechCrunch AI', 'https://techcrunch.com/a', now(), 'btc')"), /check constraint/);
+    await assert.rejects(db.query("insert into news_items(title, source, url, published_at, feed) values('BTC', 'CoinDesk', 'https://www.coindesk.com/b', now(), 'ai')"), /check constraint/);
+  } finally { await db.close(); }
+});
+test("combined API keeps newest 30 per tag; default Bitcoin list is unchanged and has no AI rows", async () => {
+  const db = await database();
+  try {
+    for (let i = 0; i < 35; i++) {
+      await ingestItems(sql(db), "CoinDesk", [{ ...item, url: `${item.url}/${i}` }], now);
+      await ingestItems(sql(db), "TechCrunch AI", [{ ...item, title: "New model", url: `https://techcrunch.com/model/${i}` }], now);
+    }
+    const btc = await (await newsResponse(sql(db), now)).json();
+    const ai = await (await newsResponse(sql(db), now, "ai")).json();
+    const all = await (await newsResponse(sql(db), now, "all")).json();
+    assert.equal(btc.length, 30); assert.equal(ai.length, 30); assert.equal(all.length, 60);
+    assert.ok(btc.every((row: { feed: string }) => row.feed === "btc"));
+    assert.ok(ai.every((row: { feed: string }) => row.feed === "ai"));
+    assert.deepEqual(all.filter((row: { feed: string }) => row.feed === "btc"), btc);
+    assert.deepEqual(all.filter((row: { feed: string }) => row.feed === "ai"), ai);
+  } finally { await db.close(); }
+});
+test("publisher failures stay visible while each independent group persists its successful sources", async () => {
+  const db = await database();
+  try {
+    const load = async (feed: typeof FEEDS[number]) => {
+      if (feed.source === "TechCrunch AI" || feed.source === "The Block") throw new Error("feed HTTP 429");
+      return [{ ...item, url: `https://${feed.hosts[0]}/article`, title: feed.feed === "btc" ? "Bitcoin news" : "New model" }];
+    };
+    const results = await Promise.all([collectGroup(sql(db), "btc", now, load, () => {}), collectGroup(sql(db), "ai", now, load, () => {})]);
+    assert.deepEqual(results, [1, 1]);
+    assert.equal((await latestNews(sql(db), now, "btc")).length, 3);
+    assert.equal((await latestNews(sql(db), now, "ai")).length, 1);
+  } finally { await db.close(); }
+});
+test("one pending group cannot delay its peer and retention is scoped by tag", async () => {
+  const db = await database();
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await db.query("insert into news_items(title, source, url, published_at, feed) values('old AI', 'TechCrunch AI', 'https://techcrunch.com/old', $1, 'ai')", ["2026-09-01"]);
+    const slow = collectGroup(sql(db), "ai", now, async () => { await blocked; return []; }, () => {});
+    await collectGroup(sql(db), "btc", now, async feed => [{ ...item, url: `https://${feed.hosts[0]}/btc` }], () => {});
+    assert.equal((await latestNews(sql(db), now)).length, 4);
+    assert.equal((await db.query("select * from news_items where feed = 'ai'")).rows.length, 1);
+    release(); await slow;
+    assert.equal((await db.query("select * from news_items where feed = 'ai'")).rows.length, 0);
+  } finally { release(); await db.close(); }
 });

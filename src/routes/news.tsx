@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Page } from "@/components/desk/Page";
-import type { NewsItem } from "@/lib/news/news";
+import type { FeedTag, NewsItem } from "@/lib/news/news";
 
 export const Route = createFileRoute("/news")({
-  head: () => ({ meta: [{ title: "Bitcoin Wire · Satoshi's Council" }, { name: "description", content: "Bitcoin headlines from allowlisted publishers. News context only." }] }),
+  validateSearch: (search: Record<string, unknown>): { feed?: "ai" } => ({ feed: search.feed === "ai" ? "ai" : undefined }),
+  head: ({ match }) => ({ meta: [{ title: `${match.search.feed === "ai" ? "AI" : "Bitcoin"} Wire · Satoshi's Council` }, { name: "description", content: `${match.search.feed === "ai" ? "AI" : "Bitcoin"} headlines from allowlisted publishers. News context only.` }] }),
   component: BitcoinWire,
 });
 function relativeTime(published: string, now: number) {
@@ -15,6 +16,23 @@ function relativeTime(published: string, now: number) {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 function BitcoinWire() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const feed: FeedTag = search.feed === "ai" ? "ai" : "btc";
+  const positions = useRef<Record<FeedTag, number>>({ btc: 0, ai: 0 });
+  const tabs = useRef<HTMLButtonElement[]>([]);
+  useLayoutEffect(() => {
+    const saved = positions.current;
+    window.scrollTo({ top: saved[feed], behavior: "instant" });
+    const remember = () => { saved[feed] = window.scrollY; };
+    window.addEventListener("scroll", remember, { passive: true });
+    return () => window.removeEventListener("scroll", remember);
+  }, [feed]);
+  const select = (next: FeedTag) => {
+    if (next === feed) return;
+    positions.current[feed] = window.scrollY;
+    void navigate({ search: { feed: next === "ai" ? "ai" : undefined }, resetScroll: false });
+  };
   const [items, setItems] = useState<NewsItem[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -28,7 +46,7 @@ function BitcoinWire() {
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 15000);
       try {
-        const response = await fetch("/api/news", { cache: "no-store", signal: controller.signal });
+        const response = await fetch("/api/news?feed=all", { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("news unavailable");
         const list: NewsItem[] = await response.json();
         if (!Array.isArray(list)) throw new Error("invalid news response");
@@ -41,16 +59,35 @@ function BitcoinWire() {
     const clock = setInterval(() => setNow(Date.now()), 60 * 1000);
     return () => { disposed = true; controller?.abort(); clearInterval(poll); clearInterval(clock); };
   }, []);
-  return <Page title="Bitcoin Wire" lede="News context — not research, not a SATOSHI call.">
+  const visible = items?.filter(item => item.feed === feed);
+  const name = feed === "ai" ? "AI" : "Bitcoin";
+  return <Page title={`${name} Wire`} lede="News context — not research, not a SATOSHI call.">
+    <div className="sticky top-0 z-20 bg-bg py-2">
+    <div role="tablist" aria-label="Wire feed" className="mb-2 inline-flex rounded-md border border-border bg-surface p-1">
+      {(["btc", "ai"] as const).map((tag, index) => <button key={tag} ref={el => { if (el) tabs.current[index] = el; }}
+        type="button" role="tab" id={`wire-tab-${tag}`} aria-controls="wire-headlines" aria-selected={feed === tag} tabIndex={feed === tag ? 0 : -1}
+        onClick={() => select(tag)} onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const target = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+          tabs.current[target]?.focus(); select(target === 0 ? "btc" : "ai");
+        }} className={`rounded-sm px-4 py-2 font-mono text-ui focus-visible:outline focus-visible:outline-2 ${feed === tag ? "bg-fg text-bg" : "text-muted hover:text-fg"}`}>
+        {tag === "btc" ? "Bitcoin" : "AI"}
+      </button>)}
+    </div>
+    <p className="mb-3 text-micro text-subtle">News context, not desk research. Not a trading signal.</p>
+    </div>
+    <section role="tabpanel" id="wire-headlines" aria-labelledby={`wire-tab-${feed}`}>
     <p className="font-mono text-micro text-subtle">Headlines from independent publishers · refreshes every 5 minutes</p>
-    {failed ? <p role="status" className="mt-4 text-body text-muted">Bitcoin Wire is temporarily unavailable.{items ? " Showing the last loaded headlines." : " Retrying automatically."}</p> : null}
+    {failed ? <p role="status" className="mt-4 text-body text-muted">{name} Wire is temporarily unavailable.{items ? " Showing the last loaded headlines." : " Retrying automatically."}</p> : null}
     {!items && !failed ? <p role="status" className="mt-4 text-body text-muted">Loading headlines…</p> : null}
-    {items?.length === 0 ? <p className="mt-4 text-body text-muted">No Bitcoin headlines in the last 7 days yet.</p> : null}
+    {visible?.length === 0 ? <p className="mt-4 text-body text-muted">No {name} headlines in the last 7 days yet.</p> : null}
     <ul className="mt-6 list-none divide-y divide-border p-0">
-      {items?.map(item => <li key={item.id} className="py-5">
+      {visible?.map(item => <li key={item.id} className="py-5">
         <a href={item.url} target="_blank" rel="noopener noreferrer" className="block rounded-sm font-sans text-body font-medium leading-relaxed text-fg underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`${item.title} (opens in a new tab)`}>{item.title} <span aria-hidden="true">↗</span></a>
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-micro text-muted"><span>{item.source}</span><time dateTime={item.published_at} title={new Date(item.published_at).toLocaleString()}>{relativeTime(item.published_at, now)}</time></p>
       </li>)}
     </ul>
+    </section>
   </Page>;
 }
