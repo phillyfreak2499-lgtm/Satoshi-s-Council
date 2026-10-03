@@ -37,6 +37,8 @@ analytics suppression marker, with no Google loader/config. The bootstrap also
 checks browser `navigator.webdriver` before loading Google. The shared event
 helper respects that marker and repeats the browser check, including its loader
 repair path. `Vary: User-Agent` keeps shared HTML caches from mixing agent variants.
+The middleware-served iPhone install tutorial uses the same server/browser guard
+and preserves its single initial page_view for humans.
 No referrer, IP/ASN, location, engagement or channel-based rules are used; direct
 visits, VPN users and ordinary desktop/mobile browsers remain eligible.
 

@@ -41,3 +41,14 @@ test("GA helper can restore a missing loader and keeps product events parameter-
   assert.match(ga, /googletagmanager\.com\/gtag\/js\?id=/);
   assert.match(ga, /g\("event", name\)/);
 });
+
+test("middleware install tutorial shares bot guard without an unconditional Google tag", () => {
+  const install = read("scripts/install-page.html");
+  const middleware = read("server/middleware/grok-pwa.ts");
+  assert.doesNotMatch(install, /googletagmanager|gtag\(/);
+  assert.match(install, /SC_GA_BOOTSTRAP/);
+  assert.match(middleware, /suppressGaForAgent\(event\.req\.headers\.get\("user-agent"\)\)/);
+  assert.match(middleware, /installPageTemplate\.replace/);
+  assert.match(middleware, /GA_BOOTSTRAP_SCRIPT/);
+  assert.match(middleware, /window\.gtag\('event', 'page_view'\)/);
+});

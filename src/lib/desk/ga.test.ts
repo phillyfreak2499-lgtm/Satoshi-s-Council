@@ -15,6 +15,9 @@ import {
 test("explicit bots are suppressed; desktop, mobile and direct users remain eligible", () => {
   for (const ua of [
     "Googlebot/2.1",
+    "AdsBot-Google",
+    "PetalBot",
+    "MJ12bot",
     "Mozilla/5.0 HeadlessChrome/130",
     "python-requests/2.32",
     "curl/8.0",

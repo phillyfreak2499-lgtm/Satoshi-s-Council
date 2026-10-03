@@ -15,7 +15,7 @@ export const GA_MEASUREMENT_ID = "G-JMQGD1WTVT";
 // Explicit automation signatures only. Direct visits, missing referrers, VPNs,
 // and unknown/empty agents are not evidence of a bot.
 const AUTOMATION_AGENT =
-  /\b(?:bot|crawler|spider)\b|googlebot|bingbot|duckduckbot|yandexbot|baiduspider|bytespider|gptbot|chatgpt-user|oai-searchbot|claudebot|claude-user|perplexitybot|facebookexternalhit|meta-externalagent|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|applebot|ahrefsbot|semrushbot|headlesschrome|phantomjs|playwright|puppeteer|selenium|python-requests|python-urllib|aiohttp|curl\/|wget\/|go-http-client|node-fetch|undici|axios\/|amazonbot|amazon-route53-health-check-service|elb-healthchecker|pingdom|uptimerobot|kalshi-bot-access/i;
+  /\b(?:bot|crawler|spider)\b|adsbot-google|petalbot|mj12bot|dotbot|rogerbot|screaming frog|googlebot|bingbot|duckduckbot|yandexbot|baiduspider|bytespider|gptbot|chatgpt-user|oai-searchbot|claudebot|claude-user|perplexitybot|facebookexternalhit|meta-externalagent|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|applebot|ahrefsbot|semrushbot|headlesschrome|phantomjs|playwright|puppeteer|selenium|python-requests|python-urllib|aiohttp|curl\/|wget\/|go-http-client|node-fetch|undici|axios\/|amazonbot|amazon-route53-health-check-service|elb-healthchecker|pingdom|uptimerobot|kalshi-bot-access/i;
 
 export function suppressGaForAgent(userAgent: string | undefined | null): boolean {
   return AUTOMATION_AGENT.test(userAgent ?? "");
