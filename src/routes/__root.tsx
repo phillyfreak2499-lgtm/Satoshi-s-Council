@@ -2,11 +2,22 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { GaPageViews } from "@/components/analytics/GaPageViews";
+import { createIsomorphicFn } from "@tanstack/react-start";
+import { GA_BOOTSTRAP_SCRIPT, suppressGaForAgent } from "@/lib/desk/ga";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Satoshi's Council";
 
+const analyticsBlocked = createIsomorphicFn()
+  .server(async () => {
+    const { getRequestHeader } = await import("@tanstack/react-start/server");
+    return suppressGaForAgent(getRequestHeader("user-agent"));
+  })
+  .client(() => navigator.webdriver === true || suppressGaForAgent(navigator.userAgent));
+
 export const Route = createRootRoute({
+  loader: async () => ({ analyticsBlocked: await analyticsBlocked() }),
+  headers: () => ({ Vary: "User-Agent" }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -25,7 +36,12 @@ export const Route = createRootRoute({
       { rel: "icon", type: "image/png", sizes: "16x16", href: "/icon-16.png" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "alternate", type: "application/atom+xml", title: "Satoshi's Council — board updates", href: "/feed.xml" },
+      {
+        rel: "alternate",
+        type: "application/atom+xml",
+        title: "Satoshi's Council — board updates",
+        href: "/feed.xml",
+      },
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
       {
         rel: "preconnect",
@@ -42,24 +58,18 @@ export const Route = createRootRoute({
       },
     ],
   }),
-  component: () => (
+  component: RootDocument,
+});
+
+function RootDocument() {
+  const { analyticsBlocked } = Route.useLoaderData();
+  return (
     <html lang="en" className="antialiased" suppressHydrationWarning>
       <head>
-        {/* Google tag (gtag.js). Page views are emitted explicitly by GaPageViews. */}
-        <script
-          async
-          data-sc-ga4="loader"
-          src="https://www.googletagmanager.com/gtag/js?id=G-JMQGD1WTVT"
-        />
+        {/* Known bots receive no Google loader or config. Hydration cannot repair it. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-window.gtag = gtag;
-gtag('js', new Date());
-
-gtag('config', 'G-JMQGD1WTVT', { send_page_view: false });
-window.__scGa4Configured = true;`,
+            __html: analyticsBlocked ? "window.__scGa4Blocked = true;" : GA_BOOTSTRAP_SCRIPT,
           }}
         />
         <HeadContent />
@@ -73,5 +83,5 @@ window.__scGa4Configured = true;`,
         <Scripts />
       </body>
     </html>
-  ),
-});
+  );
+}

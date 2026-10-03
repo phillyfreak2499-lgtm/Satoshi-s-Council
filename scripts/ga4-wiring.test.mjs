@@ -11,10 +11,14 @@ const feedback = read("src/components/desk/Feedback.tsx");
 const arena = read("src/components/desk/ArenaPanel.tsx");
 
 test("GA4 root wiring uses the production measurement id without an automatic duplicate pageview", () => {
-  assert.match(root, /G-JMQGD1WTVT/);
-  assert.match(root, /send_page_view: false/);
+  assert.match(ga, /G-JMQGD1WTVT/);
+  assert.match(ga, /send_page_view: false/);
   assert.match(root, /<GaPageViews \/>/);
-  assert.match(root, /data-sc-ga4="loader"/);
+  assert.match(root, /GA_BOOTSTRAP_SCRIPT/);
+  assert.match(root, /getRequestHeader\("user-agent"\)/);
+  assert.match(root, /analyticsBlocked \? "window\.__scGa4Blocked = true;" : GA_BOOTSTRAP_SCRIPT/);
+  assert.doesNotMatch(root, /src="https:\/\/www\.googletagmanager/);
+  assert.match(ga, /script\.dataset\.scGa4 = 'loader'/);
 });
 
 test("GA4 tracks the initial route and SPA navigations through one route bridge", () => {
