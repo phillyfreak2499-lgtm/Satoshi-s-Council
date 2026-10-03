@@ -246,7 +246,7 @@ test("the roster snapshot is allowlisted current state and refuses demo or malfo
     settings: { source: "live" },
   };
   const s = parseRosterSnapshot(frame)!;
-  assert.deepEqual(s, { as_of: AFTER, ticker: windowTicker(BASE_CLOSE), close_time: BASE_CLOSE, rows: [{ seat: "STRIKE", selectable_live_cards: 1, authority_ready_cards: 1, authority_hold_reason: "" }] });
+  assert.deepEqual(s, { as_of: AFTER, ticker: windowTicker(BASE_CLOSE), close_time: BASE_CLOSE, chair_lean: "UP", tick_age_s: null, rows: [{ seat: "STRIKE", selectable_live_cards: 1, authority_ready_cards: 1, authority_hold_reason: "" }] });
   assert.equal(parseRosterSnapshot({ ...frame, snap: { ticker: "KXBTC15M-DEMO", close_time: 1 } }), null);
   assert.equal(parseRosterSnapshot({ ok: false, error: "x" }), null);
   assert.equal(parseRosterSnapshot({ ...frame, as_of: undefined }), null);

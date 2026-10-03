@@ -1,7 +1,7 @@
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { RosterEvidence } from "./RosterEvidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
@@ -9,18 +9,17 @@ import { SEAT_IDS } from "@/lib/desk/types";
 import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT, type SeatAvailability } from "@/lib/desk/council-public";
 import { LAYER_LABEL, REFUSAL_LABEL, COUNCIL_ROOM_SCHEMA_VERSION } from "@/lib/desk/council-room-narration";
 import {
-  applyDelivery,
-  applyFailure,
   createPoller,
   feedPhase,
   initialFeed,
-  markGap,
   FEED_INTERVAL_MS,
   PHASE_LABEL,
   type FeedEvent,
   type FeedState,
 } from "@/lib/desk/council-room-feed";
 import { parseRosterSnapshot, type RosterSnapshot } from "@/lib/desk/council-room-snapshot";
+import { buildRoomModel, createChamberCycle, emptySnapshotState, type SnapshotState } from "@/lib/desk/council-room-lite";
+import { CouncilRoomLite } from "./CouncilRoomLite";
 import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
@@ -456,31 +455,29 @@ function ageText(fromMs: number | null, nowMs: number | null): string {
 
 /**
  * Recorded-event feed for the Chamber: one serialized GET at a time, paused while
- * the tab is hidden or the browser is offline, replay after any gap. The roster
- * snapshot is read in the same cycle and only while the roster is on screen.
+ * the tab is hidden or the browser is offline, replay after any gap. The
+ * allowlisted current-state snapshot (Phase 2 room and roster) is read once in
+ * the same cycle, right after the event read; it never feeds the event list.
  */
 function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
   const [seed] = useState<ChamberStatement[]>(initial);
   const [feed, setFeed] = useState<FeedState>(() => initialFeed(seed, receivedMs));
-  const [snapshot, setSnapshot] = useState<{ value: RosterSnapshot | null; read: boolean }>({ value: null, read: false });
+  const [snapshot, setSnapshot] = useState<SnapshotState>(emptySnapshotState);
   const [env, setEnv] = useState({ hidden: false, online: true });
   const [now, setNow] = useState<number | null>(null);
-  const wantSnapshot = useRef(false);
 
   useEffect(() => {
     let alive = true;
+    const cycle = createChamberCycle({
+      readEvents: listChamberSpeech,
+      readSnapshot: readRosterSnapshot,
+      now: () => Date.now(),
+      updateFeed: setFeed,
+      updateSnapshot: setSnapshot,
+      isAlive: () => alive,
+    });
     const poller = createPoller({
-      read: async () => {
-        const rows = await listChamberSpeech();
-        if (wantSnapshot.current) {
-          const value = await readRosterSnapshot().catch(() => null);
-          if (alive) setSnapshot({ value, read: true });
-        }
-        return rows;
-      },
-      onDelivery: (rows, at) => alive && setFeed((f) => applyDelivery(f, rows, at)),
-      onFailure: (error, at) => alive && setFeed((f) => applyFailure(f, error, at)),
-      onGap: () => alive && setFeed((f) => markGap(f)),
+      ...cycle,
       now: () => Date.now(),
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (handle) => window.clearTimeout(handle as number),
@@ -517,7 +514,7 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
     return () => window.clearTimeout(handle);
   }, [env.hidden, feed.last_attempt_ms]);
 
-  return { feed, snapshot, env, now, wantSnapshot };
+  return { feed, snapshot, env, now };
 }
 
 /**
@@ -553,13 +550,13 @@ export function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden:
 }
 
 export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberStatement[]; receivedMs: number }) {
-  const { feed, snapshot, env, now, wantSnapshot } = useChamberFeed(initial, receivedMs);
+  const { feed, snapshot, env, now } = useChamberFeed(initial, receivedMs);
   const loaded = feed.last_success_ms != null || feed.events.length > 0 || feed.failures > 0;
 
   const rows = feed.events;
   const exchanges = useMemo(() => compactRepeatedWaits(groupExchanges(rows)), [rows]);
   const quietFloor = exchanges.length > 0 && waitFingerprint(exchanges[0]) !== null;
-  wantSnapshot.current = quietFloor;
+  const room = useMemo(() => buildRoomModel(snapshot, feed, now, env), [snapshot, feed, now, env]);
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -583,7 +580,8 @@ export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberSta
         </section>
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={feed.events[0]?.statement ?? null} loaded={loaded} /> : null}
-        {quietFloor ? <ChamberRoster rows={snapshot.value?.rows ?? []} asOf={snapshot.value?.as_of ?? null} pending={!snapshot.read} /> : null}
+        <CouncilRoomLite model={room} />
+        {quietFloor ? <ChamberRoster rows={snapshot.value?.rows ?? []} asOf={snapshot.last_success_ms != null ? (snapshot.value?.as_of ?? null) : null} pending={snapshot.last_attempt_ms == null} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">

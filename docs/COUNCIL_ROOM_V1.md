@@ -158,3 +158,99 @@ This change removes it. The "Meet the Council" roster is shown only on the quiet
 **Fixtures are SYNTHETIC.** The build environment could not reach the public site (egress denied), so no real public rows were captured. `src/lib/desk/council-room.fixtures.ts` generates every fixture through the real producers, the real Phase 1A validator and the real `statementFromEvent`. Sanitized public captures can replace them when supplied.
 
 Test-scope conflict (reported per R2): `scripts/council-voice-rails.test.mjs` asserted that `/chamber` carried voice copy and a `source="chamber"` Hear button. Those two assertions are inverted to assert their absence. The Floor-strip and server-side voice assertions are unchanged.
+
+## 9. Phase 2 — lightweight live room (CR-CLAUDE-002)
+
+Phase 2 adds a small 2D room to `/chamber`. It uses semantic HTML, CSS and inline SVG only, and sits above the Phase 1 text feed. The text feed stays the canonical record and evidence surface. Nothing in §1–§8 changes.
+
+### 9.1 Inputs (no new reads)
+
+| Input | Source | What the room may show |
+|---|---|---|
+| Recorded events | The Phase 1 feed (§6): the same serialized `listChamberSpeech` GET, adapter and dedupe | The latest recorded line per layer, and flashes |
+| Current state | The existing public GET `/frame`, allowlisted by `parseRosterSnapshot` | Seat reads, Chair state, seat availability |
+
+`parseRosterSnapshot` now also allowlists four things, each exactly as the server sends it:
+- per-seat `lean` (`UP`/`DOWN`/`WAIT`, otherwise unknown)
+- `chair.lean` (same values)
+- the frame's `tick_age_s`
+- `snap.ticker` / `snap.close_time`
+
+Nothing else is read. Demo frames are still refused.
+
+**Cadence change, stated plainly.**
+- Phase 1 read `/frame` only while the quiet-floor roster was on screen.
+- Phase 2 reads it once per Chamber cycle, inside the same serialized poller and right after the event read: at most one `/frame` GET every 12 s, only while the tab is visible and the browser is online.
+- The event read cadence is unchanged.
+- There is no new endpoint, SSE, WebSocket, engine start or `server-engine` import.
+
+### 9.2 State vs event (never combined silently)
+
+- **Seat lights are current state.** Each seat shows its snapshot read (UP / DOWN / WAIT) under the heading "Current state · seat reads".
+  - Retired seats (ODDS, CHEAP, FADE) and pit-crew seats (WARDEN, ORBIT, WIRE) show their role and no vote mark.
+  - A seat without a usable snapshot value shows "unknown". It never shows WAIT.
+- **SATOSHI / Chair** has two separately labelled lines:
+  - "Current state" from `chair.lean` in the snapshot.
+  - "Last recorded" from the newest Chair-layer narration event (recorded time shown).
+  - Neither line fills in for the other.
+- **Paper book** shows only the newest recorded `book`-layer narration event: a canonical call id, as defined in §3. A position is never inferred from a seat read, a Chair lean or a price. With no such event in the retained feed, it says "none in retained recorded events · position unknown".
+- **Integrity (WARDEN)** and **Lab (ALCHEMIST)** tiles show only their newest recorded event.
+- **A snapshot change alone never creates narration, an event claim or a flash.** The room model takes the current snapshot and the feed. It keeps no previous snapshot, so it cannot compute a diff.
+
+Visual vocabulary. Shape plus text, never colour alone:
+- open circle = seat read (research, current state)
+- diamond = Chair (SATOSHI)
+- filled square = recorded paper call
+- dashed outline = unknown or unavailable
+
+### 9.3 Flashes
+
+A tile or seat flashes only when a feed event has `arrival === "fresh"` (§6). That means the event was first delivered on a continuous follow-up read and was not recorded before rows already seen.
+
+| Fresh event layer | Flash target |
+|---|---|
+| chair, book | the SATOSHI tile and the paper-book tile respectively |
+| integrity | WARDEN tile |
+| research | Lab tile |
+| conditions | the named seat, if it is one of the 21 |
+
+History, replay after a gap, late rows, duplicates and reconnect deliveries are never `fresh`, so they never flash. The flash lasts until the next delivery, when `fresh` becomes `live`.
+
+Under `prefers-reduced-motion` or `html[data-motion="reduce"]`, the flash is a static outline with no animation. There is no idle or looping animation anywhere in the room.
+
+### 9.4 Snapshot status
+
+The room shows one explicit snapshot status:
+
+| Status | When |
+|---|---|
+| loading | no snapshot read yet |
+| current | last read succeeded within 36 s |
+| stale | the latest read failed after an earlier success, or the last success was more than 36 s ago; values are dimmed and kept with their read time |
+| unavailable | the read failed or the frame was refused, and there is no earlier success |
+| disconnected | browser offline, or 3 or more consecutive snapshot failures |
+| paused | tab hidden |
+
+**A failed event read is a failed refresh cycle for the snapshot too.** Each cycle reads events first, then `/frame`. If the event read fails, the `/frame` read is skipped (no extra request). The skip counts as one failed snapshot refresh:
+- The last good value and its original read time are kept.
+- The status becomes stale immediately, or unavailable if nothing was ever read.
+- After 3 consecutive failed cycles, it becomes disconnected and seats show unknown.
+- A cycle where both reads succeed resets the failure count.
+- An event success followed by a `/frame` failure counts once, through the same path.
+
+No cycle counts twice. None of these transitions creates an event, a flash, or a WAIT. This wiring lives in `createChamberCycle` (`council-room-lite.ts`), which the page hook uses as is.
+
+When the status is not current or stale, seats show unknown. Missing data is never shown as WAIT or quiet. The read time and the server's reported `tick_age_s` are shown as reported.
+
+### 9.5 Accessibility
+
+- Seats are non-interactive list items (`<ul>` with 21 `<li>`). There are no controls.
+- The reading order is: room status, SATOSHI, paper book, integrity, lab, then seats.
+- Every state has text. SVG marks are `aria-hidden`.
+- One polite live region announces only snapshot-status changes. Ages and times sit outside it. The Phase 1 `FeedStatus` live region is unchanged.
+- Focus-visible styles cover the room's single "Jump to recorded exchanges" link.
+- The layout works at 390 px and 1280 px without horizontal overflow.
+
+### 9.6 Out of scope
+
+Phase 3 remains dormant: `SHOW_CINEMATIC_ROOM = false`, with no Three.js, canvas, WebGL, models, audio, voice or new assets.
