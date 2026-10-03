@@ -11,13 +11,13 @@ import { adaptStatement, COUNCIL_ROOM_SCHEMA_VERSION, type NarrationEvent } from
 import { CLOSE, RECEIVED, SYNTHETIC, T0, TICKER, call, snap } from "./council-room.fixtures.ts";
 import type { CallLogRow } from "./types.ts";
 
-function ok(s: ChamberStatement, received: number | null = RECEIVED): NarrationEvent {
+function ok(s: ChamberStatement, received: number = RECEIVED): NarrationEvent {
   const r = adaptStatement(s, received);
   assert.ok(r.ok, r.ok ? "" : `${r.refusal.reason}: ${r.refusal.detail}`);
   return r.event;
 }
 
-function refused(s: unknown, reason: string, received: number | null = RECEIVED) {
+function refused(s: unknown, reason: string, received: number = RECEIVED) {
   const r = adaptStatement(s as ChamberStatement, received);
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.refusal.reason, reason, r.refusal.detail);
@@ -41,8 +41,16 @@ test("every supported producer traces to its stored source, time and template", 
   }
 });
 
-test("rows delivered with the server page carry no invented receipt time", () => {
-  assert.equal(ok(SYNTHETIC.book(), null).received_at, null);
+test("every rendered line needs a real receipt time; none is invented", () => {
+  const s = SYNTHETIC.book();
+  for (const bad of [null, Number.NaN, 0, -1]) refused(s, "missing-receipt-time", bad as unknown as number);
+  const server = Date.parse(s.occurred_at) + 5_000;
+  assert.equal(ok(s, server).received_at, new Date(server).toISOString());
+});
+
+test("a page-load row recorded beyond the future skew of the server receipt is refused", () => {
+  const s = SYNTHETIC.sweep();
+  refused(s, "future-recorded-time", Date.parse(s.occurred_at) - 10 * 60_000);
 });
 
 test("narration is deterministic and never echoes stored prose as the headline", () => {
@@ -117,6 +125,21 @@ test("window rollover and identity disagreements are refused", () => {
   refused({ ...s, evidence: { ...s.evidence, close_time: CLOSE + 1 } }, "window-identity");
   refused({ ...s, source_id: `${TICKER}:${CLOSE + 900_000}` }, "window-identity");
   refused({ ...s, evidence: { ...s.evidence, ticker: "" } }, "window-identity");
+});
+
+test("an unverifiable ticker is withheld even when key, source and close agree", () => {
+  const s = SYNTHETIC.wait();
+  const junk = "JUNK-TICKER";
+  const selfConsistent = {
+    ...s,
+    event_key: s.event_key.replace(TICKER, junk),
+    source_id: `${junk}:${CLOSE}`,
+    evidence: { ...s.evidence, ticker: junk },
+  };
+  assert.ok(selfConsistent.event_key.includes(`:${junk}:${CLOSE}`));
+  refused(selfConsistent, "window-identity");
+  const b = SYNTHETIC.book();
+  refused({ ...b, event_key: b.event_key.replace(TICKER, junk), source_id: `${junk}:${CLOSE}`, evidence: { ...b.evidence, ticker: junk } }, "window-identity");
 });
 
 test("unknown or mismatched record kinds are refused, not guessed", () => {

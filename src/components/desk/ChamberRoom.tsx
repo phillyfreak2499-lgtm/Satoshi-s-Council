@@ -221,7 +221,7 @@ function Evidence({ row }: { row: FeedEvent }) {
           <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">source </dt><dd className="inline break-all">{row.source.table} · {row.source.source_type}:{row.source.source_id}</dd></div>
           <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">event id </dt><dd className="inline break-all">{row.event_id}</dd></div>
           <div><dt className="inline text-muted">recorded </dt><dd className="inline tabular">{row.recorded_at}</dd></div>
-          <div><dt className="inline text-muted">received </dt><dd className="inline tabular">{row.received_at ?? "with page load"}</dd></div>
+          <div><dt className="inline text-muted">received </dt><dd className="inline tabular">{row.received_at}</dd></div>
           <div><dt className="inline text-muted">template </dt><dd className="inline">{row.template_key} · schema v{COUNCIL_ROOM_SCHEMA_VERSION}</dd></div>
           <div><dt className="inline text-muted">build </dt><dd className="inline">not recorded on this source</dd></div>
           <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">stored wording </dt><dd className="inline">{row.archival_text}</dd></div>
@@ -459,9 +459,9 @@ function ageText(fromMs: number | null, nowMs: number | null): string {
  * the tab is hidden or the browser is offline, replay after any gap. The roster
  * snapshot is read in the same cycle and only while the roster is on screen.
  */
-function useChamberFeed(initial: ChamberStatement[]) {
+function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
   const [seed] = useState<ChamberStatement[]>(initial);
-  const [feed, setFeed] = useState<FeedState>(() => initialFeed(seed));
+  const [feed, setFeed] = useState<FeedState>(() => initialFeed(seed, receivedMs));
   const [snapshot, setSnapshot] = useState<{ value: RosterSnapshot | null; read: boolean }>({ value: null, read: false });
   const [env, setEnv] = useState({ hidden: false, online: true });
   const [now, setNow] = useState<number | null>(null);
@@ -520,31 +520,40 @@ function useChamberFeed(initial: ChamberStatement[]) {
   return { feed, snapshot, env, now, wantSnapshot };
 }
 
-function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden: boolean; online: boolean }; now: number | null }) {
+/**
+ * Only meaningful transitions sit in the polite live region: phase, read error and
+ * withheld-record counts. Read times and ages change every few seconds, so they
+ * render outside it and are never announced.
+ */
+export function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden: boolean; online: boolean }; now: number | null }) {
   const phase = feedPhase(feed, now, env);
   const newest = feed.events[0] ?? null;
   const refusedByReason = new Map<string, number>();
   for (const r of feed.refused) refusedByReason.set(REFUSAL_LABEL[r.reason], (refusedByReason.get(REFUSAL_LABEL[r.reason]) ?? 0) + 1);
   return (
-    <div className="mb-3 rounded-md border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-subtle" role="status" aria-live="polite" data-phase={phase}>
-      <div className="text-fg">{PHASE_LABEL[phase]}</div>
-      <div>
-        Last successful read: {feed.last_success_ms != null ? <>{utcStamp(new Date(feed.last_success_ms).toISOString())} · {ageText(feed.last_success_ms, now)}</> : "none yet in this tab"}
+    <div className="mb-3 rounded-md border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-subtle" data-phase={phase}>
+      <div role="status" aria-live="polite" aria-atomic="true" data-feed-announce="">
+        <div className="text-fg">{PHASE_LABEL[phase]}</div>
+        {feed.last_error ? <div>Read error: {feed.last_error}</div> : null}
+        {refusedByReason.size ? (
+          <div>Withheld from narration: {[...refusedByReason].map(([why, n]) => `${n} · ${why}`).join("; ")}</div>
+        ) : null}
       </div>
-      <div>
-        Newest recorded event: {newest ? <>{utcStamp(newest.recorded_at)} · {ageText(newest.recorded_ms, now)}</> : "none"}
+      <div data-feed-clock="">
+        <div>
+          Last successful read: {feed.last_success_ms != null ? <>{utcStamp(new Date(feed.last_success_ms).toISOString())} · {ageText(feed.last_success_ms, now)}</> : "none yet in this tab"}
+        </div>
+        <div>
+          Newest recorded event: {newest ? <>{utcStamp(newest.recorded_at)} · {ageText(newest.recorded_ms, now)}</> : "none"}
+        </div>
       </div>
-      {feed.last_error ? <div>Read error: {feed.last_error}</div> : null}
-      {refusedByReason.size ? (
-        <div>Withheld from narration: {[...refusedByReason].map(([why, n]) => `${n} · ${why}`).join("; ")}</div>
-      ) : null}
       <div>Reads every {FEED_INTERVAL_MS / 1000}s while this tab is visible. Rows loaded with the page or after a gap are marked History.</div>
     </div>
   );
 }
 
-export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) {
-  const { feed, snapshot, env, now, wantSnapshot } = useChamberFeed(initial);
+export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberStatement[]; receivedMs: number }) {
+  const { feed, snapshot, env, now, wantSnapshot } = useChamberFeed(initial, receivedMs);
   const loaded = feed.last_success_ms != null || feed.events.length > 0 || feed.failures > 0;
 
   const rows = feed.events;

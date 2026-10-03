@@ -53,8 +53,8 @@ export type TemplateKey =
 export type WindowIdentity = {
   ticker: string;
   close_time: number;
-  /** false only when the ticker parsed and disagreed; null when the format is unverifiable. */
-  ticker_agrees: boolean | null;
+  /** Always true: a ticker whose own close cannot be parsed and matched is refused. */
+  ticker_agrees: true;
 };
 
 export type NarrationEvent = {
@@ -71,8 +71,11 @@ export type NarrationEvent = {
   archival_text: string;
   recorded_at: string;
   recorded_ms: number;
-  /** When this client received the row. Null for rows delivered with the server page. */
-  received_at: string | null;
+  /**
+   * When the row was received: the server's clock right after the page-load read,
+   * or this client's clock right after a follow-up read. Never the recorded time.
+   */
+  received_at: string;
   window: WindowIdentity | null;
   seat: string | null;
   source: {
@@ -92,6 +95,7 @@ export type RefusalReason =
   | "malformed-identity"
   | "unknown-record"
   | "invalid-recorded-time"
+  | "missing-receipt-time"
   | "future-recorded-time"
   | "window-identity"
   | "rollover-mismatch"
@@ -145,10 +149,15 @@ function windowOf(
   if (agrees === false) {
     return { event_id: s.event_key, reason: "rollover-mismatch", detail: "Ticker's own close time disagrees with the recorded window." };
   }
+  // The desk trades one verified ticker family (KXBTC15M-YYMMMDDHHMM-MM). A ticker the
+  // canonical parser cannot read carries no checkable close, so it is not narrated.
+  if (agrees !== true) {
+    return { event_id: s.event_key, reason: "window-identity", detail: "Ticker identity cannot be verified against its own encoded close." };
+  }
   if (recordedMs < close - WINDOW_GRID_MS - CLOSE_TOLERANCE_MS || recordedMs > close + CLOSE_TOLERANCE_MS) {
     return { event_id: s.event_key, reason: "rollover-mismatch", detail: "Recorded outside the window it names." };
   }
-  return { ticker, close_time: close, ticker_agrees: agrees };
+  return { ticker, close_time: close, ticker_agrees: true };
 }
 
 function isRefusal(v: WindowIdentity | Refusal): v is Refusal {
@@ -262,17 +271,21 @@ function conditions(s: ChamberStatement): Built | Refusal {
 }
 
 /**
- * Adapt one mapped statement. `receivedMs` is this client's receipt time, or
- * null for rows rendered with the server page (no client clock is invented).
+ * Adapt one mapped statement. `receivedMs` is a real receipt time: the server's
+ * clock after the page-load read, or this client's clock after a later read.
+ * A row without a usable receipt time is refused, so every rendered line carries one.
  */
-export function adaptStatement(s: ChamberStatement, receivedMs: number | null): AdaptResult {
+export function adaptStatement(s: ChamberStatement, receivedMs: number): AdaptResult {
   const id = typeof s?.event_key === "string" ? s.event_key : "";
   if (!KEY_RE.test(id) || !isSystemSourceType(String(s?.source_type ?? "")) || !str(s?.source_id) || !s?.evidence) {
     return refuse(id || "(missing)", "malformed-identity", "Record lacks a valid event key, source type or source id.");
   }
   const recordedMs = Date.parse(String(s.occurred_at ?? ""));
   if (!Number.isFinite(recordedMs)) return refuse(id, "invalid-recorded-time", "Recorded time does not parse.");
-  if (receivedMs != null && recordedMs > receivedMs + FUTURE_SKEW_MS) {
+  if (typeof receivedMs !== "number" || !Number.isFinite(receivedMs) || receivedMs <= 0) {
+    return refuse(id, "missing-receipt-time", "Row has no real receipt time.");
+  }
+  if (recordedMs > receivedMs + FUTURE_SKEW_MS) {
     return refuse(id, "future-recorded-time", "Recorded time is later than this receipt.");
   }
 
@@ -307,7 +320,7 @@ export function adaptStatement(s: ChamberStatement, receivedMs: number | null): 
       archival_text: s.original_text ?? s.text,
       recorded_at: new Date(recordedMs).toISOString(),
       recorded_ms: recordedMs,
-      received_at: receivedMs == null ? null : new Date(receivedMs).toISOString(),
+      received_at: new Date(receivedMs).toISOString(),
       source: { table: COUNCIL_ROOM_SOURCE, event_key: id, source_type: s.source_type, source_id: s.source_id },
       build: null,
       statement: s,
@@ -328,6 +341,7 @@ export const REFUSAL_LABEL: Record<RefusalReason, string> = {
   "malformed-identity": "missing or inconsistent identity",
   "unknown-record": "unsupported record kind",
   "invalid-recorded-time": "unreadable recorded time",
+  "missing-receipt-time": "no receipt time",
   "future-recorded-time": "recorded time after receipt",
   "window-identity": "unusable window identity",
   "rollover-mismatch": "window rollover mismatch",

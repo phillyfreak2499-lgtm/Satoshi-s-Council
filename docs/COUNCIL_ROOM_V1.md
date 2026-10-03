@@ -62,8 +62,11 @@ No build or commit identity is recorded on these rows. `build` is always `null` 
 Every narration event also carries:
 - `schema_version` (1) and `event_id` (= `event_key`)
 - `source {table, event_key, source_type, source_id}`
-- `recorded_at`, and `received_at` (this client's receipt time, or `null` for rows that came with the server page)
-- `window {ticker, close_time, ticker_agrees}` and `seat` where present
+- `recorded_at`, and `received_at`, which is always a real receipt time:
+  - for rows that came with the page, the clock right after the route loader's bounded read (the server's clock during SSR, serialized with the rows, so hydration renders the same value);
+  - for later rows, this client's clock right after its read.
+  It is never presented as the recorded or event time. A row without a usable receipt time is refused (`missing-receipt-time`).
+- `window {ticker, close_time, ticker_agrees: true}` and `seat` where present
 - `template_key`, plus the stored wording as `archival_text`
 
 ## 3. Research vs Chair decision vs paper position
@@ -100,8 +103,10 @@ The three layers are kept separate on purpose. Each line shows its layer label.
 | `event_key` fails the Phase 1A key regex, `source_type` is unknown, or `source_id`/evidence is missing | `malformed-identity` |
 | The (type, speaker, source_type, evidence kind) combination is unsupported | `unknown-record` |
 | `occurred_at` does not parse | `invalid-recorded-time` |
-| `occurred_at` is more than 120 s after the client's receipt | `future-recorded-time` |
+| No real receipt time (missing, non-finite or ≤ 0) | `missing-receipt-time` |
+| `occurred_at` is more than 120 s after the receipt time. This applies to page-load rows too, checked against the server receipt. | `future-recorded-time` |
 | Window-bound row: no ticker, `close_time` off the 15-minute grid, or `source_id`/`event_key` disagreeing with the window | `window-identity` |
+| Window-bound row: the canonical parser (`tickerCloseMs`) cannot read the ticker, so its identity cannot be verified (`tickerAgrees === null`). The desk trades one verified family, `KXBTC15M-YYMMMDDHHMM-MM`, and no valid family is known for which the parser intentionally returns null. | `window-identity` |
 | Window-bound row: the ticker's own encoded close disagrees (`tickerAgrees === false`), or it was recorded outside `[close − 15 min − 90 s, close + 90 s]` | `rollover-mismatch` (the 2026-09-10 stale-ticker failure) |
 | Book row without a matching canonical `call_id` | `book-identity` |
 | Required typed fields are missing (wait reason, feed state, milestone, side/price) | `missing-fields` |
@@ -117,6 +122,7 @@ Narration templates are deterministic, neutral and third-person. They are built 
 - **Replay:** rows loaded with the server page, the first client read, and the first read after any gap (hidden, offline or failed read) are labelled **History** and never flash. A row seen first on a continuous follow-up read is **New** and flashes once. Reduced motion turns the flash off. After that it reads "Received live". An older row that arrives after newer ones is "Arrived late" and does not flash.
 - **Dedupe and order:** rows are deduped by `event_id`, including ids already scrolled out (up to 500 remembered). Order is newest `recorded_at` first, then `event_id`. At most 60 rows are retained.
 - **Status:** the panel distinguishes loading, connected, empty, stale (more than 36 s since the last success), error (the last read failed; earlier rows stay as history), disconnected (offline or 3+ failures) and paused (hidden). It shows the last successful receipt and the newest recorded event's age separately. A successful read that brings nothing new does not count as desk activity.
+- **Accessibility:** one polite live region (`role="status"`, `aria-atomic`) holds only meaningful transitions: the phase label, the read error and the withheld-record counts. The read times and ages update every few seconds, so they render in a separate block outside the live region and are never announced. `scripts/council-room-a11y.test.mjs` renders the panel at different clock times and asserts the live region's content is identical.
 
 ### Current state snapshot (separate from events)
 
@@ -144,9 +150,10 @@ This change removes it. The "Meet the Council" roster is shown only on the quiet
 
 ## 8. Tests
 
-- `src/lib/desk/council-room-narration.test.ts` covers provenance and template determinism, research/Chair/book separation, book identity, pilot exclusion, invalid/future dates, malformed identity, rollover/window mismatches, unknown kinds, and agreement-withheld.
-- `src/lib/desk/council-room-feed.test.ts` covers history vs fresh, duplicates, deterministic order and tie-break, late arrivals, gap replay, failure preservation, all phases, no-news reads, bounded retention, refused records, the no-overlap poller, hidden/offline pause, the post-stop drop, snapshot allowlisting and snapshot ≠ event.
-- `scripts/council-room-rails.test.mjs` covers pure modules (no writer, DB, engine, network or voice), the text-only Chamber, no engine/`setInterval`/POST, "Recorded" (not "Live") headings, the stage staying disabled, the source staying the bounded public GET, and decision producers having no reverse dependency.
+- `src/lib/desk/council-room-narration.test.ts` covers provenance and template determinism, research/Chair/book separation, book identity, pilot exclusion, invalid/future dates, malformed identity, rollover/window mismatches, unverifiable (junk) tickers with self-consistent key/source/close, required real receipt time, future-skew refusal against the receipt, unknown kinds, and agreement-withheld.
+- `src/lib/desk/council-room-feed.test.ts` covers server receipt time on page-load rows (including refusing future-dated and receipt-less rows), history vs fresh, duplicates, deterministic order and tie-break, late arrivals, gap replay, failure preservation, all phases, no-news reads, bounded retention, refused records, the no-overlap poller, hidden/offline pause, the post-stop drop, snapshot allowlisting and snapshot ≠ event.
+- `scripts/council-room-rails.test.mjs` covers pure modules (no writer, DB, engine, network or voice), the text-only Chamber, no engine/`setInterval`/POST, "Recorded" (not "Live") headings, the stage staying disabled, the source staying the bounded public GET, decision producers having no reverse dependency, and the route loader supplying the page-load receipt time.
+- `scripts/council-room-a11y.test.mjs` renders `FeedStatus` and checks that clocks stay outside the single polite live region and that phase, error, withheld, stale and disconnected transitions are announced.
 
 **Fixtures are SYNTHETIC.** The build environment could not reach the public site (egress denied), so no real public rows were captured. `src/lib/desk/council-room.fixtures.ts` generates every fixture through the real producers, the real Phase 1A validator and the real `statementFromEvent`. Sanitized public captures can replace them when supplied.
 

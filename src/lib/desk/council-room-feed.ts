@@ -54,7 +54,7 @@ function emptyState(): FeedState {
   return { events: [], seen: [], refused: [], high_water_ms: null, continuous: false, last_success_ms: null, last_attempt_ms: null, last_error: null, failures: 0 };
 }
 
-function absorb(state: FeedState, rows: readonly ChamberStatement[], receivedMs: number | null, live: boolean): FeedState {
+function absorb(state: FeedState, rows: readonly ChamberStatement[], receivedMs: number, live: boolean): FeedState {
   const seen = new Set(state.seen);
   const byId = new Map<string, FeedEvent>(state.events.map((e) => [e.event_id, { ...e, arrival: e.arrival === "fresh" ? "live" : e.arrival }]));
   const refused: Refusal[] = [];
@@ -82,9 +82,12 @@ function absorb(state: FeedState, rows: readonly ChamberStatement[], receivedMs:
   return { ...state, events, seen: seenList, refused, high_water_ms: high };
 }
 
-/** Rows rendered with the server page: history, no client receipt time. */
-export function initialFeed(rows: readonly ChamberStatement[]): FeedState {
-  return absorb(emptyState(), rows, null, false);
+/**
+ * Rows read for the server page: history. `serverReceivedMs` is the server's clock
+ * taken right after that bounded read; it is the receipt time, not an event time.
+ */
+export function initialFeed(rows: readonly ChamberStatement[], serverReceivedMs: number): FeedState {
+  return absorb(emptyState(), rows, serverReceivedMs, false);
 }
 
 /** A successful client read. */

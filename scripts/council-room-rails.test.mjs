@@ -67,3 +67,12 @@ test("decision producers keep no dependency on the Council Room", () => {
     assert.doesNotMatch(read(rel), /council-room/, rel);
   }
 });
+
+test("page-load rows carry the server receipt time from the route loader", () => {
+  const route = read("src/routes/chamber.tsx");
+  assert.match(route, /const rows = await listChamberSpeech\(\);\s*return \{ rows, received_ms: Date\.now\(\) \};/);
+  assert.match(route, /receivedMs=\{data\.received_ms\}/);
+  const room = read("src/components/desk/ChamberRoom.tsx");
+  assert.match(room, /initialFeed\(seed, receivedMs\)/);
+  assert.doesNotMatch(room, /with page load/);
+});
