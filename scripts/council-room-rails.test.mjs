@@ -85,7 +85,7 @@ test("Phase 2 room is presentation only: no engine, network, 3D, canvas, audio o
   assert.doesNotMatch(room, /<img|url\(|\.webp|\.png/);
   const chamber = read("src/components/desk/ChamberRoom.tsx");
   assert.match(chamber, /const SHOW_CINEMATIC_ROOM = false/);
-  assert.match(chamber, /<CouncilRoomLite model=\{room\} \/>/);
+  assert.match(chamber, /<CouncilRoomLite model=\{room\} paused=\{userPaused\} onTogglePause=\{togglePause\} \/>/);
   assert.equal((chamber.match(/fetch\(/g) ?? []).length, 1, "the only fetch stays the allowlisted GET /frame");
   const pkg = JSON.parse(read("package.json"));
   for (const dep of ["three", "@react-three/fiber"]) assert.ok(!(dep in (pkg.dependencies ?? {})), dep);
@@ -106,4 +106,17 @@ test("the page hook uses the tested cycle wiring, not a parallel copy", () => {
   assert.match(chamber, /updateSnapshot: setSnapshot/);
   assert.equal((chamber.match(/setSnapshot\(/g) ?? []).length, 0, "no snapshot writes outside the cycle wiring");
   assert.equal((chamber.match(/listChamberSpeech\(\)/g) ?? []).length, 0, "the event read is only called through the cycle");
+});
+
+test("CR-CLAUDE-003: the viewer pause goes through the poller; no new timer, endpoint or read path", () => {
+  const chamber = code("src/components/desk/ChamberRoom.tsx");
+  assert.match(chamber, /pollerRef\.current\?\.setPaused\(next\)/);
+  assert.match(chamber, /if \(env\.hidden \|\| userPaused\) return;/, "the display clock (ages) also stops while viewer-paused");
+  assert.equal((chamber.match(/setTimeout\(/g) ?? []).length, 2, "only the existing poller timer and display clock");
+  assert.equal((chamber.match(/fetch\(/g) ?? []).length, 1, "still only the allowlisted GET /frame");
+  const room = code("src/components/desk/CouncilRoomLite.tsx");
+  assert.doesNotMatch(room, /fetch\(|setTimeout|setInterval|createPoller|useEffect/, "the room renders the button; it does not poll");
+  const feed = code("src/lib/desk/council-room-feed.ts");
+  assert.match(feed, /setPaused\(next\)/);
+  assert.equal((feed.match(/deps\.setTimer\(/g) ?? []).length, 1, "one scheduling site in the poller");
 });

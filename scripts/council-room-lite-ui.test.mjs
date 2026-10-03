@@ -46,6 +46,7 @@ const snap = parseRosterSnapshot({
 });
 const live = lite.applySnapshot(lite.emptySnapshotState(), snap, T);
 const render = (model) => renderToStaticMarkup(React.createElement(CouncilRoomLite, { model }));
+const renderWith = (model, paused) => renderToStaticMarkup(React.createElement(CouncilRoomLite, { model, paused, onTogglePause: () => {} }));
 const announce = (html) => {
   const m = /<p role="status" aria-live="polite" aria-atomic="true" data-room-announce="">([\s\S]*?)<\/p><p data-room-clock="">/.exec(html);
   assert.ok(m, "live region must be followed directly by the non-live clock line");
@@ -64,10 +65,11 @@ test("the room's live region announces only the snapshot status, never clocks", 
   assert.equal((a.match(/aria-live=/g) ?? []).length, 1);
 });
 
-test("seats are 21 non-interactive list items; the only control is one jump link", () => {
-  const html = render(lite.buildRoomModel(live, feeds.initialFeed([], T), T, env));
+test("seats are 21 non-interactive list items; the controls are one pause button and one jump link", () => {
+  const html = renderWith(lite.buildRoomModel(live, feeds.initialFeed([], T), T, env), false);
   assert.equal((html.match(/<li /g) ?? []).length, 21);
-  assert.doesNotMatch(html, /<button|<input|<select|tabindex=|onClick/);
+  assert.doesNotMatch(html, /<input|<select|tabindex=|onClick/);
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
   assert.equal((html.match(/<a /g) ?? []).length, 1);
   assert.match(html, /href="#exchange-heading"/);
   assert.equal((html.match(/<svg[^>]*aria-hidden="true"/g) ?? []).length, (html.match(/<svg/g) ?? []).length, "every mark is decorative");
@@ -115,7 +117,41 @@ test("CSS: flash is static under reduced motion and nothing in the room loops", 
   assert.match(block, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.room-lite-tile\[data-flash="true"\],\s*\.room-lite-seat\[data-flash="true"\] \{ animation: none; \}/);
   assert.match(block, /html\[data-motion="reduce"\] \.room-lite-tile\[data-flash="true"\]/);
   assert.match(block, /\.room-lite-jump:focus-visible/);
+  assert.match(block, /\.room-lite-pause:focus-visible \{\s*outline: 2px solid var\(--live\);/);
   assert.doesNotMatch(block, /infinite|animation-iteration-count/);
   const animated = block.match(/animation:\s*[^;]+;/g) ?? [];
   assert.ok(animated.every((a) => /none|council-room-fresh 2\.4s ease-out 1/.test(a)), animated.join(" | "));
+});
+
+test("CR-CLAUDE-003: one native pause button, named by its visible text, in the status area", () => {
+  const feed = feeds.initialFeed([], T);
+  const running = renderWith(lite.buildRoomModel(live, feed, T + 1_000, env), false);
+  const paused = renderWith(lite.buildRoomModel(live, feed, T + 1_000, { ...env, userPaused: true }), true);
+  const button = (html) => /<button([^>]*)>([^<]*)<\/button>/.exec(html);
+  const a = button(running);
+  const b = button(paused);
+  assert.ok(a && b);
+  assert.match(a[1], /type="button"/);
+  assert.match(a[1], /class="room-lite-pause"/);
+  assert.equal(a[2], "Pause live updates");
+  assert.equal(b[2], "Resume live updates");
+  assert.doesNotMatch(a[1] + b[1], /aria-label|aria-pressed|tabindex|disabled/, "the visible text is the name; the label itself says the state");
+  const status = running.slice(running.indexOf('class="room-lite-status"'), running.indexOf('class="room-lite-tiles"'));
+  assert.match(status, /<button/, "the button sits in the room status area");
+  assert.ok(running.indexOf("<button") > running.indexOf("data-room-clock"), "after the status line, so the live region stays first");
+});
+
+test("CR-CLAUDE-003: a viewer pause is announced once, as the viewer's pause, never as a failure", () => {
+  const feed = feeds.initialFeed([], T);
+  const before = renderWith(lite.buildRoomModel(live, feed, T + 1_000, env), false);
+  const paused = renderWith(lite.buildRoomModel(live, feed, T + 1_000, { ...env, userPaused: true }), true);
+  const pausedLater = renderWith(lite.buildRoomModel(live, feed, T + 1_000, { ...env, userPaused: true }), true);
+  assert.notEqual(announce(before), announce(paused), "the pause changes the status line once");
+  assert.equal(announce(paused), announce(pausedLater), "and nothing more while paused");
+  assert.match(announce(paused), /live updates paused by you/);
+  assert.doesNotMatch(announce(paused), /disconnected|unavailable|failed|stale|error/i);
+  assert.equal((paused.match(/aria-live=/g) ?? []).length, 1, "no new live region");
+  assert.match(text(paused), /STRIKE UP/, "last values kept");
+  assert.match(paused, /data-room-clock="">Snapshot read/, "read time kept");
+  assert.doesNotMatch(paused, /data-flash/);
 });

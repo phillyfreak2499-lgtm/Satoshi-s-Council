@@ -32,7 +32,7 @@ export type SnapshotState = {
   failures: number;
 };
 
-export type SnapshotPhase = "loading" | "current" | "stale" | "unavailable" | "disconnected" | "paused";
+export type SnapshotPhase = "loading" | "current" | "stale" | "unavailable" | "disconnected" | "paused" | "user_paused";
 
 export const SNAPSHOT_PHASE_LABEL: Record<SnapshotPhase, string> = {
   loading: "Current state: reading the desk snapshot",
@@ -41,7 +41,11 @@ export const SNAPSHOT_PHASE_LABEL: Record<SnapshotPhase, string> = {
   unavailable: "Current state: snapshot unavailable · seat and Chair state unknown",
   disconnected: "Current state: disconnected · seat and Chair state unknown",
   paused: "Current state: paused while this tab is hidden",
+  user_paused: "Current state: live updates paused by you · nothing new is read until you resume",
 };
+
+/** Where the page is viewed. userPaused is the viewer's own pause (§9.7), never a failure. */
+export type RoomEnv = { hidden: boolean; online: boolean; userPaused?: boolean };
 
 export function emptySnapshotState(): SnapshotState {
   return { value: null, last_success_ms: null, last_attempt_ms: null, failures: 0 };
@@ -57,9 +61,11 @@ export function applySnapshotFailure(state: SnapshotState, atMs: number): Snapsh
   return { ...state, last_attempt_ms: atMs, failures: state.failures + 1 };
 }
 
-export function snapshotPhase(state: SnapshotState, nowMs: number | null, env: { hidden: boolean; online: boolean }): SnapshotPhase {
+export function snapshotPhase(state: SnapshotState, nowMs: number | null, env: RoomEnv): SnapshotPhase {
   if (env.hidden) return "paused";
-  if (!env.online || state.failures >= DISCONNECTED_AFTER_FAILURES) return "disconnected";
+  if (!env.online) return "disconnected";
+  if (env.userPaused) return "user_paused";
+  if (state.failures >= DISCONNECTED_AFTER_FAILURES) return "disconnected";
   if (state.last_success_ms == null || state.value == null) return state.last_attempt_ms == null ? "loading" : "unavailable";
   if (state.failures > 0) return "stale";
   if (nowMs != null && nowMs - state.last_success_ms > STALE_AFTER_MS) return "stale";
@@ -119,9 +125,12 @@ function freshSeats(feed: FeedState): Set<string> {
   return out;
 }
 
-export function buildRoomModel(snap: SnapshotState, feed: FeedState, nowMs: number | null, env: { hidden: boolean; online: boolean }): RoomModel {
+export function buildRoomModel(snap: SnapshotState, feed: FeedState, nowMs: number | null, env: RoomEnv): RoomModel {
   const phase = snapshotPhase(snap, nowMs, env);
-  const usable = (phase === "current" || phase === "stale") && snap.value ? snap.value : null;
+  // A viewer pause keeps showing exactly what was shown before it: the values
+  // that were usable stay usable; unknown stays unknown.
+  const base = phase === "user_paused" ? snapshotPhase(snap, nowMs, { ...env, userPaused: false }) : phase;
+  const usable = (base === "current" || base === "stale") && snap.value ? snap.value : null;
   const bySeat = new Map((usable?.rows ?? []).map((r) => [String(r.seat).toUpperCase(), r]));
   const flashSeat = freshSeats(feed);
 
@@ -168,20 +177,30 @@ export type ChamberCycleDeps = {
 /**
  * One Chamber refresh cycle, as wired into createPoller by the page hook:
  * the event read, then at most one /frame read. Pure: readers are injected.
+ *
+ * Both results are applied together in onDelivery / onFailure, which the poller
+ * calls only for a result it keeps. A result discarded by a viewer pause (§9.7)
+ * therefore changes neither the feed nor the snapshot nor any failure count.
  */
 export function createChamberCycle(deps: ChamberCycleDeps): Pick<PollerDeps, "read" | "onDelivery" | "onFailure" | "onGap"> {
+  // Reads are serialized by the poller, so one slot is enough.
+  let frame: RosterSnapshot | null = null;
   return {
     read: async () => {
+      frame = null;
       const rows = await deps.readEvents();
-      const value = await deps.readSnapshot().catch(() => null);
-      const at = deps.now();
-      if (deps.isAlive()) deps.updateSnapshot((s) => (value ? applySnapshot(s, value, at) : applySnapshotFailure(s, at)));
+      frame = await deps.readSnapshot().catch(() => null);
       return rows;
     },
     onDelivery: (rows, at) => {
-      if (deps.isAlive()) deps.updateFeed((f) => applyDelivery(f, rows, at));
+      const value = frame;
+      frame = null;
+      if (!deps.isAlive()) return;
+      deps.updateFeed((f) => applyDelivery(f, rows, at));
+      deps.updateSnapshot((s) => (value ? applySnapshot(s, value, at) : applySnapshotFailure(s, at)));
     },
     onFailure: (error, at) => {
+      frame = null;
       if (!deps.isAlive()) return;
       deps.updateFeed((f) => applyFailure(f, error, at));
       // The event read failed before /frame was read: that skipped snapshot read is

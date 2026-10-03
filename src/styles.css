@@ -3521,6 +3521,28 @@ html[data-motion="reduce"] article[data-arrival="fresh"] {
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }
+.room-lite-pause {
+  display: inline-block;
+  margin-top: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.room-lite-pause:hover { border-color: var(--text); }
+.room-lite-pause:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .room-lite-pause { border-color: ButtonText; }
+  .room-lite-pause:focus-visible { outline-color: Highlight; }
+}
 .room-lite-tile[data-flash="true"],
 .room-lite-seat[data-flash="true"] {
   border-color: var(--live);

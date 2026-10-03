@@ -230,6 +230,7 @@ The room shows one explicit snapshot status:
 | unavailable | the read failed or the frame was refused, and there is no earlier success |
 | disconnected | browser offline, or 3 or more consecutive snapshot failures |
 | paused | tab hidden |
+| paused by you | the viewer pressed "Pause live updates" (§9.7); values are kept with their read time |
 
 **A failed event read is a failed refresh cycle for the snapshot too.** Each cycle reads events first, then `/frame`. If the event read fails, the `/frame` read is skipped (no extra request). The skip counts as one failed snapshot refresh:
 - The last good value and its original read time are kept.
@@ -244,13 +245,31 @@ When the status is not current or stale, seats show unknown. Missing data is nev
 
 ### 9.5 Accessibility
 
-- Seats are non-interactive list items (`<ul>` with 21 `<li>`). There are no controls.
+- Seats are non-interactive list items (`<ul>` with 21 `<li>`). The room's only control is the pause/resume button (§9.7).
 - The reading order is: room status, SATOSHI, paper book, integrity, lab, then seats.
 - Every state has text. SVG marks are `aria-hidden`.
 - One polite live region announces only snapshot-status changes. Ages and times sit outside it. The Phase 1 `FeedStatus` live region is unchanged.
-- Focus-visible styles cover the room's single "Jump to recorded exchanges" link.
+- Focus-visible styles cover the pause/resume button and the "Jump to recorded exchanges" link.
 - The layout works at 390 px and 1280 px without horizontal overflow.
 
 ### 9.6 Out of scope
 
 Phase 3 remains dormant: `SHOW_CINEMATIC_ROOM = false`, with no Three.js, canvas, WebGL, models, audio, voice or new assets.
+
+### 9.7 User pause (CR-CLAUDE-003, WCAG 2.2 SC 2.2.2)
+
+The page refreshes itself every 12 s, so the viewer can stop it. One native button sits in the room status area. It reads **Pause live updates** or **Resume live updates**. Its visible text is its accessible name and says what pressing it does, so it carries no `aria-pressed`. It is the same element in both states, so keyboard focus stays on it.
+
+**Pause**
+- No new refresh cycle is scheduled: no event GET and no `/frame` GET. The pause goes through the poller's existing hidden/offline path (`createPoller().setPaused`). There is no new timer and no new endpoint.
+- **A cycle already in flight is allowed to finish, and its result is discarded.** Neither the feed nor the snapshot changes, and neither failure count changes. So nothing on the page changes after the click, and a pause cannot cancel a request halfway or overlap a later one.
+- The pause is a gap, as with a hidden tab. Rows read after resuming are History and never flash.
+- The room status reads "live updates paused by you". It does not read disconnected, unavailable or a read failure. Last values, last recorded rows and read times stay as they were.
+- While paused, the display clock stops, so ages ("12s ago") stop changing too. Both status lines are computed from the moment of the pause, so the 36 s staleness clock does not advance them. The live regions change only once, at the pause. The feed status shows a non-announced line saying the status is as of that moment.
+
+**Resume**
+- Exactly one serialized cycle starts at once: one event GET, then at most one `/frame` GET. If the discarded cycle is still in flight, the resume cycle starts as soon as it settles. Two reads never overlap.
+- After that cycle, the normal 12 s visible/online cadence continues.
+- The frozen status clock is released when the resume cycle settles. The status then shows the real result, applying the normal 36 s / 3-failure rules from §9.4.
+
+Repeated toggling cannot stack timers, overlap reads, replay rows as new, flash, or add WAIT entries. A hidden tab or an offline browser still pauses on its own. While the user pause is on, returning to the tab or coming back online does not start a read.
