@@ -3385,3 +3385,22 @@ html[data-motion="reduce"] .atelier.is-full .atelier-dock {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
+
+/* COUNCIL ROOM V1 NARRATION — a row flashes only when it arrived on a continuous read. */
+article[data-arrival="fresh"] {
+  border-left-color: var(--live);
+  animation: council-room-fresh 2.4s ease-out 1;
+}
+article[data-arrival="fresh"] .council-room-arrival {
+  color: var(--live);
+}
+@keyframes council-room-fresh {
+  from { background: color-mix(in srgb, var(--live) 14%, transparent); }
+  to { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  article[data-arrival="fresh"] { animation: none; }
+}
+html[data-motion="reduce"] article[data-arrival="fresh"] {
+  animation: none;
+}

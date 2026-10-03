@@ -74,7 +74,8 @@ test("voice playback is explicit, optional, and never autoplayed", () => {
   assert.match(button, /audio\.play\(\)/);
   assert.doesNotMatch(button, /autoplay|autoPlay/);
   assert.match(button, /AI-generated character voice/);
-  assert.match(chamber, /AI-generated fictional character voices/);
+  // Council Room V1 Phase 1: the /chamber page is text-only, so it carries no voice copy.
+  assert.doesNotMatch(chamber, /AI-generated fictional character voices/);
   assert.match(streamer, /AI-generated character voices · optional/);
   assert.match(training, /AI-generated fictional character voices/);
 });
@@ -89,8 +90,8 @@ test("Streamer exposes the four first-pass microphones without changing the call
 });
 
 test("Chamber voices only already-recorded statement keys", () => {
-  assert.match(chamber, /source="chamber"/);
-  assert.match(chamber, /eventKey=\{statement\.event_key\}/);
+  // Council Room V1 Phase 1 removed playback from the /chamber page; the Floor strip keeps it.
+  assert.doesNotMatch(chamber, /CouncilVoiceButton|source="chamber"/);
   assert.match(strip, /eventKey=\{speech\.event_key\}/);
   assert.match(server, /listPublicChamberEvents\(5\)/);
   assert.match(server, /row\.event_key === eventKey/);
