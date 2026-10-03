@@ -21,6 +21,7 @@ import {
 import { parseRosterSnapshot, type RosterSnapshot } from "@/lib/desk/council-room-snapshot";
 import { buildRoomModel, createChamberCycle, emptySnapshotState, type SnapshotState } from "@/lib/desk/council-room-lite";
 import { CouncilRoomLite } from "./CouncilRoomLite";
+import { CouncilRoomParallax } from "./CouncilRoomParallax";
 import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
@@ -43,6 +44,8 @@ const CAMERA_VIEWS = [
 
 // Presentation pause: keep the complete room implementation ready for the next visual pass.
 const SHOW_CINEMATIC_ROOM = false;
+// CR-CLAUDE-004 2.5D chamber: scaffold until the approved art manifest is integrated and the lead releases it.
+const SHOW_PARALLAX_ROOM = false;
 
 type CameraView = (typeof CAMERA_VIEWS)[number][0];
 
@@ -624,6 +627,7 @@ export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberSta
 
         {SHOW_CINEMATIC_ROOM ? <RoomStage latest={feed.events[0]?.statement ?? null} loaded={loaded} /> : null}
         <CouncilRoomLite model={room} paused={userPaused} onTogglePause={togglePause} />
+        {SHOW_PARALLAX_ROOM ? <CouncilRoomParallax feed={feed} room={room} /> : null}
         {quietFloor ? <ChamberRoster rows={snapshot.value?.rows ?? []} asOf={snapshot.last_success_ms != null ? (snapshot.value?.as_of ?? null) : null} pending={snapshot.last_attempt_ms == null} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">

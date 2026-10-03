@@ -120,3 +120,17 @@ test("CR-CLAUDE-003: the viewer pause goes through the poller; no new timer, end
   assert.match(feed, /setPaused\(next\)/);
   assert.equal((feed.match(/deps\.setTimer\(/g) ?? []).length, 1, "one scheduling site in the poller");
 });
+
+test("CR-CLAUDE-004: the 2.5D chamber is presentation only, flagged off, with no audio, network, canvas or generated art", () => {
+  const room = code("src/components/desk/CouncilRoomParallax.tsx");
+  assert.doesNotMatch(room, /fetch\(|createServerFn|EventSource|WebSocket|setInterval|createPoller|@\/lib\/desk\/(store|engine|server-engine)/);
+  assert.doesNotMatch(room, /Audio\(|<audio|speechSynthesis|council-voice|elevenlabs|<canvas|WebGL|three|\.glb|\.gltf/i);
+  assert.doesNotMatch(room, /<img|url\(|\.webp|\.png|\.jpg/, "no art until the approved manifest lands");
+  const model = code("src/lib/desk/council-room-parallax.ts");
+  assert.doesNotMatch(model, /fetch\(|setTimeout|setInterval|Math\.random|Date\.now|council-voice|Audio/);
+  assert.doesNotMatch(model, /prev(ious)?Snap|lastSnapshot|diff/i);
+  assert.match(model, /e\.arrival === "fresh"/);
+  const chamber = read("src/components/desk/ChamberRoom.tsx");
+  assert.match(chamber, /const SHOW_PARALLAX_ROOM = false/);
+  assert.match(chamber, /\{SHOW_PARALLAX_ROOM \? <CouncilRoomParallax feed=\{feed\} room=\{room\} \/> : null\}/);
+});

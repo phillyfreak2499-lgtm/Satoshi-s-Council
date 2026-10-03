@@ -112,7 +112,9 @@ test("data-flash appears only on targets of fresh recorded events", () => {
 
 test("CSS: flash is static under reduced motion and nothing in the room loops", () => {
   const css = readFileSync("src/styles.css", "utf8");
-  const block = css.slice(css.indexOf("/* COUNCIL ROOM V1 LIGHTWEIGHT"));
+  const start = css.indexOf("/* COUNCIL ROOM V1 LIGHTWEIGHT");
+  const end = css.indexOf("/* COUNCIL ROOM V1 2.5D CHAMBER");
+  const block = css.slice(start, end > start ? end : undefined);
   assert.ok(block.length > 100);
   assert.match(block, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.room-lite-tile\[data-flash="true"\],\s*\.room-lite-seat\[data-flash="true"\] \{ animation: none; \}/);
   assert.match(block, /html\[data-motion="reduce"\] \.room-lite-tile\[data-flash="true"\]/);
