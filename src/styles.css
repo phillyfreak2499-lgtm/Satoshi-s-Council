@@ -3404,3 +3404,137 @@ article[data-arrival="fresh"] .council-room-arrival {
 html[data-motion="reduce"] article[data-arrival="fresh"] {
   animation: none;
 }
+
+/* COUNCIL ROOM V1 LIGHTWEIGHT — Phase 2 2D room. No idle animation; only a fresh recorded event outlines a tile or seat. */
+.room-lite {
+  margin-top: 1.5rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 1rem;
+  min-width: 0;
+}
+.room-lite-status {
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.room-lite-status [data-room-announce] { color: var(--text); }
+.room-lite[data-snapshot="stale"] .room-lite-seats,
+.room-lite[data-snapshot="stale"] .room-lite-tile strong { opacity: 0.6; }
+.room-lite-tiles {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 720px) {
+  .room-lite-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.room-lite-tile {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--raised);
+  padding: 0.75rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.room-lite-tile-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.room-lite-line { margin-top: 0.4rem; font-size: 0.875rem; line-height: 1.5; color: var(--text-2); }
+.room-lite-note { margin-top: 0.4rem; font-size: 0.75rem; color: var(--text-3); }
+.room-lite-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.room-lite-mark { flex: none; color: var(--gold); }
+.room-lite-seats-title {
+  margin-top: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.room-lite-seats {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.375rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  padding: 0;
+}
+@media (min-width: 720px) {
+  .room-lite-seats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .room-lite-seats { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+}
+.room-lite-seat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.4rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  min-width: 0;
+}
+.room-lite-seat-name { font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.room-lite-seat-read { grid-column: 2; color: var(--text-3); }
+.room-lite-seat[data-role="retired"],
+.room-lite-seat[data-role="pit"] { grid-template-columns: minmax(0, 1fr); }
+.room-lite-seat[data-role="retired"] .room-lite-seat-read,
+.room-lite-seat[data-role="pit"] .room-lite-seat-read { grid-column: 1; }
+.room-lite-seat[data-read="UP"] .room-lite-mark { color: var(--up); }
+.room-lite-seat[data-read="DOWN"] .room-lite-mark { color: var(--down); }
+.room-lite-seat[data-read="unknown"] .room-lite-mark { color: var(--text-3); }
+.room-lite-legend { margin-top: 0.75rem; font-size: 0.75rem; line-height: 1.5; color: var(--text-3); }
+.room-lite-jump {
+  display: inline-block;
+  margin-top: 0.5rem;
+  min-height: 44px;
+  padding: 0.6rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.room-lite-jump:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.room-lite-tile[data-flash="true"],
+.room-lite-seat[data-flash="true"] {
+  border-color: var(--live);
+  outline: 2px solid var(--live);
+  outline-offset: 1px;
+  animation: council-room-fresh 2.4s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-lite-tile[data-flash="true"],
+  .room-lite-seat[data-flash="true"] { animation: none; }
+}
+html[data-motion="reduce"] .room-lite-tile[data-flash="true"],
+html[data-motion="reduce"] .room-lite-seat[data-flash="true"] { animation: none; }
+@media (forced-colors: active) {
+  .room-lite-tile[data-flash="true"],
+  .room-lite-seat[data-flash="true"] { outline: 2px solid Highlight; }
+}

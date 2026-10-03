@@ -12,6 +12,7 @@ const PURE = [
   "src/lib/desk/council-room-narration.ts",
   "src/lib/desk/council-room-feed.ts",
   "src/lib/desk/council-room-snapshot.ts",
+  "src/lib/desk/council-room-lite.ts",
 ];
 
 test("Council Room adapter modules are pure: no writer, database, engine, network or voice", () => {
@@ -75,4 +76,24 @@ test("page-load rows carry the server receipt time from the route loader", () =>
   const room = read("src/components/desk/ChamberRoom.tsx");
   assert.match(room, /initialFeed\(seed, receivedMs\)/);
   assert.doesNotMatch(room, /with page load/);
+});
+
+test("Phase 2 room is presentation only: no engine, network, 3D, canvas, audio or new assets", () => {
+  const room = code("src/components/desk/CouncilRoomLite.tsx");
+  assert.doesNotMatch(room, /fetch\(|createServerFn|EventSource|WebSocket|@\/lib\/desk\/(store|engine|server-engine)|startEngine/);
+  assert.doesNotMatch(room, /three|<canvas|WebGL|getContext|\.glb|\.gltf|Audio|speechSynthesis|council-voice/i);
+  assert.doesNotMatch(room, /<img|url\(|\.webp|\.png/);
+  const chamber = read("src/components/desk/ChamberRoom.tsx");
+  assert.match(chamber, /const SHOW_CINEMATIC_ROOM = false/);
+  assert.match(chamber, /<CouncilRoomLite model=\{room\} \/>/);
+  assert.equal((chamber.match(/fetch\(/g) ?? []).length, 1, "the only fetch stays the allowlisted GET /frame");
+  const pkg = JSON.parse(read("package.json"));
+  for (const dep of ["three", "@react-three/fiber"]) assert.ok(!(dep in (pkg.dependencies ?? {})), dep);
+});
+
+test("the room model keeps no previous snapshot and reads flashes only from fresh feed events", () => {
+  const model = code("src/lib/desk/council-room-lite.ts");
+  assert.doesNotMatch(model, /prev(ious)?Snap|lastSnapshot|diff/i);
+  assert.match(model, /e\.arrival === "fresh"/);
+  assert.doesNotMatch(model, /arrival === "(history|live|late)"/);
 });
