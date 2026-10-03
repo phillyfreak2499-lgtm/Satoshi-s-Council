@@ -14,6 +14,7 @@
  *   This must be a middleware transforming `next()`: h3 discards the `response`
  *   runtime hook's return value, and `render:html` does not exist in Nitro v3.
  */
+import { GA_BOOTSTRAP_SCRIPT, suppressGaForAgent } from "../../src/lib/desk/ga";
 import installPageTemplate from "../../scripts/install-page.html?raw";
 import { grokOgIdentity } from "virtual:grok-og-identity";
 import {
@@ -101,13 +102,20 @@ export default async function grokPwaMiddleware(
     isDocumentPath(path) &&
     acceptsHtml(event.req.headers.get("accept"))
   ) {
-    const html = renderInstallPageHtml(installPageTemplate, {
-      host: requestHost(event),
-      url: urlWithQuery,
-    });
+    const analyticsScript = suppressGaForAgent(event.req.headers.get("user-agent"))
+      ? "window.__scGa4Blocked = true;"
+      : GA_BOOTSTRAP_SCRIPT + "if (!window.__scGa4Blocked) window.gtag('event', 'page_view');";
+    const html = renderInstallPageHtml(
+      installPageTemplate.replace("/* SC_GA_BOOTSTRAP */", analyticsScript),
+      {
+        host: requestHost(event),
+        url: urlWithQuery,
+      },
+    );
     return new Response(html, {
       headers: {
         "content-type": "text/html; charset=utf-8",
+        vary: "User-Agent",
         "cache-control": "no-cache",
       },
     });

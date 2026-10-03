@@ -2,7 +2,7 @@
 
 Measurement ID on site: `G-JMQGD1WTVT`. No GTM. No new vendor.
 
-The standard loader/config remains in `src/routes/__root.tsx`. Automatic config pageviews are disabled there (`send_page_view: false`) and `src/components/analytics/GaPageViews.tsx` emits one explicit initial `page_view` plus one for each TanStack Router path/search change.
+The guarded loader/config is rendered by `src/routes/__root.tsx`. Automatic config pageviews are disabled (`send_page_view: false`) and `src/components/analytics/GaPageViews.tsx` emits one explicit initial `page_view` plus one for each TanStack Router path/search change.
 
 `src/lib/desk/ga.ts` provides `gtagEvent`, `gtagEventAfterSuccess`, and the page-view bridge. It also repairs a missing client-side `gtag` queue/loader so a dropped or late head script does not silently lose Floor events.
 
@@ -28,6 +28,37 @@ The Floor contract remains the literal custom event `feedback_submitted`, emitte
 - `purchase` and other commerce events — out of scope; do not mark in Admin from this PR
 
 ## Human verification after deploy
+
+### Bot exclusion (2026-10-03)
+
+The root loader checks the request User-Agent on the server. Explicit crawler,
+headless, scripted HTTP client and health-check signatures receive only an
+analytics suppression marker, with no Google loader/config. The bootstrap also
+checks browser `navigator.webdriver` before loading Google. The shared event
+helper respects that marker and repeats the browser check, including its loader
+repair path. `Vary: User-Agent` keeps shared HTML caches from mixing agent variants.
+The middleware-served iPhone install tutorial uses the same server/browser guard
+and preserves its single initial page_view for humans.
+No referrer, IP/ASN, location, engagement or channel-based rules are used; direct
+visits, VPN users and ordinary desktop/mobile browsers remain eligible.
+
+Verification:
+
+- `curl -sS -A 'Googlebot/2.1' https://satoshiscouncil.com/` must contain
+  `window.__scGa4Blocked = true;` and no `googletagmanager.com/gtag/js` URL.
+- Repeat with an ordinary Chrome/Android/Safari UA: the guarded Google bootstrap
+  and measurement ID must be present. Both requests must still return the page.
+- In a normal browser, `window.__scGa4Blocked` must be `false`, a `gtag/js` request
+  and GA `collect` page_view must appear, and SPA navigation must still record.
+  Confirm Zach's own visit in GA4 Realtime using the existing steps below.
+- In a headless browser (including one with a normal spoofed UA), no Google
+  loader/collect requests should appear while `navigator.webdriver === true`.
+
+This excludes identifiable automation prospectively. It does not remove historical
+sessions, stop hits sent directly to Google, or catch bots concealing both their
+agent and webdriver flag. Unassigned / (not set), no referrer and zero engagement
+alone do not establish bot identity. Do not describe raw sessions as verified
+human sessions or remove the daily caveat until post-deploy evidence supports it.
 
 1. **Tag Assistant / browser network:** open an incognito visit to `https://satoshiscouncil.com/`. Confirm Measurement ID `G-JMQGD1WTVT` loads and one `page_view` collect request is sent. Navigate client-side to another room and confirm one additional `page_view`.
 2. **GA4 Realtime / DebugView:** while that visit is active, confirm the user appears and `page_view` is received. Submit one real Board idea or feedback item and confirm exactly one `feedback_submitted` event. A successful Arena human paper lock should continue to emit `paper_call_locked`.

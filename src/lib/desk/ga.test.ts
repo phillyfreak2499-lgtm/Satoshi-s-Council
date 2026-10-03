@@ -1,22 +1,113 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import {
   GA_EVENT_NAMES,
   GA_MEASUREMENT_ID,
+  GA_BOOTSTRAP_SCRIPT,
+  suppressGaForAgent,
   gtagEvent,
   gtagEventAfterSuccess,
   gtagPageView,
   type GaEventName,
 } from "./ga.ts";
 
+test("explicit bots are suppressed; desktop, mobile and direct users remain eligible", () => {
+  for (const ua of [
+    "Googlebot/2.1",
+    "AdsBot-Google",
+    "PetalBot",
+    "MJ12bot",
+    "Mozilla/5.0 HeadlessChrome/130",
+    "python-requests/2.32",
+    "curl/8.0",
+    "GPTBot/1.0",
+    "ELB-HealthChecker/2.0",
+    "kalshi-bot-access",
+    "Example crawler",
+  ]) {
+    assert.equal(suppressGaForAgent(ua), true, ua);
+  }
+  for (const ua of [
+    undefined,
+    "",
+    "Mozilla/5.0 Chrome/130.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone) Version/18 Mobile Safari/604.1",
+    "Mozilla/5.0 (Android 16; SM-F946U) Chrome/130.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (Android; CUBOT) Firefox/130",
+  ]) {
+    assert.equal(suppressGaForAgent(ua), false, ua);
+  }
+});
+
+test("bootstrap never loads Google or queues hits for bot UA or webdriver", () => {
+  for (const navigator of [
+    { userAgent: "HeadlessChrome/130", webdriver: false },
+    { userAgent: "Chrome/130", webdriver: true },
+  ]) {
+    const window: Record<string, unknown> = {};
+    runInNewContext(GA_BOOTSTRAP_SCRIPT, {
+      window,
+      navigator,
+      document: { head: { appendChild: () => assert.fail("bot loaded Google") } },
+    });
+    assert.equal(window.__scGa4Blocked, true);
+    assert.equal(window.dataLayer, undefined);
+    assert.equal(window.gtag, undefined);
+  }
+});
+
+test("human bootstrap retains loader, measurement ID and explicit page-view config", () => {
+  const window: Record<string, unknown> = {};
+  const scripts: Array<{ src: string }> = [];
+  runInNewContext(GA_BOOTSTRAP_SCRIPT, {
+    window,
+    navigator: { userAgent: "Mozilla/5.0 Chrome/130 Safari/537.36", webdriver: false },
+    document: {
+      createElement: () => ({ dataset: {} }),
+      head: { appendChild: (script: { src: string }) => scripts.push(script) },
+    },
+  });
+  assert.equal(window.__scGa4Blocked, false);
+  assert.equal(window.__scGa4Configured, true);
+  assert.equal(scripts.length, 1);
+  assert.equal(scripts[0].src, `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`);
+  const queue = window.dataLayer as Array<ArrayLike<unknown>>;
+  assert.equal(queue.length, 2);
+  assert.equal(queue[1][0], "config");
+  assert.equal(queue[1][1], GA_MEASUREMENT_ID);
+  assert.equal((queue[1][2] as { send_page_view: boolean }).send_page_view, false);
+});
+
+test("SSR suppression marker prevents helper repair and all event emissions", () => {
+  const prev = globalThis.window;
+  const calls: unknown[][] = [];
+  // @ts-expect-error test shim
+  globalThis.window = { __scGa4Blocked: true, gtag: (...args: unknown[]) => calls.push(args) };
+  try {
+    gtagPageView("/");
+    for (const name of GA_EVENT_NAMES) gtagEvent(name);
+    assert.deepEqual(calls, []);
+    assert.equal(window.dataLayer, undefined);
+    assert.equal(window.__scGa4LastPageView, undefined);
+  } finally {
+    globalThis.window = prev;
+  }
+});
+
 test("final event set is exactly the four allowed names", () => {
-  assert.deepEqual([...GA_EVENT_NAMES].sort(), [
-    "enter_the_floor",
-    "feedback_submitted",
-    "paper_call_locked",
-    "character_voice_played",
-  ].sort());
-  const forbidden = ["signup", "sign_up", "generate_lead", "purchase", "add_to_cart", "begin_checkout"];
+  assert.deepEqual(
+    [...GA_EVENT_NAMES].sort(),
+    ["enter_the_floor", "feedback_submitted", "paper_call_locked", "character_voice_played"].sort(),
+  );
+  const forbidden = [
+    "signup",
+    "sign_up",
+    "generate_lead",
+    "purchase",
+    "add_to_cart",
+    "begin_checkout",
+  ];
   for (const bad of forbidden) {
     assert.equal((GA_EVENT_NAMES as readonly string[]).includes(bad), false, bad);
   }

@@ -12,6 +12,33 @@
  */
 export const GA_MEASUREMENT_ID = "G-JMQGD1WTVT";
 
+// Explicit automation signatures only. Direct visits, missing referrers, VPNs,
+// and unknown/empty agents are not evidence of a bot.
+const AUTOMATION_AGENT =
+  /\b(?:bot|crawler|spider)\b|adsbot-google|petalbot|mj12bot|dotbot|rogerbot|screaming frog|googlebot|bingbot|duckduckbot|yandexbot|baiduspider|bytespider|gptbot|chatgpt-user|oai-searchbot|claudebot|claude-user|perplexitybot|facebookexternalhit|meta-externalagent|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|applebot|ahrefsbot|semrushbot|headlesschrome|phantomjs|playwright|puppeteer|selenium|python-requests|python-urllib|aiohttp|curl\/|wget\/|go-http-client|node-fetch|undici|axios\/|amazonbot|amazon-route53-health-check-service|elb-healthchecker|pingdom|uptimerobot|kalshi-bot-access/i;
+
+export function suppressGaForAgent(userAgent: string | undefined | null): boolean {
+  return AUTOMATION_AGENT.test(userAgent ?? "");
+}
+
+/** One guarded bootstrap: never fetch Google's loader before checking automation. */
+export const GA_BOOTSTRAP_SCRIPT = `(() => {
+  const blocked = navigator.webdriver === true || ${AUTOMATION_AGENT}.test(navigator.userAgent || '');
+  window.__scGa4Blocked = blocked;
+  if (blocked) return;
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  window.gtag = gtag;
+  gtag('js', new Date());
+  gtag('config', '${GA_MEASUREMENT_ID}', { send_page_view: false });
+  window.__scGa4Configured = true;
+  const script = document.createElement('script');
+  script.async = true;
+  script.dataset.scGa4 = 'loader';
+  script.src = 'https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}';
+  document.head.appendChild(script);
+})();`;
+
 export const GA_EVENT_NAMES = [
   "enter_the_floor",
   "feedback_submitted",
@@ -26,6 +53,7 @@ declare global {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
     __scGa4Configured?: boolean;
+    __scGa4Blocked?: boolean;
     __scGa4LastPageView?: string;
   }
 }
@@ -41,6 +69,12 @@ declare global {
  */
 function ensureGtag(): ((...args: unknown[]) => void) | undefined {
   if (typeof window === "undefined") return undefined;
+  if (
+    window.__scGa4Blocked === true ||
+    (typeof navigator !== "undefined" &&
+      (navigator.webdriver === true || suppressGaForAgent(navigator.userAgent)))
+  )
+    return undefined;
 
   if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
   const queue = window.dataLayer;
