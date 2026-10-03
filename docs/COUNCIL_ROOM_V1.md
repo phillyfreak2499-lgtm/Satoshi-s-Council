@@ -231,6 +231,15 @@ The room shows one explicit snapshot status:
 | disconnected | browser offline, or 3 or more consecutive snapshot failures |
 | paused | tab hidden |
 
+**A failed event read is a failed refresh cycle for the snapshot too.** Each cycle reads events first, then `/frame`. If the event read fails, the `/frame` read is skipped (no extra request). The skip counts as one failed snapshot refresh:
+- The last good value and its original read time are kept.
+- The status becomes stale immediately, or unavailable if nothing was ever read.
+- After 3 consecutive failed cycles, it becomes disconnected and seats show unknown.
+- A cycle where both reads succeed resets the failure count.
+- An event success followed by a `/frame` failure counts once, through the same path.
+
+No cycle counts twice. None of these transitions creates an event, a flash, or a WAIT. This wiring lives in `createChamberCycle` (`council-room-lite.ts`), which the page hook uses as is.
+
 When the status is not current or stale, seats show unknown. Missing data is never shown as WAIT or quiet. The read time and the server's reported `tick_age_s` are shown as reported.
 
 ### 9.5 Accessibility

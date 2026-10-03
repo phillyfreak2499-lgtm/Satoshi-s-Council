@@ -9,19 +9,16 @@ import { SEAT_IDS } from "@/lib/desk/types";
 import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT, type SeatAvailability } from "@/lib/desk/council-public";
 import { LAYER_LABEL, REFUSAL_LABEL, COUNCIL_ROOM_SCHEMA_VERSION } from "@/lib/desk/council-room-narration";
 import {
-  applyDelivery,
-  applyFailure,
   createPoller,
   feedPhase,
   initialFeed,
-  markGap,
   FEED_INTERVAL_MS,
   PHASE_LABEL,
   type FeedEvent,
   type FeedState,
 } from "@/lib/desk/council-room-feed";
 import { parseRosterSnapshot, type RosterSnapshot } from "@/lib/desk/council-room-snapshot";
-import { applySnapshot, applySnapshotFailure, buildRoomModel, emptySnapshotState, type SnapshotState } from "@/lib/desk/council-room-lite";
+import { buildRoomModel, createChamberCycle, emptySnapshotState, type SnapshotState } from "@/lib/desk/council-room-lite";
 import { CouncilRoomLite } from "./CouncilRoomLite";
 import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
@@ -471,17 +468,16 @@ function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
 
   useEffect(() => {
     let alive = true;
+    const cycle = createChamberCycle({
+      readEvents: listChamberSpeech,
+      readSnapshot: readRosterSnapshot,
+      now: () => Date.now(),
+      updateFeed: setFeed,
+      updateSnapshot: setSnapshot,
+      isAlive: () => alive,
+    });
     const poller = createPoller({
-      read: async () => {
-        const rows = await listChamberSpeech();
-        const value = await readRosterSnapshot().catch(() => null);
-        const at = Date.now();
-        if (alive) setSnapshot((prev) => (value ? applySnapshot(prev, value, at) : applySnapshotFailure(prev, at)));
-        return rows;
-      },
-      onDelivery: (rows, at) => alive && setFeed((f) => applyDelivery(f, rows, at)),
-      onFailure: (error, at) => alive && setFeed((f) => applyFailure(f, error, at)),
-      onGap: () => alive && setFeed((f) => markGap(f)),
+      ...cycle,
       now: () => Date.now(),
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (handle) => window.clearTimeout(handle as number),

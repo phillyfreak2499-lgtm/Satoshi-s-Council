@@ -97,3 +97,13 @@ test("the room model keeps no previous snapshot and reads flashes only from fres
   assert.match(model, /e\.arrival === "fresh"/);
   assert.doesNotMatch(model, /arrival === "(history|live|late)"/);
 });
+
+test("the page hook uses the tested cycle wiring, not a parallel copy", () => {
+  const chamber = code("src/components/desk/ChamberRoom.tsx");
+  assert.match(chamber, /createChamberCycle\(\{/);
+  assert.match(chamber, /readEvents: listChamberSpeech/);
+  assert.match(chamber, /readSnapshot: readRosterSnapshot/);
+  assert.match(chamber, /updateSnapshot: setSnapshot/);
+  assert.equal((chamber.match(/setSnapshot\(/g) ?? []).length, 0, "no snapshot writes outside the cycle wiring");
+  assert.equal((chamber.match(/listChamberSpeech\(\)/g) ?? []).length, 0, "the event read is only called through the cycle");
+});

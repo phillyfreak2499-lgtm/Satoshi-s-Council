@@ -11,7 +11,17 @@
  * position is shown only from a recorded book-layer event, never inferred.
  */
 import { COUNCIL_PIT_CREW, COUNCIL_RETIRED, seatAvailabilityLabel } from "./council-public.ts";
-import { DISCONNECTED_AFTER_FAILURES, STALE_AFTER_MS, type FeedEvent, type FeedState } from "./council-room-feed.ts";
+import {
+  applyDelivery,
+  applyFailure,
+  markGap,
+  DISCONNECTED_AFTER_FAILURES,
+  STALE_AFTER_MS,
+  type FeedEvent,
+  type FeedState,
+  type PollerDeps,
+} from "./council-room-feed.ts";
+import type { ChamberStatement } from "./chamber-reactions.ts";
 import type { RosterSnapshot, SnapshotLean } from "./council-room-snapshot.ts";
 import { SEAT_IDS } from "./types.ts";
 
@@ -140,5 +150,46 @@ export function buildRoomModel(snap: SnapshotState, feed: FeedState, nowMs: numb
     integrity: { recorded: newest(feed, "integrity"), flash: flashes(feed, "integrity") },
     lab: { recorded: newest(feed, "research"), flash: flashes(feed, "research") },
     seats,
+  };
+}
+
+export type ChamberCycleDeps = {
+  /** The existing serialized event read (listChamberSpeech). */
+  readEvents: () => Promise<ChamberStatement[]>;
+  /** The existing allowlisted GET /frame read; null for a failed or refused frame. */
+  readSnapshot: () => Promise<RosterSnapshot | null>;
+  now: () => number;
+  updateFeed: (fn: (f: FeedState) => FeedState) => void;
+  updateSnapshot: (fn: (s: SnapshotState) => SnapshotState) => void;
+  /** False after unmount; nothing is written then. */
+  isAlive: () => boolean;
+};
+
+/**
+ * One Chamber refresh cycle, as wired into createPoller by the page hook:
+ * the event read, then at most one /frame read. Pure: readers are injected.
+ */
+export function createChamberCycle(deps: ChamberCycleDeps): Pick<PollerDeps, "read" | "onDelivery" | "onFailure" | "onGap"> {
+  return {
+    read: async () => {
+      const rows = await deps.readEvents();
+      const value = await deps.readSnapshot().catch(() => null);
+      const at = deps.now();
+      if (deps.isAlive()) deps.updateSnapshot((s) => (value ? applySnapshot(s, value, at) : applySnapshotFailure(s, at)));
+      return rows;
+    },
+    onDelivery: (rows, at) => {
+      if (deps.isAlive()) deps.updateFeed((f) => applyDelivery(f, rows, at));
+    },
+    onFailure: (error, at) => {
+      if (!deps.isAlive()) return;
+      deps.updateFeed((f) => applyFailure(f, error, at));
+      // The event read failed before /frame was read: that skipped snapshot read is
+      // this cycle's single snapshot failure. Last good value and read time are kept.
+      deps.updateSnapshot((s) => applySnapshotFailure(s, at));
+    },
+    onGap: () => {
+      if (deps.isAlive()) deps.updateFeed((f) => markGap(f));
+    },
   };
 }
