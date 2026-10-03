@@ -34,6 +34,8 @@ export type ChamberStatement = {
     gap: string;
     lean: string;
     entry_cents: number | null;
+    /** Canonical paper-book call id carried on CHAIR_DIRECTIONAL payloads. */
+    call_id?: string;
     candidate_id: string;
     candidate_label: string;
     sample_n: number | null;
@@ -165,6 +167,7 @@ export function statementFromEvent(ev: PublicSystemEvent): ChamberStatement | nu
         gap: "",
         lean: asString(ev.payload.lean),
         entry_cents: asNum(ev.payload.entry_cents),
+        call_id: asString(ev.payload.call_id),
       },
     };
   }

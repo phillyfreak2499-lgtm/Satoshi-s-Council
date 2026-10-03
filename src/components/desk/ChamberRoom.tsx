@@ -1,17 +1,29 @@
-import { useDesk } from "@/lib/desk/store";
 import { utcStamp } from "@/lib/desk/display-evidence";
 import { RosterEvidence } from "./RosterEvidence";
 import { PaperDisclaimer } from "./PaperDisclaimer";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Radar } from "lucide-react";
 import { listChamberSpeech } from "@/lib/desk/chamber-speech";
 import type { ChamberStatement } from "@/lib/desk/chamber-reactions";
-import { SEAT_IDS, type SeatRow } from "@/lib/desk/types";
-import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT } from "@/lib/desk/council-public";
+import { SEAT_IDS } from "@/lib/desk/types";
+import { availabilityLine, seatAvailabilityLabel, COUNCIL_RETIRED_MEANS, COUNCIL_STRUCTURE_SHORT, type SeatAvailability } from "@/lib/desk/council-public";
+import { LAYER_LABEL, REFUSAL_LABEL, COUNCIL_ROOM_SCHEMA_VERSION } from "@/lib/desk/council-room-narration";
+import {
+  applyDelivery,
+  applyFailure,
+  createPoller,
+  feedPhase,
+  initialFeed,
+  markGap,
+  FEED_INTERVAL_MS,
+  PHASE_LABEL,
+  type FeedEvent,
+  type FeedState,
+} from "@/lib/desk/council-room-feed";
+import { parseRosterSnapshot, type RosterSnapshot } from "@/lib/desk/council-room-snapshot";
 import { quietRangeLine, sitStreakLine } from "@/lib/desk/chamber-sit-digest";
 import { GlobalHeader } from "./GlobalHeader";
 import { Crest } from "./Crest";
-import { CouncilVoiceButton } from "./CouncilVoiceButton";
 
 const CAST = [
   ["SATOSHI", "Chair", "Speaks from finalized Chair milestones and recorded paper calls."],
@@ -38,19 +50,19 @@ type Exchange = {
   key: string;
   label: string;
   latest: string;
-  statements: ChamberStatement[];
+  events: FeedEvent[];
   repeats?: Exchange[];
 };
 
-function exchangeKey(s: ChamberStatement): string {
-  const e = s.evidence;
+function exchangeKey(row: FeedEvent): string {
+  const e = row.statement.evidence;
   if (e.ticker && e.close_time) return `window:${e.ticker}:${e.close_time}`;
   if (e.candidate_id) return `experiment:${e.candidate_id}`;
-  return `event:${s.event_key}`;
+  return `event:${row.event_id}`;
 }
 
-function exchangeLabel(row: ChamberStatement): string {
-  const e = row.evidence;
+function exchangeLabel(row: FeedEvent): string {
+  const e = row.statement.evidence;
   return e.ticker || e.candidate_label || e.candidate_id || e.seat || "desk event";
 }
 
@@ -67,28 +79,28 @@ function utcDate(value: string): string {
   }
 }
 
-function groupExchanges(rows: ChamberStatement[]): Exchange[] {
+function groupExchanges(rows: FeedEvent[]): Exchange[] {
   const map = new Map<string, Exchange>();
   for (const row of rows) {
     const key = exchangeKey(row);
     const existing = map.get(key);
     if (existing) {
-      existing.statements.unshift(row);
+      existing.events.unshift(row);
       continue;
     }
     map.set(key, {
       key,
       label: exchangeLabel(row),
-      latest: row.occurred_at,
-      statements: [row],
+      latest: row.recorded_at,
+      events: [row],
     });
   }
   return [...map.values()];
 }
 
 function waitFingerprint(exchange: Exchange): string | null {
-  if (exchange.statements.length !== 1) return null;
-  const statement = exchange.statements[0];
+  if (exchange.events.length !== 1) return null;
+  const statement = exchange.events[0].statement;
   if (statement.speaker !== "SATOSHI" || statement.evidence.kind !== "chair-wait") return null;
   return (statement.evidence.wait_reason || statement.text).trim().toLowerCase();
 }
@@ -108,12 +120,15 @@ function compactRepeatedWaits(exchanges: Exchange[]): Exchange[] {
 }
 
 
-export function ChamberRoster({ rows = [] }: { rows?: SeatRow[] }) {
+export function ChamberRoster({ rows = [], asOf = null, pending = false }: { rows?: SeatAvailability[]; asOf?: number | null; pending?: boolean }) {
   const bySeat = new Map(rows.map((row) => [row.seat, row]));
   return (
     <section className="mt-6 rounded-md border border-border bg-surface p-4 sm:p-5" aria-labelledby="chamber-roster-title">
       <div className="font-mono text-micro uppercase tracking-widest text-subtle">Quiet floor</div>
       <h2 id="chamber-roster-title" className="mt-1 font-sans text-title font-medium">Meet the Council</h2>
+      <p className="mt-1 font-mono text-micro text-subtle">
+        {asOf != null ? <>Current state snapshot read {utcStamp(new Date(asOf).toISOString())} · not a recorded event</> : pending ? "Reading current state snapshot…" : "Current state snapshot unavailable · seat availability unverified"}
+      </p>
       <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{availabilityLine(rows)}</p>
       <p className="mt-2 font-sans text-ui leading-relaxed text-muted">{COUNCIL_STRUCTURE_SHORT}. {COUNCIL_RETIRED_MEANS}</p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7" role="list" aria-label="The 21 Council seats">
@@ -145,8 +160,9 @@ function SpeakerMark({ speaker }: { speaker: ChamberStatement["speaker"] }) {
   );
 }
 
-function Evidence({ statement }: { statement: ChamberStatement }) {
+function Evidence({ row }: { row: FeedEvent }) {
   const [open, setOpen] = useState(false);
+  const statement = row.statement;
   const e = statement.evidence;
   return (
     <div className="mt-2">
@@ -201,36 +217,47 @@ function Evidence({ statement }: { statement: ChamberStatement }) {
           {e.quorum ? <div><dt className="inline text-muted">quorum at dispatch </dt><dd className="inline">{e.quorum.up} up · {e.quorum.down} down · {e.quorum.wait} wait</dd></div> : null}
           <RosterEvidence statement={statement} />
           {e.score != null && e.bar != null ? <div><dt className="inline text-muted">score / bar </dt><dd className="inline tabular">{e.score} / {e.bar}</dd></div> : null}
+          {e.kind === "chair-directional" && e.call_id ? <div className="min-w-0"><dt className="inline text-muted">book call id </dt><dd className="inline break-all">{e.call_id}</dd></div> : null}
+          <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">source </dt><dd className="inline break-all">{row.source.table} · {row.source.source_type}:{row.source.source_id}</dd></div>
+          <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">event id </dt><dd className="inline break-all">{row.event_id}</dd></div>
+          <div><dt className="inline text-muted">recorded </dt><dd className="inline tabular">{row.recorded_at}</dd></div>
+          <div><dt className="inline text-muted">received </dt><dd className="inline tabular">{row.received_at}</dd></div>
+          <div><dt className="inline text-muted">template </dt><dd className="inline">{row.template_key} · schema v{COUNCIL_ROOM_SCHEMA_VERSION}</dd></div>
+          <div><dt className="inline text-muted">build </dt><dd className="inline">not recorded on this source</dd></div>
+          <div className="min-w-0 sm:col-span-2"><dt className="inline text-muted">stored wording </dt><dd className="inline">{row.archival_text}</dd></div>
         </dl>
       ) : null}
     </div>
   );
 }
 
-function Statement({ statement }: { statement: ChamberStatement }) {
+const ARRIVAL_LABEL: Record<FeedEvent["arrival"], string> = {
+  history: "History",
+  fresh: "New",
+  live: "Received live",
+  late: "Arrived late",
+};
+
+function Statement({ row }: { row: FeedEvent }) {
   return (
-    <article className="relative border-l border-border pl-4 sm:pl-5">
+    <article className="relative border-l border-border pl-4 sm:pl-5" data-arrival={row.arrival}>
       <span className="absolute -left-[3px] top-3 size-[5px] rounded-full bg-subtle" aria-hidden="true" />
       <div className="flex items-start gap-3">
-        <SpeakerMark speaker={statement.speaker} />
+        <SpeakerMark speaker={row.speaker} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="font-mono text-micro font-bold uppercase tracking-[0.16em] text-fg">{statement.speaker}</span>
-            <time className="font-mono text-micro tabular text-subtle" dateTime={statement.occurred_at}>
-              {utcStamp(statement.occurred_at)}
+            <span className="font-mono text-micro font-bold uppercase tracking-[0.16em] text-fg">{row.speaker}</span>
+            <time className="font-mono text-micro tabular text-subtle" dateTime={row.recorded_at}>
+              recorded {utcStamp(row.recorded_at)}
             </time>
           </div>
-          <p className="mt-1 max-w-[72ch] font-sans text-body leading-relaxed text-fg">{statement.text}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <CouncilVoiceButton
-              source="chamber"
-              speaker={statement.speaker}
-              eventKey={statement.event_key}
-              label="Hear"
-            />
-            <span className="font-mono text-micro text-subtle">AI-generated character voice</span>
+          <div className="mt-1 flex flex-wrap gap-2 font-mono text-micro uppercase tracking-widest text-subtle">
+            <span>{LAYER_LABEL[row.layer]}</span>
+            <span aria-hidden="true">·</span>
+            <span className="council-room-arrival">{ARRIVAL_LABEL[row.arrival]}</span>
           </div>
-          <Evidence statement={statement} />
+          <p className="mt-1 max-w-[72ch] font-sans text-body leading-relaxed text-fg">{row.text}</p>
+          <Evidence row={row} />
         </div>
       </div>
     </article>
@@ -249,7 +276,7 @@ function ExchangeCard({ exchange }: { exchange: Exchange }) {
     <section className="rounded-md border border-border bg-surface p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
         <div className="min-w-0 font-mono text-micro uppercase tracking-widest text-subtle">
-          {quiet ? quietRangeLine(count, earliest, exchange.latest) : <>{exchange.statements.length > 1 ? "Exchange" : "Dispatch"} · <span className="break-all text-muted">{exchange.label}</span></>}
+          {quiet ? quietRangeLine(count, earliest, exchange.latest) : <>{exchange.events.length > 1 ? "Exchange" : "Dispatch"} · <span className="break-all text-muted">{exchange.label}</span></>}
         </div>
         <time className="font-mono text-micro tabular text-subtle" dateTime={exchange.latest}>{utcDate(exchange.latest)}</time>
       </div>
@@ -261,13 +288,13 @@ function ExchangeCard({ exchange }: { exchange: Exchange }) {
               Full evidence · {count} WAIT windows
             </summary>
             <div className="mt-3 space-y-5">
-              {all.flatMap((row) => row.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />))}
+              {all.flatMap((group) => group.events.map((row) => <Statement key={row.event_id} row={row} />))}
             </div>
           </details>
         </>
       ) : (
         <div className="space-y-5">
-          {exchange.statements.map((statement) => <Statement key={statement.event_key} statement={statement} />)}
+          {exchange.events.map((row) => <Statement key={row.event_id} row={row} />)}
         </div>
       )}
     </section>
@@ -412,31 +439,127 @@ function RoomStage({ latest, loaded }: { latest: ChamberStatement | null; loaded
   );
 }
 
-export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) {
-  const frame = useDesk();
-  const [rows, setRows] = useState<ChamberStatement[]>(initial);
-  const [loaded, setLoaded] = useState(true);
+/** Passive read of the existing public GET /frame, allowlisted to roster fields. */
+async function readRosterSnapshot(): Promise<RosterSnapshot | null> {
+  const r = await fetch("/frame", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+  if (!r.ok) return null;
+  return parseRosterSnapshot(await r.json().catch(() => null));
+}
+
+function ageText(fromMs: number | null, nowMs: number | null): string {
+  if (fromMs == null || nowMs == null) return "";
+  const s = Math.max(0, Math.round((nowMs - fromMs) / 1000));
+  if (s < 90) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  return m < 90 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
+}
+
+/**
+ * Recorded-event feed for the Chamber: one serialized GET at a time, paused while
+ * the tab is hidden or the browser is offline, replay after any gap. The roster
+ * snapshot is read in the same cycle and only while the roster is on screen.
+ */
+function useChamberFeed(initial: ChamberStatement[], receivedMs: number) {
+  const [seed] = useState<ChamberStatement[]>(initial);
+  const [feed, setFeed] = useState<FeedState>(() => initialFeed(seed, receivedMs));
+  const [snapshot, setSnapshot] = useState<{ value: RosterSnapshot | null; read: boolean }>({ value: null, read: false });
+  const [env, setEnv] = useState({ hidden: false, online: true });
+  const [now, setNow] = useState<number | null>(null);
+  const wantSnapshot = useRef(false);
 
   useEffect(() => {
-    let mounted = true;
-    const pull = async () => {
-      try {
-        const next = await listChamberSpeech();
-        if (mounted) setRows(next);
-      } finally {
-        if (mounted) setLoaded(true);
-      }
+    let alive = true;
+    const poller = createPoller({
+      read: async () => {
+        const rows = await listChamberSpeech();
+        if (wantSnapshot.current) {
+          const value = await readRosterSnapshot().catch(() => null);
+          if (alive) setSnapshot({ value, read: true });
+        }
+        return rows;
+      },
+      onDelivery: (rows, at) => alive && setFeed((f) => applyDelivery(f, rows, at)),
+      onFailure: (error, at) => alive && setFeed((f) => applyFailure(f, error, at)),
+      onGap: () => alive && setFeed((f) => markGap(f)),
+      now: () => Date.now(),
+      setTimer: (fn, ms) => window.setTimeout(fn, ms),
+      clearTimer: (handle) => window.clearTimeout(handle as number),
+    });
+    const sync = () => {
+      const next = { hidden: document.hidden, online: navigator.onLine !== false };
+      setEnv(next);
+      poller.setHidden(next.hidden);
+      poller.setOnline(next.online);
     };
-    void pull();
-    const timer = window.setInterval(() => void pull(), 12_000);
+    sync();
+    poller.start();
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
     return () => {
-      mounted = false;
-      window.clearInterval(timer);
+      alive = false;
+      poller.stop();
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
     };
   }, []);
 
+  // Display clock for ages only. No network; paused while hidden.
+  useEffect(() => {
+    if (env.hidden) return;
+    let handle = 0;
+    const tick = () => {
+      setNow(Date.now());
+      handle = window.setTimeout(tick, 5_000);
+    };
+    tick();
+    return () => window.clearTimeout(handle);
+  }, [env.hidden, feed.last_attempt_ms]);
+
+  return { feed, snapshot, env, now, wantSnapshot };
+}
+
+/**
+ * Only meaningful transitions sit in the polite live region: phase, read error and
+ * withheld-record counts. Read times and ages change every few seconds, so they
+ * render outside it and are never announced.
+ */
+export function FeedStatus({ feed, env, now }: { feed: FeedState; env: { hidden: boolean; online: boolean }; now: number | null }) {
+  const phase = feedPhase(feed, now, env);
+  const newest = feed.events[0] ?? null;
+  const refusedByReason = new Map<string, number>();
+  for (const r of feed.refused) refusedByReason.set(REFUSAL_LABEL[r.reason], (refusedByReason.get(REFUSAL_LABEL[r.reason]) ?? 0) + 1);
+  return (
+    <div className="mb-3 rounded-md border border-border bg-canvas p-3 font-mono text-micro leading-relaxed text-subtle" data-phase={phase}>
+      <div role="status" aria-live="polite" aria-atomic="true" data-feed-announce="">
+        <div className="text-fg">{PHASE_LABEL[phase]}</div>
+        {feed.last_error ? <div>Read error: {feed.last_error}</div> : null}
+        {refusedByReason.size ? (
+          <div>Withheld from narration: {[...refusedByReason].map(([why, n]) => `${n} · ${why}`).join("; ")}</div>
+        ) : null}
+      </div>
+      <div data-feed-clock="">
+        <div>
+          Last successful read: {feed.last_success_ms != null ? <>{utcStamp(new Date(feed.last_success_ms).toISOString())} · {ageText(feed.last_success_ms, now)}</> : "none yet in this tab"}
+        </div>
+        <div>
+          Newest recorded event: {newest ? <>{utcStamp(newest.recorded_at)} · {ageText(newest.recorded_ms, now)}</> : "none"}
+        </div>
+      </div>
+      <div>Reads every {FEED_INTERVAL_MS / 1000}s while this tab is visible. Rows loaded with the page or after a gap are marked History.</div>
+    </div>
+  );
+}
+
+export function ChamberRoom({ initial = [], receivedMs }: { initial?: ChamberStatement[]; receivedMs: number }) {
+  const { feed, snapshot, env, now, wantSnapshot } = useChamberFeed(initial, receivedMs);
+  const loaded = feed.last_success_ms != null || feed.events.length > 0 || feed.failures > 0;
+
+  const rows = feed.events;
   const exchanges = useMemo(() => compactRepeatedWaits(groupExchanges(rows)), [rows]);
   const quietFloor = exchanges.length > 0 && waitFingerprint(exchanges[0]) !== null;
+  wantSnapshot.current = quietFloor;
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -454,26 +577,31 @@ export function ChamberRoom({ initial = [] }: { initial?: ChamberStatement[] }) 
             Chamber speech is downstream only. It cannot change the Chair, the learner, a seat, the Lab, or the paper book. When no evidence-backed event earns a voice, the room stays quiet.
           </p>
           <p className="mt-2 max-w-[78ch] font-sans text-micro leading-relaxed text-subtle">
-            Optional playback uses AI-generated fictional character voices. The recorded text and evidence remain the canonical record.
+            Text only. Each line is a neutral description of one recorded event, with its source, recorded time and original stored wording under Show evidence.
           </p>
           <a href="/training/wick" className="btn btn-secondary mt-4">Train with WICK ↗</a>
         </section>
 
-        {SHOW_CINEMATIC_ROOM ? <RoomStage latest={rows[0] ?? null} loaded={loaded} /> : null}
-        {quietFloor ? <ChamberRoster rows={frame.chair?.rows ?? []} /> : null}
+        {SHOW_CINEMATIC_ROOM ? <RoomStage latest={feed.events[0]?.statement ?? null} loaded={loaded} /> : null}
+        {quietFloor ? <ChamberRoster rows={snapshot.value?.rows ?? []} asOf={snapshot.value?.as_of ?? null} pending={!snapshot.read} /> : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section aria-labelledby="exchange-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <div>
-                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Observed conversation</div>
-                <h2 id="exchange-heading" className="mt-1 font-sans text-title font-medium">Live exchanges</h2>
+                <div className="font-mono text-micro uppercase tracking-widest text-subtle">Recorded events · newest first</div>
+                <h2 id="exchange-heading" className="mt-1 font-sans text-title font-medium">Recorded exchanges</h2>
               </div>
-              <div className="font-mono text-micro text-subtle">refreshes every 12s</div>
             </div>
+            <FeedStatus feed={feed} env={env} now={now} />
 
             {!loaded ? (
-              <div className="rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">Listening for structured events…</div>
+              <div className="rounded-md border border-border bg-surface p-5 font-mono text-ui text-muted">Reading recorded events…</div>
+            ) : exchanges.length === 0 && feed.failures > 0 ? (
+              <div className="rounded-md border border-border bg-surface p-5">
+                <div className="font-mono text-ui text-fg">Recorded events could not be read.</div>
+                <p className="mt-1 font-sans text-ui text-muted">This is a read failure, not a quiet desk. The page retries while this tab is visible.</p>
+              </div>
             ) : exchanges.length === 0 ? (
               <div className="rounded-md border border-border bg-surface p-5">
                 <div className="font-mono text-ui text-fg">The room is quiet.</div>
