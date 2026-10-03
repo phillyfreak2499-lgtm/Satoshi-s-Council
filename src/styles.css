@@ -24,6 +24,10 @@
   --max: 1440px;
   --gutter: 32px;
   --header-h: 64px;
+  /* 2.5D chamber palette (CR-CLAUDE-004: navy/orange). Provisional until the approved art manifest sets it. */
+  --chamber-navy: #13213a;
+  --chamber-navy-deep: #0c1526;
+  --chamber-orange: #e8812f;
 }
 @media (max-width: 1023px) {
   :root {
@@ -3559,4 +3563,135 @@ html[data-motion="reduce"] .room-lite-seat[data-flash="true"] { animation: none;
 @media (forced-colors: active) {
   .room-lite-tile[data-flash="true"],
   .room-lite-seat[data-flash="true"] { outline: 2px solid Highlight; }
+}
+
+/* COUNCIL ROOM V1 2.5D CHAMBER — CR-CLAUDE-004, contract §10. Scaffold planes (CSS shapes) until approved art lands.
+   Drift runs only when data-motion="live"; reduced motion, the viewer's motion pause and phones are static. */
+.room-px {
+  margin-top: 1.5rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 1rem;
+}
+.room-px-head { display: grid; gap: 0.5rem; }
+.room-px-motion,
+.room-px-close {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.room-px-note,
+.room-px-line { font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.5; color: var(--text-3); }
+.room-px-stage {
+  position: relative;
+  margin-top: 0.75rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--chamber-navy-deep);
+  touch-action: pan-y;
+}
+.room-px[data-motion="live"] .room-px-stage { cursor: grab; }
+.room-px-plane {
+  position: absolute;
+  inset: -8%;
+  transform: translate3d(var(--px, 0px), var(--py, 0px), 0);
+}
+.room-px-back { background: radial-gradient(ellipse at 50% 30%, var(--chamber-navy) 0%, var(--chamber-navy-deep) 70%); }
+.room-px-stations {
+  background:
+    linear-gradient(to top, color-mix(in srgb, var(--chamber-orange) 18%, transparent) 0 2px, transparent 2px) 0 62% / 100% 40% no-repeat,
+    radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--chamber-orange) 10%, transparent) 0%, transparent 60%);
+}
+.room-px[data-motion="live"] .room-px-plane,
+.room-px[data-motion="live"] .room-px-cast { animation: room-px-drift 18s ease-in-out infinite alternate; }
+/* Nothing drifts under the pointer or keyboard focus, so targets hold still while being aimed at. */
+.room-px-stage:hover .room-px-plane,
+.room-px-stage:hover .room-px-cast,
+.room-px-stage:focus-within .room-px-plane,
+.room-px-stage:focus-within .room-px-cast { animation-play-state: paused; }
+@keyframes room-px-drift {
+  from { translate: -3px 0; }
+  to { translate: 3px -2px; }
+}
+.room-px-cast { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; }
+.room-px-slot {
+  position: absolute;
+  transform: translate(calc(-50% + var(--px, 0px)), calc(-50% + var(--py, 0px)));
+}
+.room-px-member {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.room-px-member:hover,
+.room-px-member[aria-expanded="true"] { border-color: var(--chamber-orange); }
+.room-px-figure {
+  width: 2.25rem;
+  height: 2.75rem;
+  border: 1.5px dashed color-mix(in srgb, var(--chamber-orange) 70%, transparent);
+  border-radius: 1.1rem 1.1rem 0.4rem 0.4rem;
+}
+.room-px-role { color: var(--text-3); }
+.room-px-member[data-flash="true"] {
+  border-color: var(--live);
+  animation: council-room-fresh 2.4s ease-out 1;
+}
+.room-px-motion:focus-visible,
+.room-px-close:focus-visible,
+.room-px-member:focus-visible,
+.room-px-stage:focus-visible,
+.room-px-detail-title:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.room-px-detail {
+  margin-top: 0.75rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  padding: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.room-px-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.room-px-detail-title { font-family: var(--font-mono); font-size: 0.85rem; color: var(--text); }
+.room-px-sub { margin-top: 0.75rem; font-family: var(--font-mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-2); }
+.room-px-events { margin: 0.35rem 0 0; padding-left: 1rem; font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.5; color: var(--text); }
+.room-px-tag { color: var(--text-3); }
+@media (max-width: 719px) {
+  .room-px-stage { aspect-ratio: auto; min-height: 0; }
+  .room-px-plane { display: none; }
+  .room-px-cast { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; padding: 0.5rem; }
+  .room-px-slot { position: static; transform: none; }
+  .room-px-member { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-px-plane,
+  .room-px-cast,
+  .room-px-member[data-flash="true"] { animation: none !important; }
+}
+html[data-motion="reduce"] .room-px-plane,
+html[data-motion="reduce"] .room-px-cast,
+html[data-motion="reduce"] .room-px-member[data-flash="true"] { animation: none !important; }
+@media (forced-colors: active) {
+  .room-px-member[data-flash="true"] { outline: 2px solid Highlight; }
+  .room-px-figure { border-color: ButtonText; }
 }

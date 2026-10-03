@@ -273,3 +273,67 @@ The page refreshes itself every 12 s, so the viewer can stop it. One native butt
 - The frozen status clock is released when the resume cycle settles. The status then shows the real result, applying the normal 36 s / 3-failure rules from §9.4.
 
 Repeated toggling cannot stack timers, overlap reads, replay rows as new, flash, or add WAIT entries. A hidden tab or an offline browser still pauses on its own. While the user pause is on, returning to the tab or coming back online does not start a read.
+
+## 10. 2.5D chamber (CR-CLAUDE-004)
+
+Owner authorization (2026-10-03, relayed by the lead in CR-CLAUDE-004 R1): build a 2.5D chamber and wire seven cast voices. Full 3D and commissioned models are shelved. No generated substitute art. Every rule in §1–§9 still applies.
+
+**Status: scaffold.** `CouncilRoomParallax` renders plain CSS planes and dashed figure outlines in place of art. It sits behind `SHOW_PARALLAX_ROOM = false` in `ChamberRoom.tsx`. Production shows only the Phase 2 room until the approved art is integrated and the lead releases it.
+
+### 10.1 Inputs (none new)
+- The room reads the same `FeedState` and `RoomModel` as the Phase 2 room (§9.1).
+- It adds no request, poller, timer or endpoint.
+- The refresh pause (§9.7) and the stale, unknown, disconnected and paused states pass through unchanged.
+
+### 10.2 Cast and attribution
+The seven voiced cast members are SATOSHI (Chair), WARDEN (feed integrity), ALCHEMIST (Lab), and the seats WICK, DRIFT, INDEX and TAPE. They appear in that reading and tab order.
+
+| Member | Recorded activity | Current snapshot |
+|---|---|---|
+| SATOSHI | events spoken by SATOSHI (Chair wait, recorded paper call) | Chair current state from the snapshot |
+| WARDEN | events spoken by WARDEN (feed health) | pit-crew seat row: no vote, availability only |
+| ALCHEMIST | events spoken by ALCHEMIST (Lab milestones) | none; the panel says the Lab has no current-state field |
+| WICK, DRIFT, INDEX, TAPE | SWEEP seat audits whose `seat` names the member; the panel says the seat does not speak in the event log and that its activity is what SWEEP recorded about it | that seat's read and availability |
+
+- Each panel shows two separate sections: **Recorded activity** (at most 5, newest first, with arrival labels) and **Current snapshot · not a recorded event**. Neither ever fills the other.
+- A recorded paper call is a logged paper call. It is never shown as a current open position or a fill (§3).
+
+### 10.3 Flashes
+- A member is outlined only for an `arrival === "fresh"` event attributed to them.
+- History, replay after a gap or failure, late rows and duplicates never flash.
+- A snapshot change never flashes and never adds recorded activity.
+
+### 10.4 Motion and interaction
+- Three planes (back wall, stations, foreground cast) move by depth: 0.25, 0.6 and 1 times the stage offset.
+- Drag is bounded to ±48 px horizontally and ±20 px vertically. Arrow keys on the focused stage move it in 8 px steps; Home resets it.
+- A press that moves more than 6 px is a drag and never opens a panel.
+- Drift is subtle: an 18 s alternating loop of a few pixels. It holds still while the pointer is over the stage or focus is inside it, so targets never move while being aimed at.
+- **Motion runs only when all of these hold:** a wide screen (≥ 720 px), no system reduced-motion request, and the viewer has not pressed **Pause motion**. Otherwise the layout is static. Phones get a two-column grid of members with no planes.
+- The motion pause and the live-update pause (§9.7) are independent. Neither changes the other.
+- Members are native buttons. Selecting one moves focus to the panel heading, and Close returns focus to the member. The room adds no live region.
+
+### 10.5 Art contract (for CR-GROK-002)
+Art integration waits for Grok's manifest. Per layer it needs:
+- source file ID, output file name, SHA-256, pixel dimensions and crop;
+- depth plane (0 back wall, 1 stations, 2 cast) and stacking order within the plane;
+- for each cast cutout, a focal anchor point (x/y within the cutout) and the station position on a 1920×1080 reference stage;
+- the owner-supplied rights evidence and any remaining limits.
+
+The perspective stays shallow, so that missing geometry is never exposed. Without an approved manifest, no image ships.
+
+### 10.6 DOM and audio contract (for CR-PERPLEXITY-004)
+Perplexity owns the voice modules on `feat/chamber-voice-v1`. This room owns the route integration.
+
+**Hooks the room provides:**
+- each member button carries `data-member="<ID>"`;
+- each open panel is `.room-px-detail[data-member]`, with `[data-section="recorded"]` list items keyed by `event_id`.
+
+**What the audio module must provide:**
+- `audioFor(event_id) → { status: "unavailable" | "ready" | "failed", url?, transcript_hash, speaker, voice_id, model, label }`;
+- a user-enabled player with mute and stop, visible captions (the exact `text` of the validated event), and a single-speaker queue.
+
+**Rules:**
+- Audio availability is separate from visual events. A fresh event flashes whether or not audio exists, and audio never creates a flash, an event or a state.
+- No automatic playback, and never on page load, reconnect or resume. History never autoplays.
+- Every clip is labelled as synthetic narration of a recorded event, never as an original recording. The transcript stays visible when audio fails.
+- When audio lands, the rails that currently assert `/chamber` is text-only (`scripts/council-room-rails.test.mjs`) are changed only for this user-enabled path, together with this section.
