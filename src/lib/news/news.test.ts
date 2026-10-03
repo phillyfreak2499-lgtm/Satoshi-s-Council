@@ -44,7 +44,7 @@ test("non-BTC item dropped, title or description accepts Bitcoin/BTC case-insens
 test("source spoofing, lookalike domains and unsafe protocols are rejected", () => {
   for (const url of ["https://coindesk.com.evil.test/btc", "https://evil.test/btc", "javascript:alert(1)", "http://www.coindesk.com/btc", "https://user:pass@www.coindesk.com/btc", "https://www.coindesk.com:123/btc"]) assert.equal(allowedUrl("CoinDesk", url), false);
   assert.equal(allowedUrl("Decrypt", item.url), false);
-  assert.deepEqual(FEEDS.map(feed => feed.source), ["CoinDesk", "The Block", "Decrypt", "Bitcoin Magazine", "Reuters Markets/Crypto"]);
+  assert.deepEqual(FEEDS.map(feed => feed.source), ["CoinDesk", "The Block", "Decrypt", "Bitcoin Magazine"]);
 });
 test("endpoint JSON returns latest 30 newest-first, stable ties, no expired/future items", async () => {
   const db = await database();

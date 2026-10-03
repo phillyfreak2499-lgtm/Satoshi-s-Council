@@ -6,8 +6,6 @@ export const FEEDS = Object.freeze([
   { source: "The Block", url: "https://www.theblock.co/rss.xml", hosts: ["theblock.co", "www.theblock.co"] },
   { source: "Decrypt", url: "https://decrypt.co/feed", hosts: ["decrypt.co", "www.decrypt.co"] },
   { source: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed", hosts: ["bitcoinmagazine.com", "www.bitcoinmagazine.com"] },
-  // Official publisher endpoint only; failures are reported, never replaced by aggregators.
-  { source: "Reuters Markets/Crypto", url: "https://reutersagency.com/feed/?best-topics=business-finance&post_type=best", hosts: ["reuters.com", "www.reuters.com", "reutersagency.com", "www.reutersagency.com"] },
 ].map(feed => Object.freeze({ ...feed, hosts: Object.freeze(feed.hosts) })));
 
 export interface NewsItem {

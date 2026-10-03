@@ -22,9 +22,9 @@ A failed publisher does not prevent other sources from inserting or retention fr
 - The Block: `https://www.theblock.co/rss.xml` (200 text/xml).
 - Decrypt: `https://decrypt.co/feed` (200 application/xml).
 - Bitcoin Magazine: `https://bitcoinmagazine.com/feed` (200 application/rss+xml).
-- Reuters Markets/Crypto: `https://reutersagency.com/feed/?best-topics=business-finance&post_type=best`. Direct check returned 404 HTML. This official publisher endpoint remains allowlisted and is attempted each poll, but Reuters coverage is unavailable pending a working official RSS feed. There is no Google News, Feedspot, scraping, or other fallback. This coverage limitation must be resolved/accepted before activation; do not represent the Wire as having working Reuters coverage.
+All four feeds were parsed locally with the production parser; each contained eligible Bitcoin items. This is a point-in-time connectivity check, not a guarantee of future feed availability.
 
-All four successful feeds were parsed locally with the production parser; each contained eligible Bitcoin items. This is a point-in-time connectivity check, not a guarantee of future feed availability.
+Reuters Markets/Crypto (`https://reutersagency.com/feed/?best-topics=business-finance&post_type=best`) was removed from the allowlist 2026-10-02 after its endpoint persistently returned 404 HTML, which forced every poll to exit nonzero. There is no Google News, Feedspot, scraping, or other fallback; do not represent the Wire as having Reuters coverage.
 
 ## Isolation and review
 
@@ -40,7 +40,7 @@ Also run `npm run typecheck`, targeted ESLint, migration apply/idempotency tests
 
 ### Results on this branch
 
-- Nine Wire contract tests passed; four official publisher feeds returned 200 and parsed successfully. Reuters returned 404.
+- Nine Wire contract tests passed; four official publisher feeds returned 200 and parsed successfully. Reuters returned 404 and was later removed from the allowlist (2026-10-02) so polls exit clean.
 - Typecheck, targeted ESLint and the Node-server production build passed. Build output explicitly skipped database migration because `DATABASE_URL` was unset.
 - Built `/news` returned 200 with the exact disclaimer. Built `/api/news` returned the expected controlled 503 without database credentials; newest-first success JSON was exercised against PGlite through the same response function used by the route.
 - 92 focused Chair, floor, selective-entry, paper-book and learner regression tests passed.
